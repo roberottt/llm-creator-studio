@@ -1,9 +1,31 @@
 # 08 — FFN, GELU y SwiGLU
 
-En cada bloque del Transformer hay dos partes: la atención, que ya conoces, y una red
-feed-forward (FFN) que ocupa **el doble de parámetros que la atención**. En nuestro modelo,
-860.160 frente a 409.600 por capa. Es la parte más grande y la que menos atención recibe en
-las explicaciones.
+## Por qué importa este módulo
+
+**Porque dos tercios de tu modelo están aquí, y casi nadie lo sabe.**
+
+Cuando alguien dice que un modelo tiene N parámetros, la mayoría no están en la atención:
+están en esta parte, que recibe muchísima menos atención en las explicaciones. En nuestro
+modelo son 5,16 millones de 8,93.
+
+Y hay una razón más profunda. La atención es una media ponderada, o sea una **operación
+lineal**, y apilar operaciones lineales no sirve de nada: cien capas equivalen a una. Lo que
+impide que el Transformer entero se derrumbe a una sola multiplicación de matrices es
+precisamente este módulo. La demo lo mide: cinco capas lineales sin activación dan
+exactamente el mismo resultado que una sola matriz.
+
+### Qué sabrás al terminar
+
+- Por qué sin una no-linealidad la profundidad de una red es una ilusión
+- Qué le pasa a una neurona con ReLU cuando se va a la zona negativa (se muere, literalmente)
+- Qué es SwiGLU y **de dónde sale el 896** del config del modelo final
+- Un caso donde el propio autor del paper escribe que no sabe por qué funciona
+
+### Cuánto cuesta
+
+1,5 horas. El segundo ejercicio es aritmética pura y produce un número del config.
+
+---
 
 ## El problema: la atención sola no basta
 

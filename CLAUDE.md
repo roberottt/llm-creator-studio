@@ -44,10 +44,17 @@ fórmula sea correcta.
 - Los ficheros `.py` van **sin tildes ni caracteres no-ASCII** en comentarios y docstrings
   (los emoji de la CLI son la excepción, y viven en `progress.py`). Los `.md` sí llevan
   tildes normales.
-- **Cada `TEORIA.md` entre 900 y 1800 palabras.** Hay un test que lo verifica
-  (`tests/test_red_de_seguridad.py::test_la_teoria_esta_dentro_del_presupuesto_de_palabras`).
-  El presupuesto es amplio porque hay que explicar desde abajo; el techo sigue existiendo:
-  si un tema no cabe en 1800, son dos módulos.
+- **Cada `TEORIA.md` abre con `## Por qué importa este módulo`**, ANTES de cualquier
+  concepto: qué problema resuelve, qué sabrás al terminar, y cuánto cuesta. Hay un test que
+  lo verifica. Alguien que no sabe de LLMs no puede juzgar si merece la pena leer cuatro
+  horas sobre atención si no le dices primero que es LA pieza que separa un modelo mediocre
+  de ChatGPT.
+- **Mínimo 900 palabras por `TEORIA.md`, sin techo.** El límite superior se quitó el
+  2026-07-31: cada concepto se explica lo que haga falta, con ejemplos concretos.
+- **Cada `SOLUCION.md` termina con `## El código completo`**: la implementación entera de
+  todos los ejercicios del módulo, copiable. Hay un test que lo verifica. El brief original
+  decía "no el código pelado"; esa instrucción quedó derogada el 2026-07-31. Quien se
+  atasca necesita ver el código, no leer sobre él.
 - **El mismo registro en los docstrings de `ejercicios.py`, en `SOLUCION.md`, en las pistas
   de `hints.py` y en los mensajes de la CLI.** Los docstrings de ejercicio llevan secciones
   `QUE ES ESTO` / `COMO SE HACE` / `EJEMPLO CONCRETO` y avisan de los errores típicos.
@@ -148,15 +155,24 @@ El estado del currículo **no se declara en ningún sitio**: se calcula ejecutan
    basura" sea un riesgo real (formas de tensores, sobre todo).
 5. Escribir las tres pistas en `llmfs/hints.py`: conceptual → técnica → estructural.
    La tercera no da la solución escrita. Añadir los términos nuevos a `GLOSARIO.md`.
-6. `ejercicios.py`: docstrings con **formas de entrada y salida y la fórmula matemática**,
-   cuerpo `raise NotImplementedError(...)`. Nunca la solución.
+6. `ejercicios.py`: el docstring de módulo abre con **CÓMO SE HACE ESTE MÓDULO** (los 5
+   pasos), **QUÉ VAS A CONSTRUIR** (un diagrama de cómo encajan los ejercicios) y
+   **VOCABULARIO QUE VAS A NECESITAR** (cada término de ML que aparezca, definido en una
+   línea). Los docstrings de cada ejercicio llevan formas de entrada/salida y la fórmula,
+   cuerpo `raise NotImplementedError(...)`.
 7. `test_NN.py`: valida contra `llmfs.reference` o contra el equivalente de PyTorch
    (`nn.MultiheadAttention`, `F.layer_norm`...) con `torch.allclose`. **No vale comprobar
    solo que no peta.** Los tests se importan con `from llmfs.bridge import exercises` y
    `ej = exercises(__file__)`, nunca con `sys.path`.
 8. `demo.py`: experimento ejecutable que visualiza el concepto. Guarda figuras en
    `runs/figures/` vía `llmfs.paths.figures_dir()`. Tiene que correr en cuda, mps y cpu.
-9. Correr `make test` entero antes de dar la fase por terminada.
+9. Regenerar el bloque de código de `SOLUCION.md` con
+   `uv run python scripts/regenerar_soluciones.py` (lo extrae de `llmfs/reference/`, así que
+   nunca diverge). Si el ejercicio necesita una función auxiliar o un import que no está en
+   `ejercicios.py`, añadirlo a `AUXILIARES` o `IMPORTS` de ese script.
+10. Correr `make test` y `make test-soluciones` antes de dar la fase por terminada. El
+   segundo pega cada solución sobre su `ejercicios.py` y corre los tests: es la única forma
+   de garantizar que el código de las soluciones se puede copiar y funciona.
 
 ## Dependencias
 

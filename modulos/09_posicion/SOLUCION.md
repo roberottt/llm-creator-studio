@@ -147,3 +147,65 @@ entrenado —mira la tabla de períodos del primer experimento— así que los �
 literalmente territorio no visto. Existe toda una familia de técnicas para extender el
 contexto después de entrenar (interpolación de posiciones, NTK-aware scaling, YaRN)
 precisamente porque la extrapolación directa no basta.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
+    mitad = x.shape[-1] // 2
+    x1, x2 = x[..., :mitad], x[..., mitad:]
+    return torch.cat([-x2, x1], dim=-1)
+
+
+def sinusoidal_embeddings(seq_len: int, d_model: int, base: float = 10000.0) -> torch.Tensor:
+    position = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)  # (T, 1)
+    # exp(-ln(base) * 2i/d) es numericamente mas estable que base ** (-2i/d)
+    div_term = torch.exp(
+        torch.arange(0, d_model, 2, dtype=torch.float32) * (-math.log(base) / d_model)
+    )  # (d/2,)
+
+    embeddings = torch.zeros(seq_len, d_model)
+    embeddings[:, 0::2] = torch.sin(position * div_term)
+    embeddings[:, 1::2] = torch.cos(position * div_term)
+    return embeddings
+
+
+def rope_frequencies(
+    head_dim: int,
+    max_seq_len: int,
+    theta: float = 10000.0,
+    device: torch.device | str | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if head_dim % 2 != 0:
+        raise ValueError(f"head_dim ({head_dim}) tiene que ser par: RoPE rota pares.")
+
+    # theta^(-2i/d) para i = 0, 1, ..., d/2-1
+    inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim))
+    positions = torch.arange(max_seq_len, dtype=torch.float32)
+
+    angles = torch.outer(positions, inv_freq)  # (T, head_dim/2)
+    angles = torch.cat([angles, angles], dim=-1)  # (T, head_dim), duplicado por mitades
+
+    cos, sin = angles.cos(), angles.sin()
+    if device is not None:
+        cos, sin = cos.to(device), sin.to(device)
+    return cos, sin
+
+
+def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    seq_len = x.shape[-2]
+    cos = cos[:seq_len].to(dtype=x.dtype, device=x.device)
+    sin = sin[:seq_len].to(dtype=x.dtype, device=x.device)
+    return x * cos + rotate_half(x) * sin
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

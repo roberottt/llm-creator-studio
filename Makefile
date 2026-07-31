@@ -1,4 +1,4 @@
-.PHONY: help install test test-fast test-reference status next check demo train-tiny train-final sample data clean
+.PHONY: help install test test-fast test-reference test-soluciones status next check demo train-tiny train-final sample data clean
 
 UV := uv
 RUN := $(UV) run
@@ -23,6 +23,9 @@ test-fast:  ## Suite sin los tests lentos
 
 test-reference:  ## SALUD DEL CURSO: tests contra llmfs/reference/. Siempre verde; si no, es un bug del repo.
 	LLMFS_TEST_REFERENCE=1 $(RUN) pytest modulos/
+
+test-soluciones:  ## Pega el codigo de cada SOLUCION.md y corre sus tests. Tarda un par de minutos.
+	$(RUN) python scripts/verificar_soluciones.py
 
 status:  ## Tabla de progreso del curriculo
 	$(RUN) python -m llmfs status

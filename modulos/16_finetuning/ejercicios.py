@@ -1,9 +1,43 @@
 """Modulo 16 - Post-training: SFT y LoRA.
 
-Cuatro ejercicios. Los dos primeros son de formato; los dos ultimos son LoRA.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 16
-    llmfs demo 16     hace SFT de verdad sobre el modelo del modulo 13 y compara antes/despues
+Lee `TEORIA.md` -> implementa -> `llmfs check 16` -> `llmfs hint 16 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+Como convertir un modelo que continua texto en uno que responde:
+
+    build_chat_template  (ej. 1)  el formato que le enseña donde empieza cada turno
+    mask_prompt_tokens   (ej. 2)  que aprenda a RESPONDER, no a preguntar
+    LoRALinear           (ej. 3)  entrenar el 0,7% de los parametros
+    merge_lora_weights   (ej. 4)  fundir los cambios sin dejar rastro
+
+Los dos primeros son de formato y son cortos. Los dos ultimos son LoRA.
+
+EL PROBLEMA
+===========
+
+Escribele a tu modelo entrenado "¿Cual es la capital de Francia?" y lo mas probable es que
+responda con MAS preguntas. No esta roto: esta haciendo exactamente lo que le enseñaste,
+que es continuar texto plausible.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **pretraining**: la fase larga, aprender lenguaje prediciendo el siguiente token.
+- **post-training / SFT**: seguir entrenando sobre ejemplos de instruccion y respuesta.
+- **chat template**: los marcadores (`<|user|>`, `<|end|>`) que delimitan los turnos.
+- **ignore_index**: el valor (-100) que hace que `cross_entropy` salte una posicion sin
+  contarla en la perdida.
+- **LoRA**: entrenar dos matrices pequenyas anyadidas al modelo en vez de todos sus pesos.
+- **rango** (r) de LoRA: la dimension interna de esas matrices. Tipicamente 4, 8 o 16.
+- **congelar** un parametro: ponerle `requires_grad = False` para que no se entrene.
+
+    llmfs demo 16     hace SFT de verdad y compara el antes y el despues
 """
 
 from __future__ import annotations

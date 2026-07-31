@@ -1,9 +1,29 @@
 # 01 — Entorno y hardware
 
-Antes de escribir una línea del modelo hay que contestar una pregunta muy práctica:
-**¿cuánto va a tardar esto en mi ordenador?** No es curiosidad. La respuesta decide el
-tamaño del modelo, cuánto texto puede ver de golpe y si el proyecto cabe en una tarde o
-en una semana.
+## Por qué importa este módulo
+
+**Este módulo evita que pierdas una semana.**
+
+Vas a entrenar un modelo en tu ordenador. Antes de escribir una línea de red neuronal
+conviene saber si eso va a tardar dos horas o dos semanas, porque la respuesta cambia todas
+las decisiones que vienen después: cuántas capas, qué contexto, qué tamaño de batch.
+
+Y hay una segunda razón, menos obvia. Casi todo el mundo que entrena modelos copia números
+de un tutorial sin saber de dónde salen. Al terminar este módulo sabrás **calcular** cuánto
+cuesta un modelo antes de construirlo, que es lo que separa diseñar de copiar.
+
+### Qué sabrás al terminar
+
+- Cuántas operaciones cuesta procesar un token, y **de dónde sale la fórmula**
+- Cuántos TFLOPS da tu GPU **de verdad**, no lo que dice la ficha técnica
+- Por qué tu RTX 2060 está obligada a usar `float16` y qué problema trae eso
+- Estimar cuánto va a durar un entrenamiento antes de lanzarlo
+
+### Cuánto cuesta
+
+45 minutos. Tres funciones cortas, y la demo mide tu hardware de verdad.
+
+---
 
 ## La pregunta: ¿cómo se mide "cuánto cuesta"?
 

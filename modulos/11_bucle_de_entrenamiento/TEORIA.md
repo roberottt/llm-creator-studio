@@ -1,8 +1,34 @@
 # 11 — El bucle de entrenamiento
 
-Tienes un modelo que produce logits y una pérdida que mide cuánto se equivoca. Falta la
-parte que convierte eso en aprendizaje: **cómo se mueven los 8,9 millones de parámetros
-para que la pérdida baje**.
+## Por qué importa este módulo
+
+**Porque tener un modelo no es tenerlo entrenado.**
+
+Ya sabes construir un GPT que produce logits y medir cuánto se equivoca. Falta la parte que
+convierte eso en aprendizaje: cómo se mueven 8,9 millones de parámetros para que la pérdida
+baje.
+
+El bucle en sí lo escribiste en el módulo 02 con tu motor de autodiff: predecir, medir,
+gradientes, mover, repetir. Lo que se añade aquí son cuatro piezas que hacen que ese bucle
+funcione **a escala** en vez de divergir a los cincuenta pasos.
+
+Cada una resuelve un problema concreto que verías si no estuviera. Y las cuatro son las que
+te van a permitir depurar un entrenamiento que va mal en vez de cambiar números al azar.
+
+### Qué sabrás al terminar
+
+- Por qué un solo learning rate vale para toda la red (y qué hace Adam para conseguirlo)
+- Qué es el warmup y por qué sin él el modelo a veces no se recupera nunca
+- Cómo evitar que **un solo batch raro** destruya horas de entrenamiento
+- Qué parámetros NO deben decaer, y por qué aplicárselo a todos es un error silencioso
+- Un detalle de AMP que se olvida siempre y hace que el entrenamiento se arrastre
+
+### Cuánto cuesta
+
+4 horas. El primer ejercicio (AdamW desde cero) es el más largo del curso; los otros tres
+son cortos.
+
+---
 
 ## El bucle, en cuatro líneas
 

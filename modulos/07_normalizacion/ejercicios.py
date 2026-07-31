@@ -1,10 +1,39 @@
 """Modulo 07 - Normalizacion y conexiones residuales.
 
-Tres ejercicios cortos. El tercero apenas tiene codigo pero es el que decide si una red
-profunda entrena o no.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 07
-    llmfs demo 07     mide el gradiente que llega a la primera capa con pre-norm y post-norm
+Lee `TEORIA.md` -> implementa -> `llmfs check 07` -> `llmfs hint 07 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+Las dos piezas que hacen que una red profunda entrene en vez de devolver NaN:
+
+    layer_norm         (ej. 1)  centrar en 0 y escalar a varianza 1
+    RMSNorm            (ej. 2)  lo mismo pero sin la media (lo que usa Llama)
+    prenorm_residual   (ej. 3)  UNA LINEA, y es la mas importante del modulo
+
+El tercero apenas tiene codigo. Lo que importa es entender POR QUE los parentesis van donde
+van.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **normalizar**: reescalar unos numeros para que tengan una media y una dispersion
+  conocidas. Aqui, media 0 y varianza 1.
+- **varianza**: cuanto se dispersan los valores respecto a su media.
+- **conexion residual**: sumar la entrada de un bloque a su salida (`x + f(x)`). Es lo que
+  permite entrenar redes profundas.
+- **corriente residual** (residual stream): esa suma acumulada que atraviesa toda la red.
+  Cada capa le anyade su contribucion.
+- **gradiente que se desvanece**: cuando el gradiente se hace tan pequenyo al atravesar
+  capas que las primeras dejan de recibir senyal y no aprenden.
+- **pre-norm / post-norm**: si la normalizacion va dentro de la rama (`x + f(norm(x))`) o
+  envolviendo la suma (`norm(x + f(x))`).
+
+    llmfs demo 07     mide cuanto gradiente llega a la primera capa en cada configuracion
 """
 
 from __future__ import annotations

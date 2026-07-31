@@ -112,3 +112,40 @@ Para que las expectativas sean concretas:
 Si tu modelo hace eso, ha funcionado. La distancia con un asistente no es de entrenamiento:
 son tres o cuatro órdenes de magnitud en parámetros y datos, más todo el post-entrenamiento
 del módulo 16.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def perplexity_from_loss(loss: float) -> float:
+    if not math.isfinite(loss):
+        return float("inf")
+    return math.exp(loss)
+
+
+def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
+    if n_bytes <= 0:
+        raise ValueError("n_bytes tiene que ser positivo")
+    return total_loss_nats / math.log(2) / n_bytes
+
+
+def run_prompt_battery(
+    generate_fn: Callable[[str], str],
+    prompts: Sequence[tuple[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    prompts = prompts or PROMPTS_TINYSTORIES
+    return [
+        {"prompt": prompt, "que_prueba": etiqueta, "completion": generate_fn(prompt)}
+        for prompt, etiqueta in prompts
+    ]
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

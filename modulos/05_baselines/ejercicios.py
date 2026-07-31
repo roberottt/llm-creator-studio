@@ -1,13 +1,41 @@
 """Modulo 05 - Baselines: contra que hay que comparar.
 
-Cinco ejercicios. Los tres primeros son la metrica; los dos ultimos son modelos de verdad
-en PyTorch, los primeros del curso.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 05
-    llmfs demo 05     entrena los tres baselines y compara sus perdidas con el suelo
+Lee `TEORIA.md` -> implementa -> `llmfs check 05` -> `llmfs hint 05 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
 
-Lee antes TEORIA.md. El numero ln(V) del ejercicio 1 lo vas a usar durante todo el resto
-del curso para saber si un entrenamiento arranca bien.
+QUÉ VAS A CONSTRUIR
+===================
+
+La forma de medir, y tres modelos contra los que comparar:
+
+    uniform_baseline_loss  (ej. 1)  EL SUELO: lo que saca un modelo que no sabe nada
+    bigram_counts          (ej. 2)  contar que token sigue a cada token
+    bigram_nll             (ej. 3)  medir como de bien predice esa tabla
+    NeuralBigram           (ej. 4)  el mismo modelo, pero aprendido por gradiente
+    BengioMLP              (ej. 5)  el abuelo de los LLM (2003)
+
+Los ejercicios 4 y 5 son tus dos primeros modelos en PyTorch.
+
+El ejercicio 1 es una linea y es el mas importante: `ln(V)` te va a decir, en el paso 0 de
+cualquier entrenamiento del curso, si hay un bug.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **logit**: la puntuacion en bruto que el modelo da a cada token, antes de convertirla en
+  probabilidad. Puede ser cualquier numero, positivo o negativo.
+- **cross-entropy**: la funcion de perdida de todos los modelos de lenguaje. Es
+  `-ln(probabilidad que le diste al token correcto)`.
+- **perplejidad**: `e` elevado a la perdida. Se lee como "entre cuantas opciones esta
+  dudando el modelo".
+- **nat**: la unidad de la perdida cuando usas logaritmo natural. Un nat son 1,44 bits.
+- **suavizado de Laplace**: sumar una constante a todos los conteos para que ninguno sea
+  cero. Sin eso, un solo par no visto manda la perdida a infinito.
+
+    llmfs demo 05     entrena los tres baselines y los compara con el suelo
 """
 
 from __future__ import annotations

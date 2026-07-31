@@ -1,9 +1,35 @@
 """Modulo 17 - Extras y limites honestos.
 
-Tres ejercicios cortos sobre cuantizacion. Son los ultimos del curso.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 17
-    llmfs demo 17     cuantiza tu modelo y mide cuanto se degrada
+Lee `TEORIA.md` -> implementa -> `llmfs check 17` -> `llmfs hint 17 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+Son los ultimos tres ejercicios del curso, y son cortos.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+    quantize_int8_symmetric  (ej. 1)  guardar los pesos en 1 byte en vez de 4
+    dequantize_int8          (ej. 2)  recuperarlos (aproximadamente)
+    quantization_error       (ej. 3)  medir cuanto se ha perdido
+
+Con eso el modelo pasa de 35,7 MB a 9,0 MB.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **cuantizar**: guardar los pesos con menos bits. De float32 (4 bytes) a int8 (1 byte).
+- **escala**: el numero por el que hay que multiplicar los enteros para recuperar los
+  valores originales. Se guarda junto a ellos.
+- **simetrica / asimetrica**: si el rango se centra en cero o si ademas lleva un
+  desplazamiento.
+- **por canal / por tensor**: una escala por fila de la matriz, o una sola para toda.
+- **error relativo**: el error dividido por la magnitud del original. Es la metrica que
+  conviene mirar, porque no depende de la escala de los datos.
+
+    llmfs demo 17     cuantiza tu modelo, mide el danyo, y cierra el curso
 """
 
 from __future__ import annotations

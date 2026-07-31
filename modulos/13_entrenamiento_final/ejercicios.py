@@ -1,9 +1,41 @@
 """Modulo 13 - La tirada real.
 
-Dos funciones cortas y el lanzamiento del entrenamiento de verdad.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 13
-    llmfs demo 13     entrena tiny_char de principio a fin (~1 min) y genera texto
+Lee `TEORIA.md` -> implementa los dos ejercicios -> `llmfs check 13` -> y despues ENTRENA:
+
+    llmfs train --config tiny_char
+
+QUÉ VAS A CONSTRUIR
+===================
+
+    overfit_single_batch  (ej. 1)  la comprobacion de 30 segundos que caza casi todo
+    format_eta            (ej. 2)  cuanto falta, en algo legible
+
+Y con eso lanzas el entrenamiento de verdad.
+
+EL EJERCICIO 1 ES EL QUE IMPORTA
+================================
+
+Un modelo con millones de parametros memoriza cuatro secuencias sin despeinarse. Si le das
+el MISMO batch una y otra vez y la perdida no baja casi a cero, hay un bug.
+
+Y lo sabes en 30 segundos en vez de en cuatro horas. Es el consejo con mejor relacion
+coste/beneficio de todo el deep learning, y casi nadie lo aplica.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **overfit**: que el modelo memorice en vez de generalizar. Normalmente es malo; aqui se
+  busca a proposito, como prueba de sanidad.
+- **checkpoint**: una foto del entrenamiento (pesos, estado del optimizador, numero de
+  paso) para poder reanudar.
+- **ETA**: cuanto falta para terminar, estimado a partir del ritmo medido.
+- **paso** (step): una actualizacion de los pesos. No confundir con epoca, que es una
+  pasada completa por los datos.
+
+    llmfs demo 13     hace el overfit y entrena un modelo completo
 """
 
 from __future__ import annotations

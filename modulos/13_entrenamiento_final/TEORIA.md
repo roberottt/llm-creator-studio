@@ -1,8 +1,32 @@
 # 13 — La tirada real
 
-Aquí no se aprende ningún concepto nuevo. Se lanza el entrenamiento de verdad, y se aprende
-lo que solo se aprende haciéndolo: qué mirar, qué es normal, y qué significa que algo vaya
-mal.
+## Por qué importa este módulo
+
+**Porque aquí lo entrenas de verdad.**
+
+No hay concepto nuevo. Lo que se aprende aquí sólo se aprende haciéndolo: qué mirar mientras
+un entrenamiento corre, qué es normal, y qué significa que algo vaya mal.
+
+Y hay una técnica concreta que merece por sí sola el módulo: **el overfit a un batch**.
+Treinta segundos que cazan casi cualquier bug del modelo o del bucle. Es el consejo con
+mejor relación coste/beneficio de todo el deep learning, y casi nadie lo aplica.
+
+También es donde vas a ver, en el fichero de muestras, el modelo aprendiendo a escribir paso
+a paso. Eso es más informativo que cualquier curva de pérdida.
+
+### Qué sabrás al terminar
+
+- Una comprobación de 30 segundos que caza bugs que tardarías cuatro horas en descubrir
+- Los tres números que hay que mirar en el paso 0 de cualquier entrenamiento
+- Qué es normal durante una tirada y qué significa un pico que no se recupera
+- Qué hay que guardar en un checkpoint para poder reanudar **sin que el modelo pegue un
+  bandazo**
+
+### Cuánto cuesta
+
+1 hora de ejercicios, más lo que tarde tu entrenamiento. `tiny_char` son 70 segundos.
+
+---
 
 ## Antes de lanzar: la comprobación de los 30 segundos
 

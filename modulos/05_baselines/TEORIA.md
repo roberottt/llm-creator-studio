@@ -1,10 +1,34 @@
 # 05 — Baselines: cómo se mide "cómo de mal lo hace"
 
-Antes de construir un Transformer hay que responder a dos preguntas que van juntas: **¿cómo
-se mide si un modelo es bueno?** y **¿contra qué hay que compararlo?**
+## Por qué importa este módulo
 
-Si tu modelo de 9 millones de parámetros no le gana a una tabla de conteos, no tienes un
-modelo: tienes un bug.
+**Porque necesitas saber contra qué compites.**
+
+Vas a entrenar un modelo de 8,9 millones de parámetros. Cuando termine te dará un número
+—la pérdida— y tendrás que decidir si eso es bueno. Sin una referencia, ese número no
+significa nada.
+
+Aquí construyes tres modelos previos al Transformer, cada vez menos malo, y sobre todo
+estableces **el suelo**: cuánto saca un modelo que no sabe absolutamente nada. Ese número,
+`ln(V)`, lo vas a usar durante todo el resto del curso como detector de bugs, y es la
+comprobación más barata y más informativa que existe.
+
+También es donde aprendes a medir. Cross-entropy y perplejidad no son fórmulas arbitrarias:
+tienen una interpretación exacta que conviene entender antes de mirar una curva de
+entrenamiento.
+
+### Qué sabrás al terminar
+
+- Cómo se mide "se ha equivocado" en un número, y **por qué con un logaritmo**
+- Qué es la perplejidad y cómo leerla de un vistazo
+- El número `ln(V)` que te va a decir, en el paso 0 de cualquier entrenamiento, si hay un bug
+- Que contar y aprender por gradiente dan **exactamente lo mismo** cuando el modelo es simple
+
+### Cuánto cuesta
+
+2 horas. Y son tus dos primeros modelos en PyTorch.
+
+---
 
 ## El problema: poner un número a "se ha equivocado"
 

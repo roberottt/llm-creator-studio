@@ -1,8 +1,43 @@
 """Modulo 14 - Inferencia y muestreo.
 
-Cinco ejercicios: tres filtros cortos, la KV cache, y el bucle de generacion que los une.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 14
+Lee `TEORIA.md` -> implementa en orden -> `llmfs check 14` -> `llmfs hint 14 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+Como se saca texto de un modelo entrenado, y como hacerlo rapido:
+
+    apply_repetition_penalty  (ej. 1)  romper los bucles
+    top_k_filter              (ej. 2)  quedarse con los k mejores
+    top_p_filter              (ej. 3)  quedarse con los que suman p
+            |
+    KVCache                   (ej. 4)  guardar lo ya calculado
+            |
+            v
+    generate_with_cache       (ej. 5)  el bucle que junta todo
+
+Los tres primeros son cortos. El 5 es donde esta la dificultad, y tiene una comprobacion
+implacable: con la cache tiene que salir EXACTAMENTE el mismo texto que sin ella.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **muestrear** (sample): elegir el siguiente token al azar respetando sus probabilidades,
+  en vez de coger siempre el mas probable.
+- **greedy**: coger siempre el mas probable. Es determinista y se mete en bucles.
+- **temperatura**: dividir los logits antes del softmax. Menor de 1 afila la distribucion,
+  mayor de 1 la aplana.
+- **top-k / top-p**: dos formas de descartar los tokens malos. Top-k coge un numero fijo,
+  top-p un numero variable segun lo seguro que este el modelo.
+- **KV cache**: guardar las claves y valores ya calculados para no recalcularlos en cada
+  token. Convierte un coste O(N^2) en O(N).
+- **prefill / decode**: las dos fases de la generacion. Prefill procesa el prompt entero;
+  decode va token a token.
+
     llmfs demo 14     compara estrategias de muestreo y mide el speedup de la cache
 """
 

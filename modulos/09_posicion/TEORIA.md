@@ -1,5 +1,34 @@
 # 09 — Información posicional y RoPE
 
+## Por qué importa este módulo
+
+**Porque la atención no sabe qué palabra va antes.**
+
+Suena a detalle y es un defecto fatal. Vuelve a mirar la fórmula del módulo 06: es una suma
+ponderada, y una suma no tiene orden. Para el mecanismo de atención,
+*"el perro muerde al hombre"* y *"el hombre muerde al perro"* producen exactamente lo mismo.
+
+Aquí se arregla, y se arregla con una idea bastante bonita: en vez de sumarle al vector una
+etiqueta que diga "soy la posición 7", se le aplica una **rotación** cuyo ángulo depende de
+la posición. Eso hace que el modelo aprenda distancias relativas —"el token de dos
+posiciones atrás"— en vez de posiciones absolutas.
+
+Es la técnica que usan Llama, Mistral y prácticamente todo lo moderno.
+
+### Qué sabrás al terminar
+
+- Por qué sin esto tu modelo no distingue el orden de las palabras
+- Tres formas de resolverlo, en orden histórico, y qué falla en cada una
+- Qué es RoPE y **la propiedad matemática que lo justifica**, comprobada con números
+- Qué pasa de verdad cuando le pides a un modelo un contexto más largo del que entrenó
+
+### Cuánto cuesta
+
+2,5 horas. El tercer ejercicio es una línea de código, pero sólo después de entender el
+segundo.
+
+---
+
 ## El problema: la atención no sabe qué va antes
 
 Vuelve a mirar la fórmula de la atención del módulo 06. Es una suma ponderada de los

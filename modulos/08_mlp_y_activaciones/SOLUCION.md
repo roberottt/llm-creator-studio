@@ -138,3 +138,43 @@ citada literalmente:
 
 Es de las decisiones de arquitectura más usadas y peor entendidas del campo, y conviene
 saberlo cuando leas explicaciones que suenan muy seguras.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def gelu(x: torch.Tensor) -> torch.Tensor:
+    return 0.5 * x * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x.pow(3))))
+
+
+def swiglu_hidden_dim(
+    d_model: int, multiple_of: int = 64, ffn_dim_multiplier: float | None = None
+) -> int:
+    hidden = int(2 * (4 * d_model) / 3)
+    if ffn_dim_multiplier is not None:
+        hidden = int(ffn_dim_multiplier * hidden)
+    return multiple_of * ((hidden + multiple_of - 1) // multiple_of)
+
+
+class SwiGLU(nn.Module):
+
+    def __init__(self, d_model: int, d_ff: int, dropout: float = 0.0, bias: bool = False) -> None:
+        super().__init__()
+        self.gate_proj = nn.Linear(d_model, d_ff, bias=bias)
+        self.up_proj = nn.Linear(d_model, d_ff, bias=bias)
+        self.down_proj = nn.Linear(d_ff, d_model, bias=bias)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.dropout(self.down_proj(F.silu(self.gate_proj(x)) * self.up_proj(x)))
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

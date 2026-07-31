@@ -1,13 +1,50 @@
 """Modulo 10 - El GPT completo.
 
-Cuatro ejercicios. Al terminarlos tendras el modelo de 8.933.440 parametros que vas a
-entrenar en la Parte III.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 10
-    llmfs demo 10     construye el modelo, desglosa los parametros y genera texto
+Lee `TEORIA.md` -> haz el ejercicio 1 CON PAPEL antes de escribir codigo -> implementa el
+resto -> `llmfs check 10` -> `llmfs hint 10 -e N` -> `SOLUCION.md` tiene el codigo completo.
 
-Los ejercicios 1 y 2 son de contar; los 3 y 4, de ensamblar. Haz el 1 con papel antes de
-escribir codigo: derivar la formula a mano es el punto del ejercicio.
+QUÉ VAS A CONSTRUIR
+===================
+
+El modelo que vas a entrenar. Cuatro ejercicios:
+
+    expected_param_count  (ej. 1)  la formula de cuantos parametros tendra
+    count_parameters      (ej. 2)  contarlos de verdad, desglosados
+    TransformerBlock      (ej. 3)  un bloque: atencion + FFN, con sus residuales
+    GPT                   (ej. 4)  el modelo entero
+
+Los dos primeros son de contar y tienen que dar el MISMO numero: 8.933.440. Si no cuadran,
+tu formula o tu modelo mienten.
+
+LA ESTRUCTURA
+=============
+
+    ids de token
+        |  tabla de embeddings
+    vectores
+        |  bloque x 6
+    vectores
+        |  normalizacion final
+    vectores
+        |  proyeccion a logits
+    puntuaciones sobre los 4096 tokens
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **weight tying**: reutilizar la matriz de embeddings, transpuesta, como capa de salida.
+  Ahorra 1,3 millones de parametros.
+- **buffer**: un tensor que acompanya al modelo (se mueve con `.to(device)`) pero NO es un
+  parametro y no recibe gradiente. Las tablas de RoPE son buffers.
+- **inicializacion**: los valores con los que arrancan los pesos antes de entrenar. No es
+  un detalle: decide si el modelo entrena bien.
+- **logits**: la salida final del modelo, una puntuacion por cada token del vocabulario.
+- **causal**: que un token no puede ver a los que vienen despues.
+
+    llmfs demo 10     desglosa los parametros y verifica que el modelo es causal
 """
 
 from __future__ import annotations

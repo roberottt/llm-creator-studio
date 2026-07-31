@@ -1,9 +1,31 @@
 # 00 — Qué es un LLM, en realidad
 
-Este módulo no tiene redes neuronales, ni matrices, ni derivadas. Al terminarlo habrás
-escrito un generador de texto que funciona, en unas 20 líneas, y entenderás la idea que
-está debajo de ChatGPT. Todo lo demás del curso son mejores formas de hacer *esta misma
-cosa*.
+## Por qué importa este módulo
+
+**Empieza aquí aunque tengas prisa.** Es el único módulo sin PyTorch, sin matrices y sin
+derivadas, y es el que hace que todo lo demás tenga sentido.
+
+La razón: el resto del curso construye piezas cada vez más sofisticadas para hacer **una
+sola cosa**. Si no tienes clarísimo cuál es esa cosa, los 17 módulos siguientes son
+ingeniería sin propósito.
+
+En una hora vas a escribir un generador de texto que funciona de verdad, con diccionarios y
+una división. Y vas a ver que el bucle que lo mueve es *literalmente* el mismo que ejecuta
+ChatGPT.
+
+### Qué sabrás al terminar
+
+- Qué es exactamente un modelo de lenguaje (spoiler: mucho menos místico de lo que parece)
+- Por qué se dice que "solo predice el siguiente token", y qué significa eso de verdad
+- Cómo se elige ese token, y por qué no se coge siempre el más probable
+- **Por qué hacen falta redes neuronales**, viendo con números por qué la alternativa
+  obvia se estrella contra un muro
+
+### Cuánto cuesta
+
+Una hora. Es el módulo más corto y el que más rentabilidad da.
+
+---
 
 ## La idea, en una frase
 

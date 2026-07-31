@@ -1,15 +1,43 @@
 """Modulo 00 - Que es un LLM, en realidad.
 
-Tres funciones cortas. Sin torch, sin matrices, sin derivadas: diccionarios y una division.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-Al terminarlas tendras un generador de texto que funciona de verdad, y habras montado con
-tus manos el bucle que usan todos los modelos de lenguaje que existen.
+1. Lee `TEORIA.md`. Son 10 minutos y sin eso estos ejercicios no tienen sentido.
+2. Implementa las funciones de abajo, en orden. Cada una usa la anterior.
+3. `llmfs check 00` para ver si van bien.
+4. ¿Atascado? `llmfs hint 00 -e 1` (tres niveles, cada vez mas explicito).
+5. ¿Sigues atascado? `SOLUCION.md` tiene el codigo completo. Copialo, mira como funciona,
+   y despues vuelve y escribelo tu. No es hacer trampa.
 
-    llmfs check 00     comprueba tus tres funciones
-    llmfs demo 00      entrena el modelo sobre Shakespeare y le hace escribir
-    llmfs hint 00 -e 1 si te atascas
+QUÉ VAS A CONSTRUIR
+===================
 
-Lee antes TEORIA.md. Son 10 minutos y sin eso estos ejercicios no tienen sentido.
+Un generador de texto que funciona. Sin torch, sin matrices, sin derivadas: diccionarios y
+una division.
+
+Las tres funciones encajan asi:
+
+    build_count_table   (ya hecha)   texto -> tabla de conteos
+            |
+            v
+    next_token_probs    (ejercicio 1) conteos -> probabilidades
+            |
+            v
+    sample_next_token   (ejercicio 2) probabilidades -> UN caracter
+            |
+            v
+    generate_naive      (ejercicio 3) todo lo anterior, en bucle -> texto
+
+El ejercicio 3 es el interesante: ese bucle es EXACTAMENTE el mismo que ejecuta ChatGPT.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **token**: la unidad de texto que maneja el modelo. Aqui, un caracter.
+- **contexto**: los caracteres anteriores que el modelo mira para decidir el siguiente.
+- **distribucion de probabilidad**: una lista de numeros no negativos que suman 1.
+- **muestrear**: elegir uno al azar respetando esas probabilidades.
 """
 
 from __future__ import annotations

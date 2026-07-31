@@ -129,3 +129,54 @@ checkpoint a medias es peor que no tener checkpoint.**
 
 Pruébalo: interrumpe con Ctrl+C y reanuda con `--resume`. El entrenador guarda antes de
 salir.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def overfit_single_batch(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    steps: int = 200,
+    lr: float = 1e-3,
+    optimizer_factory: Callable[..., Any] | None = None,
+) -> list[float]:
+    factory = optimizer_factory or (lambda params: torch.optim.AdamW(params, lr=lr))
+    opt = factory(model.parameters())
+
+    model.train()
+    historial: list[float] = []
+    for _ in range(steps):
+        _, perdida = model(x, y)
+        opt.zero_grad(set_to_none=True)
+        perdida.backward()
+        opt.step()
+        historial.append(float(perdida.detach()))
+
+    return historial
+
+
+def format_eta(seconds: float) -> str:
+    if not math.isfinite(seconds) or seconds < 0:
+        return "?"
+
+    segundos = int(seconds)
+    if segundos < 60:
+        return f"{segundos}s"
+    if segundos < 3600:
+        return f"{segundos // 60}m {segundos % 60}s"
+    if segundos < 86400:
+        return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
+    return f"{segundos // 86400}d {(segundos % 86400) // 3600}h"
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

@@ -1,8 +1,32 @@
 # 04 — Datos: de texto a batches en la GPU
 
-Ya sabes convertir texto en números (módulo 03). Ahora hay que resolver un problema de
-fontanería que decide si tu entrenamiento va rápido o se pasa el día esperando: **cómo se
-guardan 500 millones de tokens y cómo llegan a la GPU**.
+## Por qué importa este módulo
+
+**Porque la GPU no puede estar esperando.**
+
+Es el módulo menos glamuroso del curso y uno de los que más rendimiento decide. Si preparar
+el siguiente lote de datos tarda más que procesarlo, tu GPU se pasa la mitad del tiempo
+parada y tu entrenamiento dura el doble. Con un modelo pequeño como el nuestro, ese riesgo
+es real.
+
+Y hay algo más importante que la velocidad: aquí es donde se define **qué aprende el
+modelo**. La forma en que emparejas entradas y objetivos es lo que convierte un montón de
+texto en una tarea de aprendizaje. Es una idea de tres líneas y es la que hace que los
+modelos de lenguaje sean tan eficientes con los datos.
+
+### Qué sabrás al terminar
+
+- Por qué 500 millones de tokens ocupan 1 GB y no 4
+- Un bug silencioso de NumPy que te corrompería los datos sin dar ningún error
+- **Por qué una sola ventana de 512 tokens son 512 ejemplos de entrenamiento**, no uno
+- Por qué el conjunto de validación NO se coge al azar, y qué pasa si lo haces
+
+### Cuánto cuesta
+
+2 horas. Tres funciones cortas, pero la del batch la va a ejecutar tu entrenamiento
+decenas de miles de veces.
+
+---
 
 ## El problema: la GPU no puede estar esperando
 
