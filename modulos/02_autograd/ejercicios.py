@@ -47,65 +47,94 @@ from llmfs.reference import MLP
 
 
 class Value:
-    """Un escalar que recuerda de donde ha salido.
+    """Un escalar que recuerda de donde salio. Es el ejercicio mas largo del curso.
 
-    Cada operacion sobre `Value` devuelve un `Value` nuevo que guarda:
-      - `data`: el resultado hacia delante.
-      - `_prev`: los nodos de los que depende.
-      - `_op`: etiqueta de la operacion (solo para depurar y dibujar).
-      - `_backward`: una closure que, cuando se la llama, reparte `self.grad` entre
-        `_prev` segun la derivada local de la operacion.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Nueve metodos, pero SIETE de ellos siguen el mismo molde. Aprende el molde y el resto
+    es copiar y cambiar dos lineas.
 
-    Y ademas:
-      - `grad`: derivada de la salida final respecto a este nodo. Empieza en 0.0 y se
-        ACUMULA (`+=`), nunca se asigna (`=`). Ver TEORIA.md.
+    **Paso 1 - `__init__`.** Guarda cuatro cosas:
 
-    Lo que tienes que implementar:
+        self.data = float(data)      # el valor hacia delante
+        self.grad = 0.0              # el gradiente, EMPIEZA EN CERO
+        self._prev = tuple(_children)  # de quien depende este nodo
+        self._op = _op               # etiqueta, solo para depurar
+        self._backward = lambda: None  # de momento, no hace nada
 
-        __init__      guardar data, grad=0.0, _prev, _op y un _backward que no haga nada
-        __add__       out = a + b
-        __mul__       out = a * b
-        __pow__       out = a ** n   (n constante int/float, NO otro Value)
-        exp           out = e^a
-        log           out = ln(a)
-        tanh          out = tanh(a)
-        relu          out = max(0, a)
-        backward      recorrer el grafo y propagar
+    **Paso 2 - el molde de las operaciones.** Todas se escriben asi:
 
-    Y el azucar sintactico, que se resuelve todo en terminos de los cinco anteriores:
+        def __mul__(self, other):
+            other = other if isinstance(other, Value) else Value(other)   # (a)
+            out = Value(self.data * other.data, (self, other), '*')        # (b)
 
-        __neg__       -a          =  a * -1
-        __sub__       a - b       =  a + (-b)
-        __truediv__   a / b       =  a * b**-1
-        __radd__, __rmul__, __rsub__, __rtruediv__   para que `2 * a` funcione
+            def _backward():                                               # (c)
+                self.grad  += other.data * out.grad
+                other.grad += self.data  * out.grad
 
-    DERIVADAS LOCALES (esto es todo el contenido matematico del modulo):
-
-        out = a + b        ->  da += 1 * out.grad          db += 1 * out.grad
-        out = a * b        ->  da += b.data * out.grad     db += a.data * out.grad
-        out = a ** n       ->  da += n * a.data**(n-1) * out.grad
-        out = exp(a)       ->  da += out.data * out.grad          (porque d(e^a)/da = e^a)
-        out = log(a)       ->  da += (1/a.data) * out.grad
-        out = tanh(a)      ->  da += (1 - out.data**2) * out.grad
-        out = relu(a)      ->  da += (out.data > 0) * out.grad
-
-    PATRON DE CADA OPERACION (usa este molde):
-
-        def __add__(self, other):
-            other = other if isinstance(other, Value) else Value(other)
-            out = Value(self.data + other.data, (self, other), '+')
-
-            def _backward():
-                ...   # aqui las derivadas locales, con +=
-            out._backward = _backward
+            out._backward = _backward                                      # (d)
             return out
 
-    La closure captura `self`, `other` y `out` por referencia. Cuando se ejecute,
-    `out.grad` ya tendra el valor que le hayan puesto sus padres. Eso es lo que hace que
-    esto funcione y por lo que el orden del recorrido importa.
+        (a) envuelve el numero suelto, para que `a * 3` funcione
+        (b) crea el nodo resultado, diciendole quienes son sus hijos
+        (c) la closure: NO se ejecuta ahora, se guarda para el backward
+        (d) se cuelga del nodo
 
-    ATENCION: no uses `__slots__` si no sabes exactamente lo que hace, y define `_prev`
-    como tupla o set de los hijos.
+    **Paso 3 - las derivadas locales.** Solo cambia el paso (c) en cada operacion:
+
+        a + b     ->  self.grad += out.grad             ;  other.grad += out.grad
+        a * b     ->  self.grad += other.data*out.grad  ;  other.grad += self.data*out.grad
+        a ** n    ->  self.grad += n * self.data**(n-1) * out.grad
+        exp(a)    ->  self.grad += out.data * out.grad        (e^a es su propia derivada)
+        log(a)    ->  self.grad += (1/self.data) * out.grad
+        tanh(a)   ->  self.grad += (1 - out.data**2) * out.grad
+        relu(a)   ->  self.grad += (out.data > 0) * out.grad
+
+    **Paso 4 - el azucar.** No necesita derivadas nuevas, se apoya en lo anterior:
+
+        -a          ->  return self * -1
+        a - b       ->  return self + (-otro)
+        a / b       ->  return self * otro ** -1
+
+    **Paso 5 - `backward()`.** Tres lineas:
+
+        self.grad = 1.0
+        for node in reversed(topological_order(self)):
+            node._backward()
+
+    LO QUE MÁS CUESTA VER
+    ---------------------
+    La closure del paso (c) NO se ejecuta cuando la escribes: se guarda. Cuando el backward
+    la ejecute, `out.grad` ya tendra el valor que le hayan puesto sus padres, porque la
+    closure captura `out` POR REFERENCIA.
+
+    Estas construyendo una lista de tareas pendientes durante el forward, y el backward las
+    ejecuta en orden inverso.
+
+    EL ERROR QUE HAY QUE EVITAR: `+=` Y NUNCA `=`
+    ---------------------------------------------
+    Pruebalo con `y = x + x`:
+
+        con `=`  : la primera rama pone x.grad = 1, la segunda lo PISA -> 1.   MAL
+        con `+=` : x.grad = 1 + 1 = 2.                                        BIEN
+
+    Es correcto porque y = 2x y su derivada es 2. Si una variable influye por varios caminos,
+    su derivada total es la SUMA de lo que aporta cada camino, y en una red eso pasa
+    constantemente.
+
+    Y de ahi sale el `optimizer.zero_grad()` que veras en el modulo 11: como los gradientes se
+    acumulan, hay que ponerlos a cero antes de cada paso.
+
+    DOS AVISOS
+    ----------
+    - El `self.grad = 1.0` de `backward()` es la semilla: la derivada de algo respecto a si
+      mismo. Sin ella todos los gradientes salen 0 y no pasa nada.
+    - No uses `__slots__` si no sabes exactamente lo que hace.
+    - `_prev` puede ser una tupla o un set de los hijos.
+
+    Los metodos `__radd__`, `__rmul__`, `__rsub__` y `__rtruediv__` ya estan escritos abajo:
+    son los que hacen que `2 * a` funcione (python prueba `(2).__mul__(a)`, falla, y llama a
+    `a.__rmul__(2)`).
     """
 
     def __init__(
@@ -175,25 +204,72 @@ class Value:
 
 
 def topological_order(root: "Value") -> list["Value"]:
-    """Orden topologico del grafo que cuelga de `root`.
+    """Ordena los nodos del grafo para poder recorrerlo hacia atras.
 
-    Contrato: cada nodo aparece en la lista DESPUES de todos sus hijos (`_prev`). Es
-    decir, `root` es el ultimo elemento. `backward()` recorre la lista al reves.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Un recorrido en profundidad con una PILA EXPLICITA (no recursivo). El truco es una
+    bandera que dice si ya expandiste los hijos de ese nodo.
 
-    Por que importa: `node._backward()` reparte el gradiente de `node` a sus hijos. Si lo
-    llamas antes de que todos los PADRES de `node` hayan aportado su parte a `node.grad`,
-    estaras repartiendo un gradiente incompleto. En un grafo con nodos reutilizados eso da
-    gradientes incorrectos sin ningun sintoma visible.
+        order, visited = [], set()
+        stack = [(root, False)]          # (nodo, ¿ya expandi sus hijos?)
 
-    Implementalo ITERATIVO con una pila explicita, no con recursion: el grafo de un MLP de
-    unos cientos de neuronas ya supera el limite de recursion de python.
+        while stack:
+            node, expanded = stack.pop()
 
-    Pista de estructura: DFS post-orden. Una pila de tuplas `(nodo, hijos_ya_expandidos)`
-    resuelve el post-orden sin recursion. Usa `id(nodo)` para el conjunto de visitados,
-    no el nodo (`Value` no define `__hash__` de forma fiable si sobrecargas operadores).
+            if expanded:                  # segunda visita: sus hijos ya estan dentro
+                order.append(node)
+                continue
+
+            if id(node) in visited:
+                continue
+            visited.add(id(node))
+
+            stack.append((node, True))    # me reencolo para DESPUES de mis hijos
+            for child in node._prev:
+                if id(child) not in visited:
+                    stack.append((child, False))
+
+        return order
+
+    CÓMO FUNCIONA EL TRUCO
+    ----------------------
+    Cada nodo entra DOS veces en la pila:
+      - la primera con `expanded=False`, para meter a sus hijos
+      - la segunda con `expanded=True`, y esa se procesa DESPUES de todos ellos, porque los
+        hijos se apilaron encima
+
+    Eso es exactamente lo que produce el orden post-orden sin usar recursion.
+
+    QUÉ TIENE QUE CUMPLIR EL RESULTADO
+    ----------------------------------
+    **Cada nodo aparece DESPUES de todos sus hijos.** O sea, `root` queda el ULTIMO de la
+    lista, y `backward()` la recorre al reves.
+
+    POR QUÉ IMPORTA
+    ---------------
+    `node._backward()` reparte el gradiente de ese nodo a sus hijos. Si lo llamas antes de que
+    todos los PADRES de ese nodo hayan aportado su parte, estaras repartiendo un gradiente
+    incompleto.
+
+    Con un grafo en forma de arbol, cualquier orden razonable funciona y el bug pasa
+    desapercibido. En cuanto hay un nodo reutilizado —y en una red los hay a miles— un orden
+    mal calculado da gradientes silenciosamente incorrectos.
+
+    DOS AVISOS
+    ----------
+    **Iterativo, no recursivo.** El grafo de un MLP de unos cientos de neuronas ya supera el
+    limite de recursion de python. Hay un test con 3000 nodos que lo comprueba.
+
+    **Usa `id(nodo)` en el set de visitados, no el nodo.** Si sobrecargas operadores en una
+    clase, apoyarte en su hash por defecto es pedir problemas. `id()` es la identidad del
+    objeto, que es justo lo que quieres.
+
+    Si te sale `root` el PRIMERO, tienes el orden invertido: el sintoma sera que los gradientes
+    salen bien en grafos simples y mal en cuanto haya un nodo reutilizado.
 
     Args:
-        root: nodo raiz, tipicamente la perdida.
+        root: el nodo raiz, tipicamente la perdida.
 
     Returns:
         Lista de todos los nodos alcanzables desde `root`, en orden topologico.
@@ -210,36 +286,78 @@ def train_scalar_mlp(
     seed: int = 0,
     value_cls: type = Value,
 ) -> list[float]:
-    """Entrena un MLP con TU motor de autodiff y devuelve el historial de perdida.
+    """Entrena un MLP con TU motor de autodiff.
 
-    Este es el bucle de entrenamiento en su forma mas desnuda. El del modulo 10 sera el
-    mismo con AMP, scheduler y checkpointing por encima; el nucleo no cambia.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    El bucle de entrenamiento en su forma mas desnuda. Seis pasos, y el orden importa.
 
-    Pasos, en este orden exacto:
+        1. Construye el modelo (la clase MLP ya esta hecha, se importa arriba):
 
-        model = MLP(len(xs[0]), [*hidden, 1], value_cls=value_cls, seed=seed)
+               model = MLP(len(xs[0]), [*hidden, 1], value_cls=value_cls, seed=seed)
+               history = []
 
-        repetir `steps` veces:
-            1. forward   : preds = [model(x) for x in xs]
-            2. perdida   : MSE = (1/N) * sum((pred - y)**2)
-                           OJO: `sum()` de python empieza en el int 0; pasale
-                           `value_cls(0.0)` como valor inicial o mezclaras tipos.
-            3. zero grad : model.zero_grad()   <-- ANTES del backward, no despues
-            4. backward  : loss.backward()
-            5. paso      : para cada p en model.parameters(): p.data -= lr * p.grad
-            6. registrar : history.append(loss.data)
+        2. Repite `steps` veces:
 
-    El paso 3 es el que se olvida todo el mundo. Los gradientes se acumulan (`+=`), asi
-    que sin ponerlos a cero el paso N usa la suma de los gradientes de los pasos 1..N.
-    El sintoma es que la perdida baja un poco y luego se estanca o explota.
+             a. FORWARD - predice para cada entrada:
+
+                    preds = [model(x) for x in xs]
+
+             b. PERDIDA - el error cuadratico medio:
+
+                    loss = sum(((p - y)**2 for p, y in zip(preds, ys)),
+                               value_cls(0.0)) * (1.0 / len(ys))
+
+             c. LIMPIAR LOS GRADIENTES, **antes** del backward:
+
+                    model.zero_grad()
+
+             d. BACKWARD:
+
+                    loss.backward()
+
+             e. MOVER LOS PESOS, en contra del gradiente:
+
+                    for p in model.parameters():
+                        p.data -= lr * p.grad
+
+             f. REGISTRAR:
+
+                    history.append(loss.data)
+
+        3. Devuelve `history`.
+
+    EL PASO 2c ES EL QUE SE OLVIDA TODO EL MUNDO
+    --------------------------------------------
+    Los gradientes se ACUMULAN (lo hiciste asi en el ejercicio 1). Sin ponerlos a cero, el
+    paso 50 usa la suma de los gradientes de los pasos 1 a 50.
+
+    Y NO da ningun error: la perdida baja un poco al principio y luego se estanca o explota.
+    Es probablemente el bug mas frustrante de todo el deep learning, porque no hay ninguna
+    senyal que apunte a la causa.
+
+    Ponerlo DESPUES del backward tambien funciona, pero solo por casualidad (los deja limpios
+    para el siguiente paso). Es fragil: en cuanto el bucle tenga un `continue` o una rama,
+    deja de valer.
+
+    DOS DETALLES DE PYTHON
+    ----------------------
+    **El `value_cls(0.0)` del paso 2b.** El `sum()` de python empieza a acumular desde el
+    entero `0`. Funcionaria por `__radd__`, pero darle el valor inicial correcto es mas limpio
+    y mas explicito.
+
+    **`p.data -= ...` y no `p -= ...`.** Estas modificando el numero de dentro del nodo, no
+    creando un nodo nuevo. Si crearas nodos nuevos, el grafo del paso siguiente colgaria del
+    anterior y creceria sin parar hasta agotar la memoria. En PyTorch, el equivalente de esta
+    distincion es el bloque `with torch.no_grad():` alrededor del paso del optimizador.
 
     Args:
         xs: lista de vectores de entrada, todos de la misma longitud.
-        ys: objetivos escalares, uno por entrada.
-        hidden: tamanyos de las capas ocultas. La de salida (1 neurona) se anyade sola.
-        steps: pasos de descenso de gradiente.
-        lr: tasa de aprendizaje.
-        seed: semilla de la inicializacion, para reproducibilidad.
+        ys: los objetivos escalares, uno por entrada.
+        hidden: los tamanyos de las capas ocultas. La de salida (1 neurona) se anyade sola.
+        steps: cuantos pasos de descenso de gradiente.
+        lr: la tasa de aprendizaje.
+        seed: la semilla de la inicializacion, para reproducibilidad.
         value_cls: la clase escalar a usar. Por defecto la tuya.
 
     Returns:

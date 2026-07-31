@@ -47,35 +47,72 @@ def measure_matmul_tflops(
     warmup: int = 3,
     iters: int = 10,
 ) -> float:
-    """Mide los TFLOPS efectivos de un matmul cuadrado en este dispositivo.
+    """Mide cuantas operaciones por segundo hace tu GPU DE VERDAD.
 
-    Multiplica dos matrices `(size, size)` unas cuantas veces y divide el numero de FLOPs
-    realizados entre el tiempo transcurrido.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Siete pasos. Ninguno tiene truco por separado; el orden es lo que importa.
 
-    Formula:
-        FLOPs de un matmul cuadrado = 2 * size^3
-        TFLOPS = (FLOPs * iters) / segundos / 1e12
+        1. Si `cfg` es None, cogelo con `get_device()`.
+           Si `dtype` es None, usa `cfg.amp_dtype`, y si eso tambien es None,
+           `torch.float32`.
 
-    Dos cosas que hay que hacer bien o el numero no significa nada:
+        2. Crea las dos matrices que vas a multiplicar:
 
-    1. **Calentar antes de medir.** La primera llamada paga la seleccion de kernel de
-       cuBLAS/Metal y la reserva de memoria. Sale entre 10 y 100 veces mas lenta.
-       Ejecuta `warmup` iteraciones cuyo tiempo NO cuentas.
-    2. **Sincronizar antes de mirar el reloj.** Las llamadas a GPU son asincronas: la CPU
-       encola el trabajo y sigue. Sin sincronizar medirias el tiempo de encolar, que es
-       de microsegundos, y te saldrian TFLOPS imposibles. Usa `cfg.synchronize()` justo
-       antes de tomar cada marca de tiempo.
+               a = torch.randn(size, size, device=cfg.device, dtype=dtype)
+               b = torch.randn(size, size, device=cfg.device, dtype=dtype)
+
+        3. CALIENTA: repite `warmup` veces la operacion `a @ b`. NO cronometres esto.
+           (Da igual que no guardes el resultado: PyTorch no elimina codigo muerto.)
+
+        4. cfg.synchronize()          <- espera a que la GPU termine de verdad
+
+        5. Arranca el cronometro y repite `iters` veces la multiplicacion:
+
+               t0 = time.perf_counter()
+               for _ in range(iters):
+                   a @ b
+
+        6. Sincroniza OTRA VEZ, y solo entonces para el cronometro:
+
+               cfg.synchronize()
+               segundos = time.perf_counter() - t0
+
+        7. Devuelve los TFLOPS:
+
+               return (2 * size**3 * iters) / segundos / 1e12
+
+    POR QUÉ ESA FORMULA
+    -------------------
+    Multiplicar dos matrices de lado `size` produce `size**2` numeros, y cada uno sale de un
+    producto escalar de longitud `size`: `size` multiplicaciones y `size-1` sumas, que por
+    convencion se cuentan como `2 * size`. Total: `2 * size**3` operaciones.
+
+    Dividiendo entre los segundos salen FLOPS, y entre `1e12` salen TeraFLOPS.
+
+    CUIDADO CON LOS PASOS 3, 4 Y 6
+    ------------------------------
+    Son los que hacen que el numero signifique algo, y los tres son faciles de saltarse.
+
+    **Sin calentar (paso 3)**, la primera multiplicacion de un tamanyo dado es entre 10 y 100
+    veces mas lenta: la GPU esta eligiendo que kernel usar y reservando memoria. Con
+    `iters=10` y sin calentamiento, esa primera llamada domina la media.
+
+    **Sin sincronizar (pasos 4 y 6)**, `a @ b` en GPU no espera a nada: encola el trabajo y
+    devuelve el control. Estarias midiendo lo que tarda la CPU en encolar una orden (unos 20
+    microsegundos) y te saldrian miles de TFLOPS. Hay un test que acota el resultado justo
+    para cazar esto.
 
     Args:
-        cfg: dispositivo. Si es `None`, usa `get_device()`.
-        size: lado de las matrices.
-        dtype: tipo de los tensores. Si es `None`, usa `cfg.amp_dtype` y si tampoco hay,
-            `torch.float32`.
-        warmup: iteraciones de calentamiento (no se cronometran).
-        iters: iteraciones cronometradas.
+        cfg: el dispositivo. Si es `None`, se coge con `get_device()`.
+        size: el lado de las matrices.
+        dtype: el tipo de los tensores. Si es `None`, mira `cfg.amp_dtype`, y si tampoco hay,
+            usa `torch.float32`.
+        warmup: cuantas iteraciones de calentamiento (no se cronometran).
+        iters: cuantas iteraciones cronometradas.
 
     Returns:
-        TFLOPS efectivos (float positivo).
+        Los TFLOPS efectivos, como float positivo.
     """
     raise NotImplementedError("TODO: modulo 01, ejercicio 1 - measure_matmul_tflops")
 
@@ -89,56 +126,107 @@ def transformer_flops_per_token(
     n_ffn_matrices: int = 3,
     include_backward: bool = True,
 ) -> int:
-    """FLOPs por token de entrenar un transformer decoder.
+    """Calcula cuantas operaciones cuesta procesar UN token.
 
-    Formula (Kaplan 2020, apendice B):
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Tres lineas de aritmetica. Sin bucles ni condiciones raras.
 
-        params_matmul = n_layers * (4 * d_model^2 + n_ffn_matrices * d_model * d_ff)
-                        + d_model * vocab_size
+        1. Cuenta los parametros que participan en multiplicaciones de matrices:
 
-        forward = 2 * params_matmul + 4 * n_layers * context_length * d_model
+               params = n_layers * (4 * d_model**2 + n_ffn_matrices * d_model * d_ff)
+               params += d_model * vocab_size
 
-        total   = 3 * forward     (si include_backward, si no solo forward)
+        2. El coste del forward:
 
-    De donde viene cada pieza:
+               forward = 2 * params + 4 * n_layers * context_length * d_model
 
-    - `4 * d_model^2` son las cuatro proyecciones de la atencion (Wq, Wk, Wv, Wo), cada
-      una `d_model x d_model` y sin sesgo.
-    - `n_ffn_matrices * d_model * d_ff` es el FFN: 3 matrices con SwiGLU (gate, up, down),
-      2 con un FFN clasico.
-    - `d_model * vocab_size` es la proyeccion final a logits. Cuenta aunque los pesos esten
-      atados a los embeddings: el matmul se hace igual.
-    - `2 * params` porque cada parametro participa en una multiplicacion y una suma.
-    - `4 * n_layers * T * d_model` es la atencion propiamente dicha: `Q K^T` cuesta
-      `2 * T * d_model` por token y capa, y `softmax @ V` otro tanto. Este termino NO
-      viene de parametros: crece con el contexto, no con el tamanyo del modelo.
-    - `3 *` porque el backward cuesta el doble que el forward.
+        3. Devuelve, multiplicando por 3 si hay backward:
 
-    NOTA: no dividas por dos aunque la mascara causal solo calcule media matriz. Es la
-    convencion de nanoGPT y de los papers; respetala para que tu MFU sea comparable.
+               return int(3 * forward if include_backward else forward)
+
+    DE DÓNDE SALE CADA TÉRMINO
+    --------------------------
+    - `4 * d_model**2` son las cuatro proyecciones de la atencion (Wq, Wk, Wv, Wo), cada una
+      una matriz `d_model x d_model` sin sesgo.
+    - `n_ffn_matrices * d_model * d_ff` es el FFN: 3 matrices con SwiGLU (gate, up, down), 2
+      con un FFN clasico.
+    - `d_model * vocab_size` es la proyeccion final a logits.
+    - El `2 *` sale de que cada parametro participa en una multiplicacion y una suma.
+    - `4 * n_layers * context_length * d_model` es la atencion en si (`Q @ K^T` y
+      `softmax @ V`). Ese termino NO viene de parametros: crece con el CONTEXTO, no con el
+      tamanyo del modelo.
+    - El `3 *` es porque el backward cuesta el doble que el forward: hace dos
+      multiplicaciones por cada una del forward, una para el gradiente respecto a la entrada
+      y otra respecto a los pesos.
+
+    DOS COSAS QUE SE OLVIDAN
+    ------------------------
+    1. La proyeccion final cuenta AUNQUE uses weight tying. Atar los pesos ahorra memoria, no
+       calculo: el matmul se hace igual.
+    2. NO dividas por dos aunque la mascara causal solo calcule medio triangulo. Es la
+       convencion de nanoGPT y de los papers; si divides, tu MFU no sera comparable con la de
+       nadie.
+
+    COMPRUÉBALO
+    -----------
+    Con la config del modelo final (6 capas, d_model 320, d_ff 896, contexto 512, vocab 4096)
+    tiene que dar exactamente **65.372.160**.
+
+    Args:
+        n_layers: numero de capas.
+        d_model: dimension del modelo.
+        d_ff: dimension interna del FFN.
+        context_length: longitud de la ventana de contexto.
+        vocab_size: tamanyo del vocabulario.
+        n_ffn_matrices: 3 para SwiGLU, 2 para un FFN clasico.
+        include_backward: si `True`, multiplica el total por 3.
 
     Returns:
-        FLOPs por token, como entero.
+        Los FLOPs por token, como entero.
     """
     raise NotImplementedError("TODO: modulo 01, ejercicio 2 - transformer_flops_per_token")
 
 
 def estimate_tokens_per_second(tflops: float, flops_per_token: int, mfu: float = 0.4) -> float:
-    """Tokens por segundo alcanzables con un pico medido y una MFU supuesta.
+    """Estima cuantos tokens por segundo vas a procesar.
 
-    Formula:
-        tokens/s = tflops * 1e12 * mfu / flops_per_token
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Dos lineas.
+
+        1. Si `flops_per_token` no es positivo, lanza `ValueError`.
+
+        2. Devuelve:
+
+               return tflops * 1e12 * mfu / flops_per_token
+
+    El `1e12` convierte TeraFLOPS en FLOPS.
+
+    POR QUÉ EL `mfu`
+    ----------------
+    Nunca aprovechas el 100% de la potencia de una GPU. La MFU (Model FLOPs Utilization) es
+    la fraccion que consigues de verdad, y hay que multiplicar por ella o la estimacion sale
+    absurdamente optimista.
+
+    Valores realistas:
+        0,4 - 0,5   modelos de miles de millones, bien optimizados
+        0,1 - 0,2   nuestro modelo de 9M
+
+    POR QUÉ VALIDAR
+    ---------------
+    Una division por cero aqui produce `inf` en silencio y estimaciones sin sentido, que
+    descubririas mucho mas tarde. Un `ValueError` con un mensaje claro cuesta una linea.
 
     Args:
-        tflops: pico medido, en TFLOPS (lo que devuelve el ejercicio 1).
+        tflops: el pico medido, en TFLOPS (lo que devuelve el ejercicio 1).
         flops_per_token: lo que devuelve el ejercicio 2.
-        mfu: fraccion del pico que esperas alcanzar. 0,4-0,5 para modelos grandes bien
-            optimizados; 0,1-0,2 para un modelo de 9M.
+        mfu: la fraccion del pico que esperas alcanzar.
+
+    Returns:
+        Tokens por segundo, como float.
 
     Raises:
         ValueError: si `flops_per_token` no es positivo.
-
-    Returns:
-        Tokens por segundo (float).
     """
     raise NotImplementedError("TODO: modulo 01, ejercicio 3 - estimate_tokens_per_second")

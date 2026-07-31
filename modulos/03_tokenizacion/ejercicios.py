@@ -61,61 +61,99 @@ Vocab = dict[int, bytes]
 def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
     """Cuenta cuantas veces aparece cada par de numeros CONSECUTIVOS.
 
-    QUE ES ESTO
-        El primer paso de BPE es saber que pareja de vecinos se repite mas. Esta funcion
-        recorre la lista mirando de dos en dos y lleva la cuenta.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Tres lineas.
 
-    EJEMPLO CONCRETO
-        >>> get_stats([97, 97, 97, 98])
-        {(97, 97): 2, (97, 98): 1}
+        1. Si `counts` es None, empieza con un diccionario vacio:
 
-        Fijate en que los pares SE SOLAPAN. En [97, 97, 97] el par (97,97) sale 2 veces:
-        en las posiciones 0-1 y en las 1-2. No se saltan posiciones al contar (eso solo
-        pasa al fusionar, en el ejercicio 2).
+               counts = {} if counts is None else counts
 
-    EL PARAMETRO `counts`
-        Sirve para acumular las cuentas de varios trozos sin tener que concatenarlos.
-        `train_bpe` procesa el texto partido en chunks por el pre-tokenizador y necesita
-        la suma de todos, pero sin contar los pares que cruzan de un chunk al siguiente.
+        2. Recorre los pares de vecinos y suma uno a cada uno:
 
-            stats = {}
-            for chunk in chunks:
-                get_stats(chunk, stats)     # va sumando sobre el mismo diccionario
+               for pair in zip(ids, ids[1:]):
+                   counts[pair] = counts.get(pair, 0) + 1
 
-        Si es `None`, empiezas con un diccionario vacio.
+        3. Devuelve `counts`.
+
+    `zip(ids, ids[1:])` produce todos los pares de vecinos —(ids[0],ids[1]), (ids[1],ids[2])…—
+    sin tener que manejar indices a mano.
+
+    EJEMPLO PARA COMPROBAR
+    ----------------------
+        get_stats([97, 97, 97, 98])  ->  {(97, 97): 2, (97, 98): 1}
+
+    Fijate en que el par (97,97) sale DOS veces: en las posiciones 0-1 y en las 1-2. Al
+    CONTAR, los pares SE SOLAPAN. (Al FUSIONAR, en el ejercicio 2, no. Son cosas distintas y
+    conviene tenerlo claro desde ya.)
+
+    PARA QUÉ SIRVE EL PARÁMETRO `counts`
+    ------------------------------------
+    Para acumular sobre un diccionario que ya existe, sin tener que concatenar listas.
+    `train_bpe` lo necesita porque procesa el texto partido en trozos y quiere la suma de
+    todos, pero SIN contar los pares que cruzan de un trozo al siguiente:
+
+        stats = {}
+        for chunk in chunks:
+            get_stats(chunk, stats)     # va sumando sobre el mismo diccionario
+
+    Devuelve el diccionario ademas de mutarlo: asi vale para los dos usos.
+
+    UN DETALLE DE PYTHON
+    --------------------
+    El valor por defecto es `None` y no `{}` a proposito. Un `{}` como valor por defecto se
+    crea UNA VEZ al definir la funcion y se comparte entre todas las llamadas: es el clasico
+    bug de los argumentos mutables.
 
     Args:
         ids: la secuencia de numeros.
         counts: diccionario donde acumular, o `None` para crear uno nuevo.
 
     Returns:
-        `{(a, b): veces}`. Devuelve el mismo diccionario que se paso en `counts`, si se
-        paso alguno.
+        `{(a, b): veces}`. Es el mismo diccionario que se paso en `counts`, si se paso alguno.
     """
     raise NotImplementedError("TODO: modulo 03, ejercicio 1 - get_stats")
 
 
 def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
-    """Sustituye cada aparicion de `pair` por un unico numero nuevo.
+    """Sustituye cada aparicion de un par por un unico numero nuevo.
 
-    QUE ES ESTO
-        Ya sabes cual es el par mas frecuente. Ahora hay que reemplazarlo en toda la lista
-        por el id nuevo. Esto es lo que acorta la secuencia y crea el token nuevo.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Un `while` con un indice que controlas tu.
 
-    EJEMPLO CONCRETO
-        >>> merge([97, 97, 97, 98, 97, 97], (97, 97), 256)
-        [256, 97, 98, 256]
+        out, i, n = [], 0, len(ids)
 
-    OJO CON EL SOLAPAMIENTO
-        Al fusionar, las apariciones se consumen de izquierda a derecha y SIN solapar. En
-        [97, 97, 97]:
-            - encuentras (97,97) en la posicion 0, lo sustituyes y SALTAS DOS posiciones
-            - te quedas en la posicion 2, donde solo hay un 97 suelto
-            - resultado: [256, 97], no [256, 256]
+        while i < n:
+            if i < n - 1 and ids[i] == pair[0] and ids[i+1] == pair[1]:
+                out.append(new_id)
+                i += 2                      # <- consume DOS posiciones
+            else:
+                out.append(ids[i])
+                i += 1                      # <- consume UNA
 
-        Este es el motivo de que un bucle `for` no valga bien aqui: necesitas controlar
-        tu el indice para poder avanzar de dos en dos cuando hay coincidencia y de uno en
-        uno cuando no. Un `while` con un indice manual es la forma natural.
+        return out
+
+    POR QUÉ UN `while` Y NO UN `for`
+    --------------------------------
+    Un `for` avanza de uno en uno SIEMPRE. Aqui necesitas saltar dos posiciones cuando hay
+    coincidencia, y esa es exactamente la diferencia entre contar pares (que si solapan) y
+    fusionarlos (que no).
+
+    Compruebalo con `[1, 1, 1]` fusionando `(1,1)`:
+
+        - encuentras el par en la posicion 0, lo sustituyes y SALTAS a la posicion 2
+        - en la 2 solo queda un 1 suelto, sin pareja
+        - resultado: [256, 1], NO [256, 256]
+
+    EJEMPLO PARA COMPROBAR
+    ----------------------
+        merge([97, 97, 97, 98, 97, 97], (97, 97), 256)  ->  [256, 97, 98, 256]
+
+    EL `i < n - 1`
+    --------------
+    Evita mirar `ids[i+1]` cuando estas en el ultimo elemento. Sin el, te llevas un
+    `IndexError` en cuanto la lista acabe justo en el primer elemento del par.
 
     Args:
         ids: la secuencia original.
@@ -136,102 +174,157 @@ def train_bpe(
 ) -> tuple[Merges, Vocab]:
     """Entrena el tokenizador: aprende que pares fusionar y en que orden.
 
-    QUE ES ESTO
-        El ejercicio central del modulo. Repites "cuenta los pares, fusiona el mas
-        frecuente" hasta llegar al tamanyo de vocabulario que quieres. Es el ejemplo de
-        `aaabdaaabac` del TEORIA.md, generalizado.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Es el ejemplo de "aaabdaaabac" del TEORIA.md, en bucle. Seis pasos.
 
-    EL ALGORITMO
-        1. Trocear el texto:
-             - si `pattern` es None -> un unico trozo con todo el texto
-             - si no -> `regex.findall(pattern, text)`
-        2. Pasar cada trozo a bytes UTF-8 y de ahi a una lista de enteros 0-255:
-             `list(chunk.encode("utf-8"))`
-        3. Arrancar el vocabulario con los 256 bytes: `{i: bytes([i]) for i in range(256)}`
-        4. Repetir `vocab_size - 256` veces:
-             a. contar los pares de TODOS los trozos sobre un mismo diccionario
-             b. si no queda ningun par, salir del bucle (`break`)
-             c. elegir el par ganador
-             d. el id nuevo es 256 + numero_de_merge (0, 1, 2...)
-             e. aplicar `merge` a cada trozo
-             f. apuntar `merges[par] = id_nuevo`
-             g. apuntar `vocab[id_nuevo] = vocab[par[0]] + vocab[par[1]]`  (concatenar bytes)
+        1. Valida que `vocab_size >= 256` y lanza `ValueError` si no. (Son los bytes: no puede
+           haber un vocabulario mas pequenyo.)
 
-    COMO SE ELIGE EL GANADOR (importa para que el test pase)
-        El mas frecuente. Y si hay EMPATE, gana el par mayor comparado como tupla:
+        2. Trocea el texto:
 
-            pair = max(stats, key=lambda p: (stats[p], p))
+               chunks = [text] if pattern is None else regex.findall(pattern, text)
 
-        Cual gane en un empate da igual para la calidad del tokenizador, pero tiene que ser
-        determinista y tiene que ser el MISMO criterio que usa la referencia, o tus merges
-        y los suyos divergiran en cuanto haya un empate y el test fallara con una
-        diferencia dificil de interpretar.
+        3. Pasa cada trozo a bytes y de ahi a enteros 0-255:
 
-    POR QUE SE CUENTA CHUNK A CHUNK Y NO SOBRE TODO JUNTO
-        Para que un merge no pueda unir el final de una palabra con el principio de la
-        siguiente. Si concatenaras los trozos, BPE aprenderia tokens como "gato.El".
+               ids = [list(chunk.encode("utf-8")) for chunk in chunks if chunk]
+
+        4. Arranca las dos estructuras de salida:
+
+               merges = {}
+               vocab = {i: bytes([i]) for i in range(256)}
+
+        5. Repite `vocab_size - 256` veces, con `i` como contador:
+
+             a. Cuenta los pares de TODOS los trozos sobre un mismo diccionario:
+
+                    stats = {}
+                    for chunk_ids in ids:
+                        get_stats(chunk_ids, stats)
+
+             b. Si `stats` esta vacio, `break`. (Ya no quedan pares que fusionar.)
+
+             c. Elige el ganador:
+
+                    pair = max(stats, key=lambda p: (stats[p], p))
+
+             d. El id nuevo es `256 + i`.
+
+             e. Aplica el merge a cada trozo:
+
+                    ids = [merge(c, pair, new_id) for c in ids]
+
+             f. Apunta lo aprendido:
+
+                    merges[pair] = new_id
+                    vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]     # bytes + bytes
+
+        6. Devuelve `(merges, vocab)`.
+
+    EL DESEMPATE DEL PASO 5c
+    ------------------------
+    `max(stats, key=lambda p: (stats[p], p))` compara TUPLAS: primero la frecuencia y, si
+    empata, el par. Python compara tuplas elemento a elemento, asi que eso hace exactamente lo
+    que quieres.
+
+    Cual gane un empate da igual para la calidad del tokenizador, pero tiene que ser
+    determinista y tiene que ser EL MISMO criterio que la referencia. Si usaras
+    `max(stats, key=stats.get)`, el ganador dependeria del orden de insercion del diccionario
+    y tus merges divergirian de los del test en cuanto hubiera un empate.
+
+    EL `break` DEL PASO 5b NO ES OPCIONAL
+    -------------------------------------
+    Si pides 4096 merges sobre un texto de 20 caracteres, llega un momento en que cada trozo
+    queda reducido a un solo token y no hay pares que contar. Sin el `break`, `max()` sobre un
+    diccionario vacio lanza `ValueError`. Hay un test que cubre ese caso.
+
+    POR QUÉ SE CUENTA TROZO A TROZO
+    -------------------------------
+    Para que ningun merge pueda unir el final de una palabra con el principio de la siguiente.
+    Si concatenaras los trozos, BPE aprenderia tokens como "gato.El".
+
+    SOBRE EL RENDIMIENTO
+    --------------------
+    Esta implementacion recorre el corpus entero en cada merge. Para 4096 merges sobre 2 GB
+    serian dias. Es una decision consciente: el codigo esta escrito para entenderse. Por eso
+    el modulo 04 entrena los merges sobre una muestra y luego codifica el corpus completo.
 
     Args:
         text: el texto de entrenamiento.
-        vocab_size: tamanyo final del vocabulario. Tiene que ser >= 256.
+        vocab_size: tamanyo final del vocabulario. >= 256.
         pattern: expresion regular de pre-tokenizacion, o `None` para no trocear.
-        verbose: si `True`, imprime cada merge segun lo aprende. Util para ver el proceso.
+        verbose: si `True`, imprime cada merge segun lo aprende.
 
     Returns:
         `(merges, vocab)`:
-          - `merges`: `{(a, b): id_nuevo}` en el ORDEN en que se aprendieron. Los dicts de
-            python conservan el orden de insercion, asi que no hay que hacer nada especial.
+          - `merges`: `{(a, b): id_nuevo}` en el ORDEN en que se aprendieron (los dicts de
+            python conservan el orden de insercion, asi que no hay que hacer nada especial).
           - `vocab`: `{id: bytes}` con los 256 bytes iniciales mas uno por cada merge.
 
     Raises:
-        ValueError: si `vocab_size` es menor que 256. No se puede tener un vocabulario mas
-            pequenyo que el numero de bytes que existen.
+        ValueError: si `vocab_size` es menor que 256.
     """
     raise NotImplementedError("TODO: modulo 03, ejercicio 3 - train_bpe")
 
 
 def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
-    """Convierte texto en una lista de ids, aplicando los merges aprendidos.
+    """Convierte texto en ids, aplicando los merges aprendidos.
 
-    QUE ES ESTO
-        Ya tienes los merges. Ahora hay que aplicarlos a texto nuevo. El detalle que lo
-        hace no-trivial: hay que aplicarlos EN EL ORDEN EN QUE SE APRENDIERON, no en el
-        orden en que aparecen en este texto concreto.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Una funcion auxiliar que codifica UN trozo, y un bucle que la aplica a todos.
 
-    POR QUE EL ORDEN
-        Imagina que aprendiste primero `("a","a") -> 256` y despues `(256,"a") -> 257`.
-        Si al codificar aplicaras el segundo antes que el primero, el 256 no existiria
-        todavia y el resultado seria distinto. La tokenizacion saldria valida pero
-        DIFERENTE de la que vio el modelo al entrenar, y el modelo no la entenderia.
+    **La auxiliar** (puedes llamarla `_encode_chunk` y ponerla donde quieras del fichero):
 
-    COMO SE CONSIGUE
-        En cada vuelta, de todos los pares presentes en la secuencia, coge el que tenga el
-        id de merge MAS BAJO (o sea, el que se aprendio antes):
+        def _encode_chunk(ids, merges):
+            while len(ids) >= 2:
+                stats = get_stats(ids)
+                pair = min(stats, key=lambda p: merges.get(p, float("inf")))
+                if pair not in merges:
+                    break
+                ids = merge(ids, pair, merges[pair])
+            return ids
 
-            stats = get_stats(ids)
-            pair = min(stats, key=lambda p: merges.get(p, float("inf")))
+    **Y la funcion principal:**
 
-        El `float("inf")` es el truco: los pares que no estan en `merges` reciben infinito
-        y por tanto nunca ganan el `min`. Si el par ganador resulta no estar en `merges`,
-        significa que ya no queda nada que fusionar y hay que parar.
+        1. Trocea el texto con el MISMO patron con el que entrenaste.
+        2. Para cada trozo: `list(chunk.encode("utf-8"))` y pasalo por `_encode_chunk`.
+        3. Concatena los ids de todos los trozos en una sola lista y devuelvela.
 
-    ESTRUCTURA
-        1. trocear el texto igual que en `train_bpe` (mismo `pattern`)
-        2. para cada trozo: pasarlo a bytes y aplicar el bucle de arriba hasta que no
-           queden merges aplicables
-        3. concatenar los ids de todos los trozos en una sola lista
+    EL `min` CON `float("inf")` ES EL CORAZÓN DEL EJERCICIO
+    ------------------------------------------------------
+    Los ids de merge son 256, 257, 258... en ORDEN de aprendizaje. Asi que "el que se aprendio
+    antes" es lo mismo que "el que tiene el id mas bajo".
 
-        Cuidado con el bucle: para si `len(ids) < 2` (no hay pares que contar) o si el par
-        ganador no esta en `merges`.
+    `merges.get(p, float("inf"))` da infinito a los pares que no estan en `merges`, de forma
+    que nunca ganan el `min`. Y si el ganador resulta no estar en `merges`, significa que
+    NINGUNO de los pares presentes es fusionable: hay que parar.
+
+    POR QUÉ IMPORTA TANTO EL ORDEN
+    ------------------------------
+    El tokenizador no es "parte el texto en los trozos mas largos posibles": es "reproduce
+    exactamente el proceso de entrenamiento".
+
+    Dos tokenizaciones distintas del mismo texto pueden ser ambas validas como secuencias de
+    ids, pero solo una es la que el modelo vio millones de veces al entrenar. La otra le
+    resulta tan extranya como texto en otro idioma.
+
+    UNA CONSECUENCIA QUE SORPRENDE
+    ------------------------------
+    Con merges `(a,a)->256` y `(256,a)->257`, la cadena "aaaa" da `[256, 256]`, NO `[257, a]`.
+
+    El primer merge se aplica a TODA la secuencia de golpe y se lleva las cuatro 'a' de dos en
+    dos, asi que el par `(256, a)` nunca llega a formarse. Con tres 'a' si sale `[257]`. No es
+    un bug: es como funciona BPE, y lo mismo pasa en tiktoken. Hay un test que lo documenta.
 
     Args:
         text: el texto a codificar.
         merges: lo que devolvio `train_bpe`.
-        pattern: el MISMO patron que usaste al entrenar. Si entrenaste con patron y
-            codificas sin el (o al reves), los resultados no cuadran.
+        pattern: el MISMO patron que usaste al entrenar. Si entrenaste con patron y codificas
+            sin el (o al reves), los resultados no cuadran.
 
     Returns:
-        Lista de ids.
+        La lista de ids.
     """
     raise NotImplementedError("TODO: modulo 03, ejercicio 4 - bpe_encode")
 
@@ -239,29 +332,36 @@ def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[in
 def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
     """Convierte una lista de ids de vuelta en texto.
 
-    QUE ES ESTO
-        Lo contrario del ejercicio 4, y mucho mas corto. Cada id tiene asociada una
-        secuencia de bytes en `vocab`. Las juntas todas y las decodificas.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Dos lineas. Y el orden de esas dos lineas es todo el ejercicio.
 
-    EL DETALLE QUE IMPORTA: junta primero, decodifica despues
-        NO hagas esto:
-            "".join(vocab[i].decode("utf-8") for i in ids)      # MAL
+        raw = b"".join(vocab[i] for i in ids)
+        return raw.decode("utf-8", errors="replace")
 
-        Un token puede cortar un caracter multibyte por la mitad. Una 'n' es un byte pero
-        una 'ñ' son dos (0xC3 0xB1), y a BPE eso le da igual: puede perfectamente haber
-        aprendido un token que acaba en 0xC3 y otro que empieza por 0xB1. Decodificados
-        por separado, ninguno de los dos es UTF-8 valido.
+    PRIMERO JUNTAR, DESPUÉS DECODIFICAR
+    -----------------------------------
+    NO hagas esto:
 
-        Haz esto:
-            raw = b"".join(vocab[i] for i in ids)     # primero todos los bytes juntos
-            return raw.decode("utf-8", errors="replace")
+        "".join(vocab[i].decode("utf-8") for i in ids)      # MAL
 
-    POR QUE `errors="replace"` Y NO DEJAR QUE FALLE
-        A esto se le llama BYTES FALLBACK. Un modelo a medio entrenar genera secuencias de
-        ids cualquiera, y muchas no forman UTF-8 valido. Con `errors="replace"` sale el
-        caracter U+FFFD ('caja con interrogante') donde no se pudo decodificar, y la
-        generacion continua. Sin el, una excepcion tumbaria el bucle de generacion entero
-        por un byte suelto.
+    Motivo: UTF-8 codifica los caracteres no-ASCII en varios bytes. Una 'n' es un byte, pero
+    una 'ñ' son dos: 0xC3 0xB1.
+
+    A BPE eso le da completamente igual —trabaja con bytes y no sabe nada de caracteres— asi
+    que puede perfectamente haber aprendido un token que ACABA en 0xC3 y otro que EMPIEZA por
+    0xB1. Decodificados por separado, ninguno de los dos es UTF-8 valido. Juntos, son una 'ñ'.
+
+    Hay un test que construye exactamente ese caso.
+
+    POR QUÉ `errors="replace"`
+    --------------------------
+    Es lo que se llama BYTES FALLBACK. Un modelo a medio entrenar genera secuencias de ids
+    cualesquiera, y muchas no forman UTF-8 valido. Con `errors="replace"` sale un caracter de
+    reemplazo donde no se pudo decodificar y la generacion continua; sin el, una excepcion
+    tumbaria el bucle de generacion entero por un byte suelto.
+
+    Cuando en el modulo 14 veas caracteres raros en las primeras muestras, ya sabes que son.
 
     Args:
         ids: los ids a decodificar.
