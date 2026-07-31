@@ -1,15 +1,42 @@
 """Modulo 03 - Tokenizacion y BPE.
 
-Cinco funciones. Las dos primeras son cortas y mecanicas; las tres siguientes se apoyan en
-ellas. Al terminar tendras un tokenizador completo, y con el entrenaras el vocabulario de
-4096 tokens que usara tu modelo final.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 03      comprueba tus funciones
-    llmfs demo 03       entrena vocabularios de varios tamanyos y compara con tiktoken
-    llmfs hint 03 -e 3  si te atascas con train_bpe, que es el mas largo
+Lee `TEORIA.md` -> implementa en orden -> `llmfs check 03` -> `llmfs hint 03 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
 
-Lee antes TEORIA.md: el ejemplo de "aaabdaaabac" paso a paso es exactamente lo que vas a
-programar.
+El ejemplo de "aaabdaaabac" del TEORIA.md, hecho paso a paso a mano, es EXACTAMENTE lo que
+vas a programar. Tenlo delante.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+El tokenizador del modelo final. Cinco funciones que encajan asi:
+
+    get_stats    (ej. 1)  contar que pares de vecinos se repiten mas
+    merge        (ej. 2)  sustituir un par por un token nuevo
+        |
+        +--> train_bpe   (ej. 3)  repetir 1 y 2 hasta tener 4096 tokens
+                 |
+                 +--> bpe_encode  (ej. 4)  texto -> ids
+                 +--> bpe_decode  (ej. 5)  ids -> texto
+
+Los dos primeros son cortos y mecanicos. El tercero es el central. Los dos ultimos usan lo
+que aprendio el tercero.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **token**: la unidad de texto que maneja el modelo. Con BPE, un trozo de palabra.
+- **vocabulario**: cuantos tokens distintos existen. El nuestro tendra 4096.
+- **merge**: fusionar dos tokens adyacentes en uno nuevo. Es la operacion de BPE.
+- **pre-tokenizador**: la expresion regular que trocea el texto ANTES de contar pares, para
+  que ningun merge cruce de una palabra a la siguiente.
+- **bytes fallback**: trabajar sobre bytes (0-255) en vez de caracteres, para que no exista
+  el "caracter desconocido".
+
+    llmfs demo 03     entrena vocabularios de varios tamanyos y compara con tiktoken
 """
 
 from __future__ import annotations

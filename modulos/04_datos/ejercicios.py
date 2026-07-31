@@ -1,10 +1,36 @@
 """Modulo 04 - Datos: de texto a batches en la GPU.
 
-Tres funciones cortas. La tercera, `get_batch`, es la que usara el bucle de entrenamiento
-del modulo 11 miles de veces, asi que merece la pena que la entiendas bien.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 04
-    llmfs demo 04     tokeniza shakespeare, lo guarda en disco y ensenya un batch de verdad
+Lee `TEORIA.md` -> implementa -> `llmfs check 04` -> `llmfs hint 04 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+El puente entre el texto tokenizado y la GPU. Tres funciones:
+
+    pack_tokens_uint16   (ej. 1)  ids -> array de 2 bytes por token, validando
+    train_val_split      (ej. 2)  separar un trozo para validacion
+    get_batch            (ej. 3)  sacar un lote de ventanas al azar
+
+La tercera la va a ejecutar tu entrenamiento decenas de miles de veces, y es donde esta la
+idea importante del modulo: como se convierte texto en una tarea de aprendizaje.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **batch**: un grupo de muestras que se procesan a la vez. Ir de una en una desaprovecha
+  la GPU.
+- **ventana / contexto**: cuantos tokens seguidos ve el modelo de golpe. El nuestro, 512.
+- **memmap**: un array que vive en disco pero se usa como si estuviera en memoria. El
+  sistema operativo carga solo lo que tocas.
+- **conjunto de validacion**: texto que el modelo NO ve al entrenar, para saber si esta
+  aprendiendo o solo memorizando.
+- **uint16**: entero sin signo de 2 bytes, de 0 a 65.535.
+
+    llmfs demo 04     el pipeline entero, de texto a batch en la GPU
 """
 
 from __future__ import annotations

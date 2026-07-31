@@ -190,3 +190,99 @@ después produce una respuesta corta. El post-entrenamiento ha hecho su trabajo.
 Y ésa es la lección del módulo: **el post-entrenamiento no añade conocimiento**. Saca a la
 superficie un comportamiento que ya estaba latente. Un modelo que no sabe algo tras el
 pretraining no lo aprende con mil ejemplos de conversación.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def build_chat_template(
+    messages: Sequence[dict[str, str]], add_generation_prompt: bool = False
+) -> str:
+    partes: list[str] = []
+    for mensaje in messages:
+        rol = mensaje["role"]
+        if rol not in CHAT_MARKERS:
+            raise ValueError(f"rol desconocido: {rol!r}. Validos: system, user, assistant")
+        partes.append(f"{CHAT_MARKERS[rol]}{mensaje['content']}{CHAT_MARKERS['end']}")
+
+    if add_generation_prompt:
+        partes.append(CHAT_MARKERS["assistant"])
+
+    return "".join(partes)
+
+
+def mask_prompt_tokens(
+    input_ids: Sequence[int], prompt_len: int, ignore_index: int = -100
+) -> list[int]:
+    if prompt_len < 1:
+        raise ValueError("prompt_len tiene que ser al menos 1")
+    if prompt_len > len(input_ids):
+        raise ValueError(
+            f"prompt_len ({prompt_len}) mayor que la secuencia ({len(input_ids)})"
+        )
+
+    targets = [ignore_index] * len(input_ids)
+    for i in range(prompt_len - 1, len(input_ids) - 1):
+        targets[i] = input_ids[i + 1]
+    return targets
+
+
+class LoRALinear(nn.Module):
+
+    def __init__(
+        self,
+        base_layer: nn.Linear,
+        r: int = 8,
+        alpha: float = 16.0,
+        dropout: float = 0.0,
+    ) -> None:
+        super().__init__()
+        if r <= 0:
+            raise ValueError(f"el rango r tiene que ser positivo: {r}")
+
+        self.base = base_layer
+        self.r = r
+        self.alpha = alpha
+        self.scaling = alpha / r
+
+        # La capa base se congela: es el punto de LoRA.
+        for p in self.base.parameters():
+            p.requires_grad = False
+
+        d_in, d_out = base_layer.in_features, base_layer.out_features
+        self.lora_A = nn.Parameter(torch.empty(r, d_in))
+        self.lora_B = nn.Parameter(torch.zeros(d_out, r))
+        self.lora_dropout = nn.Dropout(dropout)
+
+        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
+        # lora_B se queda en ceros: al arrancar, la capa es identica a la original.
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        base = self.base(x)
+        adaptacion = self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T
+        return base + adaptacion * self.scaling
+
+
+def merge_lora_weights(layer: LoRALinear) -> nn.Linear:
+    d_in = layer.base.in_features
+    d_out = layer.base.out_features
+    fundida = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
+
+    with torch.no_grad():
+        delta = (layer.lora_B @ layer.lora_A) * layer.scaling
+        fundida.weight.copy_(layer.base.weight + delta)
+        if layer.base.bias is not None:
+            fundida.bias.copy_(layer.base.bias)
+
+    return fundida
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

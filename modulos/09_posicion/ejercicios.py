@@ -1,9 +1,44 @@
 """Modulo 09 - Informacion posicional y RoPE.
 
-Tres ejercicios. El tercero es una linea, pero solo despues de haber entendido el segundo.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 09
-    llmfs demo 09     dibuja las frecuencias y comprueba la invariancia relativa con numeros
+Lee `TEORIA.md` -> implementa en orden -> `llmfs check 09` -> `llmfs hint 09 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+La forma de decirle al modelo en que posicion esta cada token:
+
+    sinusoidal_embeddings  (ej. 1)  la tabla del paper de 2017 (historico)
+    rope_frequencies       (ej. 2)  precalcular los angulos de rotacion
+            |
+            v
+    apply_rope             (ej. 3)  rotar Q y K. UNA LINEA, pero solo despues del ej. 2
+
+El ejercicio 2 es el que cuesta. El 3 es una linea.
+
+EL PROBLEMA QUE RESUELVE
+========================
+
+Vuelve a mirar la formula de la atencion (modulo 06): es una suma ponderada, y una suma no
+tiene orden. Para el mecanismo de atencion, "el perro muerde al hombre" y "el hombre muerde
+al perro" producen exactamente lo mismo.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **embedding posicional**: la informacion que le dice al modelo donde esta cada token.
+- **posicion absoluta / relativa**: "soy el token 7" frente a "estoy dos posiciones detras
+  de aquel". La relativa generaliza mejor.
+- **RoPE** (Rotary Position Embedding): en vez de SUMAR algo al vector, lo ROTA un angulo
+  proporcional a la posicion.
+- **head_dim**: la dimension de cada cabeza de atencion. En nuestro modelo, 40. RoPE trabaja
+  sobre esto, no sobre las 320 de d_model.
+- **extrapolar**: usar el modelo con secuencias mas largas que las que vio al entrenar.
+
+    llmfs demo 09     dibuja las frecuencias y mide la extrapolacion de verdad
 """
 
 from __future__ import annotations

@@ -1,7 +1,32 @@
 # 17 — Extras y límites honestos
 
-Último módulo. Dos cosas: cómo hacer el modelo más pequeño para servirlo, y una
-conversación franca sobre qué separa esto de un modelo frontier.
+## Por qué importa este módulo
+
+**Porque conviene saber dónde estás.**
+
+Dos cosas. La primera es práctica: cómo hacer el modelo cuatro veces más pequeño para poder
+servirlo, con una técnica que se usa en producción en todas partes.
+
+La segunda es una conversación franca. Has construido un modelo de 8,9 millones de
+parámetros. Un modelo frontier tiene del orden de un billón. La distancia no es sólo de
+tamaño, y merece la pena entender las **cinco** cosas que la componen, porque cuatro de ellas
+se mencionan mucho menos que la primera.
+
+Y también la otra cara: qué has conseguido de verdad, que es bastante más de lo que parece
+mirando sólo los parámetros.
+
+### Qué sabrás al terminar
+
+- Cómo guardar el modelo en la cuarta parte de espacio, y qué se pierde exactamente
+- Por qué 127 y no 128 (y por qué ese detalle importa más de lo que parece)
+- Qué separa tu modelo de GPT-4, con las cinco piezas desglosadas
+- Qué te llevas del curso que no sale en los tutoriales
+
+### Cuánto cuesta
+
+2 horas. Es el último.
+
+---
 
 ## Cuantización: el modelo en la cuarta parte
 

@@ -148,3 +148,77 @@ tarea de aprendizaje supervisado.
 La sección de velocidad conviene mirarla con calma en el módulo 12: si `get_batch` tarda
 más que un paso de entrenamiento, la GPU se pasa el rato esperando y hay que mover la carga
 de datos a un hilo aparte.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
+    if vocab_size > MAX_UINT16:
+        raise ValueError(
+            f"vocab_size={vocab_size} no cabe en uint16. Usa uint32 (y el doble de disco)."
+        )
+
+    array = np.asarray(ids, dtype=np.int64)
+    if array.size and (array.min() < 0 or array.max() >= vocab_size):
+        raise ValueError(
+            f"ids fuera del vocabulario [0, {vocab_size}): "
+            f"minimo={array.min()}, maximo={array.max()}"
+        )
+    return array.astype(np.uint16)
+
+
+def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
+    if not 0.0 < val_fraction < 1.0:
+        raise ValueError(f"val_fraction debe estar en (0, 1), no {val_fraction}")
+
+    n_val = max(1, int(len(tokens) * val_fraction))
+    if n_val >= len(tokens):
+        raise ValueError("val_fraction deja el conjunto de entrenamiento vacio")
+    return tokens[:-n_val], tokens[-n_val:]
+
+
+def get_batch(
+    data: np.ndarray,
+    batch_size: int,
+    context_length: int,
+    device: torch.device | str | None = None,
+    rng: np.random.Generator | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    rng = rng or np.random.default_rng()
+    max_start = len(data) - context_length - 1
+    if max_start < 1:
+        raise ValueError(
+            f"El corpus ({len(data)} tokens) es mas corto que el contexto "
+            f"({context_length} + 1)."
+        )
+
+    starts = rng.integers(0, max_start, size=batch_size)
+    # astype(int64) tambien materializa el memmap: sin la copia, torch se quedaria
+    # apuntando a memoria mapeada de disco y cada acceso seria una lectura.
+    x_np = np.stack([data[i : i + context_length] for i in starts]).astype(np.int64)
+    y_np = np.stack([data[i + 1 : i + 1 + context_length] for i in starts]).astype(np.int64)
+
+    x = torch.from_numpy(x_np)
+    y = torch.from_numpy(y_np)
+
+    if device is not None:
+        device = torch.device(device)
+        if device.type == "cuda":
+            x = x.pin_memory().to(device, non_blocking=True)
+            y = y.pin_memory().to(device, non_blocking=True)
+        else:
+            x, y = x.to(device), y.to(device)
+
+    return x, y
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

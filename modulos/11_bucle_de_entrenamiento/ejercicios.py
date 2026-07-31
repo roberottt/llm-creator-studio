@@ -1,11 +1,40 @@
 """Modulo 11 - El bucle de entrenamiento.
 
-Cuatro piezas. La primera es la mas larga del curso; las otras tres son cortas.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 11
-    llmfs demo 11     compara tu AdamW con el de torch y dibuja el planificador
+Lee `TEORIA.md` -> implementa -> `llmfs check 11` -> `llmfs hint 11 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
 
-Cuando las cuatro esten en verde, el modelo final entrenara con TU optimizador.
+El ejercicio 1 es el mas largo del curso. Los otros tres son cortos.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+Las cuatro piezas que hacen que un entrenamiento funcione a escala:
+
+    AdamWScratch        (ej. 1)  el optimizador, desde cero
+    lr_at_step          (ej. 2)  como cambia el learning rate durante la tirada
+    clip_grad_norm      (ej. 3)  que un batch raro no destruya horas de trabajo
+    build_param_groups  (ej. 4)  que parametros decaen y cuales no
+
+Cuando esten las cuatro en verde, el modelo final entrenara con TU optimizador.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **optimizador**: el algoritmo que decide como aplicar los gradientes a los pesos.
+- **learning rate** (lr): cuanto se mueven los pesos en cada paso. El hiperparametro que
+  mas entrenamientos arruina.
+- **momento**: una media movil de los gradientes recientes, para suavizar el ruido.
+- **weight decay**: empujar los pesos hacia cero para que no crezcan sin control.
+- **warmup**: subir el learning rate despacio en los primeros pasos.
+- **AMP / GradScaler**: entrenar en 16 bits multiplicando la perdida por un numero grande
+  para que los gradientes no se vayan a cero.
+- **grupos de parametros**: subconjuntos con hiperparametros distintos. PyTorch los acepta
+  como lista de dicts.
+
+    llmfs demo 11     compara tu AdamW con el de PyTorch y mide el recorte
 """
 
 from __future__ import annotations

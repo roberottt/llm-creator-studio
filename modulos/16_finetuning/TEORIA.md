@@ -1,17 +1,32 @@
 # 16 — Post-training: SFT y LoRA
 
-Tu modelo sabe continuar texto. Si le escribes *"¿Cuál es la capital de Francia?"*, es
-bastante probable que responda con más preguntas:
+## Por qué importa este módulo
 
-```
-¿Cuál es la capital de Francia? ¿Y la de Italia? ¿Cuántos habitantes tiene?
-```
+**Porque tu modelo entrenado no responde preguntas: las continúa.**
 
-No está roto. Está haciendo **exactamente** lo que le enseñaste: continuar texto plausible.
-Un documento que empieza con una pregunta suele seguir con más preguntas.
+Escríbele *"¿Cuál es la capital de Francia?"* y lo más probable es que siga con más
+preguntas. No está roto: está haciendo exactamente lo que le enseñaste, que es continuar
+texto plausible. Un documento que empieza con una pregunta suele seguir con más.
 
-Convertir eso en algo que responda es el **post-entrenamiento**, y es una fase distinta con
-sus propios métodos.
+Convertir eso en algo que responde es una fase distinta con sus propios métodos, y es donde
+se instala buena parte de lo que asocias a un asistente. En este módulo la haces: SFT de
+verdad sobre tu modelo, y ves el antes y el después.
+
+Y aprendes LoRA, que es la técnica que hace que el fine-tuning de modelos grandes sea
+accesible: entrenar el **0,7%** de los parámetros en vez del 100%.
+
+### Qué sabrás al terminar
+
+- La diferencia real entre pretraining y post-training, y qué añade cada uno
+- Por qué un modelo necesita marcadores para saber cuándo le toca hablar y cuándo callarse
+- Un off-by-one que decide si el modelo aprende a responder o a preguntar
+- Cómo entrenar el 0,7% de un modelo y luego **fundir los cambios** sin dejar rastro
+
+### Cuánto cuesta
+
+3 horas. La demo hace SFT de verdad sobre tu modelo del módulo 13.
+
+---
 
 ## Pretraining contra post-training
 

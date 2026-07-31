@@ -1,9 +1,47 @@
 """Modulo 08 - FFN, GELU y SwiGLU.
 
-Tres ejercicios. El segundo es aritmetica pura y produce el numero 896 del config final.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 08
-    llmfs demo 08     dibuja las activaciones y ensenya el colapso de una red sin ellas
+Lee `TEORIA.md` -> implementa -> `llmfs check 08` -> `llmfs hint 08 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+La parte del Transformer donde estan DOS TERCIOS de los parametros:
+
+    gelu               (ej. 1)  la no-linealidad clasica
+    swiglu_hidden_dim  (ej. 2)  aritmetica: de aqui sale el 896 del config final
+    SwiGLU             (ej. 3)  el FFN con puerta que usa el modelo
+
+El ejercicio 2 es el mas corto del curso y produce un numero que ya has visto en el YAML.
+
+POR QUÉ HACE FALTA ESTO
+=======================
+
+La atencion es una media ponderada, o sea una operacion LINEAL. Y dos operaciones lineales
+seguidas son una sola:
+
+    W2 · (W1 · x) = (W2 · W1) · x
+
+Cien capas lineales apiladas equivalen a UNA. Lo unico que impide que el Transformer entero
+se derrumbe es la no-linealidad de este modulo.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **FFN / MLP** (feed-forward network): la parte de cada bloque que NO es atencion. Procesa
+  cada token por separado, sin mirar a los demas.
+- **activacion**: la funcion no lineal que va entre capas. ReLU, GELU, Swish.
+- **no-linealidad**: cualquier funcion que no sea `f(ax+b) = a·f(x)+b`. Es lo que hace que
+  apilar capas sirva de algo.
+- **puerta** (gate): en SwiGLU, una de las dos ramas multiplica a la otra y decide cuanta
+  senyal pasa por cada dimension. A diferencia de una activacion normal, ese filtrado
+  depende de la entrada.
+- **d_ff**: la dimension interna del FFN. En nuestro modelo, 896.
+
+    llmfs demo 08     ensenya el colapso lineal y compara las activaciones
 """
 
 from __future__ import annotations

@@ -129,3 +129,56 @@ desplazamiento grande divergen.
 
 Que eso no perjudique en la práctica es un **resultado empírico**, no un teorema. Zhang y
 Sennrich lo comprobaron entrenando modelos, no demostrándolo.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def layer_norm(
+    x: torch.Tensor,
+    weight: torch.Tensor | None = None,
+    bias: torch.Tensor | None = None,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    mean = x.mean(dim=-1, keepdim=True)
+    var = x.var(dim=-1, keepdim=True, unbiased=False)
+    normalized = (x - mean) / torch.sqrt(var + eps)
+
+    if weight is not None:
+        normalized = normalized * weight
+    if bias is not None:
+        normalized = normalized + bias
+    return normalized
+
+
+class RMSNorm(nn.Module):
+
+    def __init__(self, dim: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._norm(x.float()).type_as(x) * self.weight
+
+
+def prenorm_residual(
+    x: torch.Tensor,
+    fn: Callable[[torch.Tensor], torch.Tensor],
+    norm: Callable[[torch.Tensor], torch.Tensor],
+) -> torch.Tensor:
+    return x + fn(norm(x))
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

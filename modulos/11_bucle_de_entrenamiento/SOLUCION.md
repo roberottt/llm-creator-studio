@@ -204,3 +204,143 @@ con grad_clip=1.0: ni se entera (0,8x, sigue bajando)
 
 En una tirada de 10.000 pasos, un solo batch raro puede costarte el entrenamiento entero.
 `grad_clip=1.0` acota el daño máximo de cualquier batch.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+class AdamWScratch(torch.optim.Optimizer):
+
+    def __init__(
+        self,
+        params: Iterable[Any],
+        lr: float = 1e-3,
+        betas: tuple[float, float] = (0.9, 0.95),
+        eps: float = 1e-8,
+        weight_decay: float = 0.0,
+    ) -> None:
+        if lr < 0.0:
+            raise ValueError(f"lr no puede ser negativo: {lr}")
+        if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
+            raise ValueError(f"las betas deben estar en [0, 1): {betas}")
+        if eps < 0.0:
+            raise ValueError(f"eps no puede ser negativo: {eps}")
+
+        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
+        super().__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, closure: Any = None) -> Any:
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            beta1, beta2 = group["betas"]
+            lr, eps, wd = group["lr"], group["eps"], group["weight_decay"]
+
+            for p in group["params"]:
+                if p.grad is None:
+                    continue
+                grad = p.grad
+
+                state = self.state[p]
+                if len(state) == 0:
+                    state["step"] = 0
+                    state["exp_avg"] = torch.zeros_like(p)
+                    state["exp_avg_sq"] = torch.zeros_like(p)
+
+                state["step"] += 1
+                t = state["step"]
+                m, v = state["exp_avg"], state["exp_avg_sq"]
+
+                # Medias moviles, in-place para no reservar tensores nuevos cada paso.
+                m.mul_(beta1).add_(grad, alpha=1 - beta1)
+                v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+                bias_correction1 = 1 - beta1**t
+                bias_correction2 = 1 - beta2**t
+
+                denom = (v / bias_correction2).sqrt_().add_(eps)
+                step_size = lr / bias_correction1
+
+                # Weight decay DESACOPLADO: directamente sobre el parametro.
+                if wd != 0.0:
+                    p.mul_(1 - lr * wd)
+                p.addcdiv_(m, denom, value=-step_size)
+
+        return loss
+
+
+def lr_at_step(
+    step: int,
+    max_steps: int,
+    lr: float,
+    warmup_steps: int = 0,
+    min_lr_ratio: float = 0.1,
+    schedule: str = "cosine",
+) -> float:
+    min_lr = lr * min_lr_ratio
+
+    if warmup_steps > 0 and step < warmup_steps:
+        # +1 para que el paso 0 no tenga lr exactamente cero (no aprenderia nada).
+        return lr * (step + 1) / warmup_steps
+
+    if step >= max_steps:
+        return min_lr
+
+    if schedule == "constant":
+        return lr
+
+    progreso = (step - warmup_steps) / max(1, max_steps - warmup_steps)
+    progreso = min(1.0, max(0.0, progreso))
+
+    if schedule == "linear":
+        return lr - (lr - min_lr) * progreso
+
+    coef = 0.5 * (1.0 + math.cos(math.pi * progreso))
+    return min_lr + (lr - min_lr) * coef
+
+
+def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float:
+    grads = [p.grad for p in parameters if p.grad is not None]
+    if not grads:
+        return 0.0
+
+    total = torch.sqrt(sum(g.detach().pow(2).sum() for g in grads))
+    total_f = float(total)
+
+    if max_norm > 0 and total_f > max_norm:
+        # 1e-6 para no dividir por cero si la norma es minuscula.
+        factor = max_norm / (total_f + 1e-6)
+        for g in grads:
+            g.mul_(factor)
+
+    return total_f
+
+
+def build_param_groups(
+    model: nn.Module, weight_decay: float = 0.1
+) -> list[dict[str, Any]]:
+    decay, no_decay = [], []
+    for param in model.parameters():
+        if not param.requires_grad:
+            continue
+        (decay if param.dim() >= 2 else no_decay).append(param)
+
+    return [
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": no_decay, "weight_decay": 0.0},
+    ]
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

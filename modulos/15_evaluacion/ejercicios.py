@@ -1,10 +1,38 @@
 """Modulo 15 - Evaluacion.
 
-Tres ejercicios cortos. El tercero no calcula nada: organiza el trabajo para que la parte
-que de verdad importa (leer lo que escribe el modelo) sea comoda.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 15
-    llmfs demo 15     evalua tu modelo entrenado y genera eval_report.md
+Lee `TEORIA.md` -> implementa -> `llmfs check 15` -> `llmfs hint 15 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+Los tres ejercicios son cortos. El tercero ni siquiera calcula nada: organiza el trabajo
+para que la parte que de verdad importa (leer lo que escribe el modelo) sea comoda.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+Tres formas de responder a "¿es bueno mi modelo?":
+
+    perplexity_from_loss  (ej. 1)  la metrica de siempre, y sus limites
+    bits_per_byte         (ej. 2)  la que SI se puede comparar entre modelos
+    run_prompt_battery    (ej. 3)  la que ninguna metrica automatica sustituye
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **perplejidad**: `e` elevado a la perdida. "Entre cuantas opciones esta dudando el
+  modelo". Depende del tokenizador, y por eso comparar perplejidades entre modelos
+  distintos suele no significar nada.
+- **bits por byte**: la perdida normalizada por bytes de texto original en vez de por
+  tokens. Sí es comparable, y se interpreta como cuanto comprimiria el modelo el texto.
+- **nat / bit**: unidades de informacion. Un nat son 1,4427 bits.
+- **evaluacion cualitativa**: leer lo que escribe el modelo y juzgarlo. Sigue siendo
+  imprescindible.
+- **contaminacion**: cuando el conjunto de test aparece en los datos de entrenamiento. Es
+  uno de los problemas metodologicos mas serios del campo ahora mismo.
+
+    llmfs demo 15     evalua tu modelo y genera eval_report.md
 """
 
 from __future__ import annotations

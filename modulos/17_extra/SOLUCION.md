@@ -119,3 +119,52 @@ Que los benchmarks están contaminados. Que la interpretabilidad ha explicado un
 circuitos y ni de lejos un modelo entero.
 
 Eso es lo que distingue leer un paper con criterio de leerlo con fe.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def quantize_int8_symmetric(
+    weight: torch.Tensor, per_channel: bool = True
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if per_channel and weight.dim() >= 2:
+        max_abs = weight.abs().amax(dim=-1, keepdim=True)
+    else:
+        max_abs = weight.abs().amax()
+
+    # clamp_min evita dividir por cero si una fila es todo ceros.
+    escala = (max_abs / 127.0).clamp_min(1e-12)
+    cuantizado = torch.round(weight / escala).clamp(-127, 127).to(torch.int8)
+    return cuantizado, escala
+
+
+def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+    return quantized.to(torch.float32) * scale
+
+
+def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict[str, float]:
+    q, escala = quantize_int8_symmetric(original, per_channel=per_channel)
+    recuperado = dequantize_int8(q, escala)
+
+    error = (original - recuperado).abs()
+    norma_original = float(original.norm())
+
+    return {
+        "error_relativo": float(error.norm()) / max(norma_original, 1e-12),
+        "error_maximo": float(error.max()),
+        "error_medio": float(error.mean()),
+        "compresion": original.element_size() / q.element_size(),
+        "bytes_original": original.numel() * original.element_size(),
+        "bytes_cuantizado": q.numel() * q.element_size() + escala.numel() * escala.element_size(),
+    }
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

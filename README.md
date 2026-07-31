@@ -20,8 +20,13 @@ TEORIA.md      →  lees (10-15 min)
 ejercicios.py  →  implementas
 llmfs check NN →  rojo → llmfs hint NN -e 1   →  verde → siguiente
 llmfs demo NN  →  ves el concepto en gráficas y números
-SOLUCION.md    →  contrastas tu solución con la explicada
+SOLUCION.md    →  la explicación, Y el código completo para copiar si te bloqueas
 ```
+
+**Si te atascas de verdad, cada `SOLUCION.md` termina con el código entero**, listo para
+copiar y pegar. Un test verifica que ese código compila, usa solo nombres que tienes
+disponibles, y pasa los tests del módulo. Copiarlo no es hacer trampa: hacer trampa sería
+copiarlo sin haberlo intentado.
 
 **Los tests comparan contra referencia, no contra "no peta".** Tu `MultiHeadAttention` se
 valida con `torch.allclose` contra `nn.MultiheadAttention`; tu `AdamW` contra
@@ -147,6 +152,7 @@ lentitud inexplicable en Mac.
 make install                    # uv sync --extra compare
 make test                       # tu progreso (rojo hasta que implementes: es lo normal)
 make test-reference             # salud del curso (siempre verde)
+make test-soluciones            # comprueba que el código de las soluciones se puede copiar
 
 llmfs status                    # tabla de progreso, calculada ejecutando los tests
 llmfs next                      # qué módulo toca y qué ejercicio

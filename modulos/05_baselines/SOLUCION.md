@@ -168,3 +168,88 @@ tres han entrenado los mismos 400 pasos y el de contexto 8 tiene el doble de par
 que se queda a medio entrenar. Comparar arquitecturas a igualdad de **pasos** no es
 compararlas a igualdad de **cómputo**, y sistemáticamente favorece al modelo pequeño. Es
 justo el error que las leyes de escala del módulo 12 vienen a corregir.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def uniform_baseline_loss(vocab_size: int) -> float:
+    if vocab_size < 1:
+        raise ValueError("vocab_size debe ser positivo")
+    return math.log(vocab_size)
+
+
+def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
+    counts = torch.zeros(vocab_size, vocab_size, dtype=torch.int64)
+    tokens = torch.as_tensor(ids, dtype=torch.int64)
+    if tokens.numel() < 2:
+        return counts
+    # index_put_ con accumulate suma en las posiciones repetidas en vez de pisarlas.
+    counts.index_put_((tokens[:-1], tokens[1:]), torch.ones(tokens.numel() - 1, dtype=torch.int64),
+                      accumulate=True)
+    return counts
+
+
+def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> float:
+    tokens = torch.as_tensor(ids, dtype=torch.int64)
+    if tokens.numel() < 2:
+        raise ValueError("hacen falta al menos 2 tokens para evaluar un bigrama")
+
+    vocab_size = counts.shape[0]
+    smoothed = counts.double() + alpha
+    probs = smoothed / smoothed.sum(dim=1, keepdim=True)
+
+    selected = probs[tokens[:-1], tokens[1:]]
+    return float(-torch.log(selected).mean())
+
+
+class NeuralBigram(nn.Module):
+
+    def __init__(self, vocab_size: int) -> None:
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.token_embedding = nn.Embedding(vocab_size, vocab_size)
+
+    def forward(
+        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        logits = self.token_embedding(idx)
+        if targets is None:
+            return logits, None
+        loss = F.cross_entropy(logits.reshape(-1, self.vocab_size), targets.reshape(-1))
+        return logits, loss
+
+
+class BengioMLP(nn.Module):
+
+    def __init__(self, vocab_size: int, block_size: int, d_embed: int = 32, n_hidden: int = 128) -> None:
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.block_size = block_size
+        self.d_embed = d_embed
+        self.embedding = nn.Embedding(vocab_size, d_embed)
+        self.hidden = nn.Linear(block_size * d_embed, n_hidden)
+        self.output = nn.Linear(n_hidden, vocab_size)
+
+    def forward(
+        self, idx: torch.Tensor, targets: torch.Tensor | None = None
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        batch = idx.shape[0]
+        emb = self.embedding(idx)                    # (B, block_size, d_embed)
+        flat = emb.reshape(batch, -1)                # (B, block_size * d_embed)
+        h = torch.tanh(self.hidden(flat))            # (B, n_hidden)
+        logits = self.output(h)                      # (B, V)
+        if targets is None:
+            return logits, None
+        return logits, F.cross_entropy(logits, targets)
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

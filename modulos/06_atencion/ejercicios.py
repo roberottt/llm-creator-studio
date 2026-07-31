@@ -1,13 +1,54 @@
 """Modulo 06 - Self-attention.
 
-El modulo central del curso. Tres ejercicios: la mascara, la atencion de una cabeza, y la
-version multi-cabeza que usara el modelo final.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 06
-    llmfs demo 06     heatmap de atencion sobre una frase, y el experimento del escalado
+Lee `TEORIA.md` -> implementa en orden -> `llmfs check 06` -> `llmfs hint 06 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
 
-Lee TEORIA.md antes. El ejemplo con tres palabras y dos dimensiones hecho a mano es
-exactamente lo que vas a programar aqui.
+El ejemplo de "el gato que vi ayer dormia", hecho a mano con tres palabras y dos
+dimensiones, es EXACTAMENTE lo que vas a programar. Tenlo delante.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+El corazon del Transformer. Tres ejercicios que encajan asi:
+
+    causal_mask             (ej. 1)  impedir que un token mire al futuro
+            |
+            v
+    single_head_attention   (ej. 2)  la formula, con una sola cabeza
+            |
+            v
+    MultiHeadAttention      (ej. 3)  ocho en paralelo, que es lo que usa el modelo
+
+El ejercicio 2 son cuatro lineas, y cada una tiene una trampa. El 3 es el mismo calculo con
+una dimension mas.
+
+LA IDEA, EN UNA FRASE
+=====================
+
+Cada token hace una PREGUNTA, todos los anteriores RESPONDEN, se mide cuanto encaja cada
+respuesta, y se mezcla su CONTENIDO segun eso.
+
+    salida = softmax( Q K^T / sqrt(d_k) + mascara ) V
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **Q, K, V** (query, key, value): las tres proyecciones. La query es la pregunta que lanza
+  un token, la key es la etiqueta con la que cada token se anuncia, y el value es el
+  contenido que aporta si resulta elegido.
+- **softmax**: convierte una lista de numeros cualesquiera en probabilidades que suman 1.
+  Exponencia cada uno y divide por la suma.
+- **producto escalar**: multiplicar dos vectores componente a componente y sumar. Mide
+  cuanto se parecen: cuanto mas alineados, mayor el numero.
+- **cabeza** (head): una atencion independiente. El modelo tiene 8 en paralelo, cada una
+  trabajando en 40 dimensiones.
+- **mascara causal**: la que impide que la posicion 3 mire a la 4. Sin ella el modelo veria
+  la respuesta.
+
+    llmfs demo 06     entrena un modelo de atencion y dibuja a que mira cada letra
 """
 
 from __future__ import annotations

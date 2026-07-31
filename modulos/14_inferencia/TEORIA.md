@@ -1,7 +1,30 @@
 # 14 — Inferencia y muestreo
 
-Tienes un modelo entrenado que produce logits. Falta convertir eso en texto que alguien
-quiera leer, y hacerlo deprisa.
+## Por qué importa este módulo
+
+**Porque un modelo entrenado no sirve de nada si no sabes sacarle texto.**
+
+Y sacar texto tiene más miga de la que parece. Si eliges siempre el token más probable
+—que es lo obvio— el modelo se mete en bucles: *"the cat sat on the mat. the cat sat on the
+mat."* La demo lo enseña. Resulta que **el texto humano no maximiza la probabilidad**, y
+entender eso es la mitad del módulo.
+
+La otra mitad es velocidad. La generación ingenua recalcula todo el contexto en cada token,
+lo que hace que generar N tokens cueste N². La KV cache lo arregla, y es la optimización más
+importante que existe en inferencia: sin ella, ningún chatbot sería usable.
+
+### Qué sabrás al terminar
+
+- Por qué coger siempre lo más probable produce texto malo
+- Qué hacen la temperatura, top-k y top-p, y **cuál usar cuándo**
+- Cómo generar N veces más rápido sin cambiar ni un token de la salida
+- Por qué los modelos con contexto muy largo consumen tanta memoria en inferencia
+
+### Cuánto cuesta
+
+3 horas. Los tres primeros ejercicios son cortos; la cache es donde está la dificultad.
+
+---
 
 ## Parte 1: cómo elegir el siguiente token
 

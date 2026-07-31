@@ -1,15 +1,39 @@
 """Modulo 01 - Entorno y hardware.
 
-Lee TEORIA.md, implementa las tres funciones y ejecuta:
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 01
+Lee `TEORIA.md` -> implementa -> `llmfs check 01` -> si te atascas, `llmfs hint 01 -e N`
+-> y si sigues atascado, `SOLUCION.md` tiene el codigo completo para copiar.
 
-Cuando esten en verde:
+QUÉ VAS A CONSTRUIR
+===================
 
-    llmfs demo 01     # mide tu GPU de verdad y estima el tiempo de la tirada final
+Una calculadora de cuanto va a tardar tu entrenamiento. Tres funciones:
+
+    measure_matmul_tflops        cuantas operaciones por segundo da tu GPU DE VERDAD
+    transformer_flops_per_token  cuantas operaciones cuesta procesar un token
+    estimate_tokens_per_second   dividiendo lo uno entre lo otro, la velocidad
+
+Con eso puedes contestar "¿esto tarda dos horas o dos semanas?" antes de escribir el modelo.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **FLOP**: una operacion con numeros decimales (una suma o una multiplicacion). La unidad
+  con la que se mide cuanto cuesta entrenar algo.
+- **TFLOPS**: billones de FLOPs por segundo. Lo que da tu GPU.
+- **MFU** (Model FLOPs Utilization): que fraccion del pico teorico aprovechas de verdad.
+  Nadie llega a 1; con un modelo pequenyo, 0,1-0,2 ya es bueno.
+- **forward / backward**: pasar los datos por la red, y calcular como ajustar los pesos.
+  El backward cuesta aproximadamente el doble que el forward.
+
+    llmfs demo 01     mide tu GPU y estima el tiempo de la tirada final
 """
 
 from __future__ import annotations
+
+import time
 
 import torch
 

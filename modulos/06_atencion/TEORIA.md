@@ -1,5 +1,32 @@
 # 06 — Self-attention
 
+## Por qué importa este módulo
+
+**Si sólo pudieras entender un módulo del curso, sería éste.**
+
+Todo lo anterior —tokenizar, embeddings, el MLP de Bengio— existía ya en 2003 y daba
+modelos mediocres. Lo que cambió en 2017 y acabó produciendo ChatGPT es exactamente lo que
+vas a programar aquí, y cabe en cuatro líneas de código.
+
+La idea es sencilla de enunciar: **dejar que cada palabra mire a las anteriores y decida a
+cuáles hacer caso**. Lo difícil es creer que con eso baste. Al terminar el módulo lo habrás
+visto funcionar en un modelo que entrenas tú, con un mapa de calor que muestra literalmente
+a qué mira cada letra.
+
+### Qué sabrás al terminar
+
+- Por qué un modelo puede "recordar" algo que leyó 300 palabras antes
+- Qué son Q, K y V, y **por qué hacen falta tres cosas y no una**
+- Por qué se divide por `√d_k`, y qué se rompe exactamente si lo quitas (con números)
+- Qué es la máscara causal y por qué es **el bug más caro del curso** si la pones mal
+- Habrás visto un heatmap de atención de un modelo entrenado por ti
+
+### Cuánto cuesta
+
+4 horas, empatado con el 03 como el más largo. Es el que más merece la pena.
+
+---
+
 ## ¿Qué problema resuelve la atención?
 
 Frase: *"el gato que vi ayer dormía"*.

@@ -1,9 +1,31 @@
 # 02 — Autodiferenciación desde cero
 
-Cuando escribas `loss.backward()` en el módulo 11, PyTorch calculará de golpe cómo hay que
-mover cada uno de los 8,9 millones de parámetros del modelo. Este módulo existe para que
-esa línea deje de ser magia. Vas a escribir tú ese mecanismo, en unas 100 líneas y sin
-usar PyTorch.
+## Por qué importa este módulo
+
+**Para que `loss.backward()` deje de ser magia.**
+
+Esa línea es la que hace que una red aprenda. Calcula, de golpe, cómo hay que mover cada uno
+de los 8,9 millones de parámetros de tu modelo para que se equivoque menos. Y casi todo el
+mundo que la escribe no tiene ni idea de qué hace por dentro.
+
+En este módulo la escribes tú, en unas 100 líneas y sin usar PyTorch. Al terminar, cuando
+tu entrenamiento no converja, sabrás dónde mirar en vez de probar cosas al azar.
+
+Es el módulo más "de matemáticas" del curso, y también el que más te va a servir para
+depurar todo lo demás.
+
+### Qué sabrás al terminar
+
+- Qué es un gradiente y por qué la red los necesita
+- Cómo se calculan **todos** los gradientes de golpe, en el tiempo de dos forwards
+- Por qué existe `optimizer.zero_grad()` y qué pasa exactamente si lo olvidas
+- Qué hace PyTorch por dentro cuando llamas a `.backward()`
+
+### Cuánto cuesta
+
+3 horas. Es denso, pero es la base de todo lo que viene.
+
+---
 
 ## El problema: ¿hacia dónde muevo cada peso?
 

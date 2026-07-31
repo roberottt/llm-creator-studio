@@ -1,10 +1,38 @@
 """Modulo 02 - Autodiferenciacion desde cero.
 
-Vas a construir un motor de autodiff escalar. Al terminar, `loss.backward()` de PyTorch
-sera codigo que entiendes, no una caja negra.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 02
-    llmfs demo 02     # dibuja el grafo de computo y compara gradientes con torch
+Lee `TEORIA.md` -> implementa -> `llmfs check 02` -> `llmfs hint 02 -e N` si te atascas
+-> `SOLUCION.md` tiene el codigo completo si lo necesitas.
+
+Este es el modulo mas denso del curso. Si algo no encaja, no sigas adelante: todo lo demas
+se apoya en esto.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+El motor que hace que `loss.backward()` funcione. En unas 100 lineas y sin usar PyTorch.
+
+    Value               (ejercicio 1) un numero que recuerda de donde salio
+    topological_order   (ejercicio 2) en que orden recorrer el grafo hacia atras
+    train_scalar_mlp    (ejercicio 3) entrenar una red usando solo tu motor
+
+Al terminar, `loss.backward()` sera codigo que entiendes linea por linea.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **gradiente**: la derivada de la perdida respecto a un parametro. Dice hacia donde mover
+  ese parametro para que el modelo se equivoque menos.
+- **backward / backpropagation**: el algoritmo que calcula TODOS los gradientes de golpe,
+  recorriendo la red hacia atras.
+- **grafo de computo**: el registro de que operaciones se hicieron y en que orden. Es lo
+  que permite recorrerlo hacia atras.
+- **regla de la cadena**: si y depende de u y u depende de x, entonces
+  dy/dx = (dy/du) x (du/dx). Toda la maquinaria descansa en esto.
+
+    llmfs demo 02     dibuja el grafo por dentro y compara con torch.autograd
 """
 
 from __future__ import annotations

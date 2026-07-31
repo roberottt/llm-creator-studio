@@ -1,8 +1,33 @@
 # 10 — El GPT completo
 
-Tienes todas las piezas: atención (06), normalización (07), FFN (08) y RoPE (09). Este
-módulo las ensambla en el modelo que vas a entrenar, y termina con un número que tiene que
-salir exacto: **8.933.440 parámetros**.
+## Por qué importa este módulo
+
+**Porque aquí se junta todo y sale un número exacto.**
+
+Tienes la atención, la normalización, el FFN y RoPE. Este módulo los ensambla en el modelo
+que vas a entrenar, y termina con una comprobación que o cuadra o no cuadra:
+**8.933.440 parámetros**. Ni uno más.
+
+Ese número no es un adorno. Que la fórmula que derivas a mano coincida con el conteo real
+del modelo significa que has entendido dónde está cada peso y por qué. Si no cuadra, algo
+de tu arquitectura no es lo que crees.
+
+Y hay tres decisiones de diseño aquí que se saltan casi todos los tutoriales y que son las
+que hacen que el modelo entrene bien: el weight tying, la inicialización escalada por
+profundidad, y la normalización final.
+
+### Qué sabrás al terminar
+
+- Cómo se monta un Transformer completo, de ids de token a logits
+- Cómo ahorrar el 15% de los parámetros reutilizando una matriz que ya tienes
+- Por qué la inicialización de las capas profundas **no puede ser la misma** que la del resto
+- Verificar que tu modelo es causal de verdad, con una comprobación que da cero exacto
+
+### Cuánto cuesta
+
+3 horas. Cierra la Parte II: al terminarlo tienes el modelo montado y auditado.
+
+---
 
 ## El bloque
 

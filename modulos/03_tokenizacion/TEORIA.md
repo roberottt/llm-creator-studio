@@ -1,5 +1,36 @@
 # 03 — Tokenización y BPE
 
+## Por qué importa este módulo
+
+**Porque una red neuronal no sabe leer.**
+
+Sólo hace cuentas con números, así que el texto hay que convertirlo en una lista de enteros
+antes de que el modelo lo vea. Y cómo lo trocees no es un detalle de fontanería: decide
+cuántos parámetros tendrá tu modelo, cuánto texto le cabe en la ventana, y qué cosas le
+saldrán raras.
+
+Aquí construyes el tokenizador que usa el modelo final: BPE desde cero, con un vocabulario
+de 4096 tokens entrenado sobre el corpus. No es una librería que llamas: son 60 líneas que
+escribes tú.
+
+Y de paso entenderás por qué los LLM fallan contando las letras de una palabra, por qué se
+les da mal la aritmética, y por qué el español sale más caro que el inglés.
+
+### Qué sabrás al terminar
+
+- Por qué no se usan ni caracteres ni palabras, sino trozos de palabra
+- Cómo BPE **aprende solo** qué trozos merecen ser un token, sin que nadie se lo diga
+- Por qué se trabaja con bytes y no con caracteres (spoiler: para que no exista el token
+  desconocido)
+- **Por qué 4096 y no 50.000**, con los números que lo justifican
+
+### Cuánto cuesta
+
+4 horas. Es el módulo más largo de la Parte I, y el tokenizador que salga de aquí es el que
+usarás el resto del curso.
+
+---
+
 ## El problema: una red no sabe leer
 
 Una red neuronal solo hace cuentas con números. El texto hay que convertirlo en una lista

@@ -120,3 +120,60 @@ Y sobre todo: ninguna ley de escala captura la **calidad de los datos**. El pape
 TinyStories muestra que un dataset pequeño y muy limpio permite a modelos diminutos generar
 texto coherente, algo que no se consigue con la misma cantidad de texto de internet. Ningún
 $N$ ni $D$ recoge eso.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
+    d, ff, v = cfg.d_model, cfg.d_ff, cfg.vocab_size
+    n_ffn = 3 if cfg.activation == "swiglu" else 2
+
+    params_matmul = cfg.n_layers * (4 * d * d + n_ffn * d * ff) + d * v
+
+    matmul = 2 * params_matmul
+    attention = 4 * cfg.n_layers * cfg.context_length * d
+
+    factor = 3 if include_backward else 1
+    return {
+        "matmul": matmul * factor,
+        "attention": attention * factor,
+        "total": (matmul + attention) * factor,
+        "params_matmul": params_matmul,
+    }
+
+
+def compute_mfu(
+    tokens_per_second: float, flops_per_token: int, peak_tflops: float
+) -> float:
+    if peak_tflops <= 0:
+        raise ValueError("peak_tflops tiene que ser positivo")
+    return tokens_per_second * flops_per_token / (peak_tflops * 1e12)
+
+
+def chinchilla_optimal_allocation(
+    compute_budget: float, tokens_per_param: float = 20.0
+) -> dict[str, float]:
+    if compute_budget <= 0:
+        raise ValueError("el presupuesto de computo tiene que ser positivo")
+
+    params = (compute_budget / (6 * tokens_per_param)) ** 0.5
+    tokens = tokens_per_param * params
+
+    return {
+        "params": params,
+        "tokens": tokens,
+        "tokens_per_param": tokens_per_param,
+        "compute": compute_budget,
+    }
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

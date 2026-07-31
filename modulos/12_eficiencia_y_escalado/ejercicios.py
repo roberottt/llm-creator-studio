@@ -1,10 +1,38 @@
 """Modulo 12 - Eficiencia y leyes de escala.
 
-Tres funciones cortas. Ninguna tiene mas de cinco lineas de codigo, pero las tres
-responden preguntas que deciden como disenyas un entrenamiento.
+CÓMO SE HACE ESTE MÓDULO
+========================
 
-    llmfs check 12
-    llmfs demo 12     mide la MFU real de tu maquina y reproduce el resultado de Chinchilla
+Lee `TEORIA.md` -> implementa -> `llmfs check 12` -> `llmfs hint 12 -e N`
+-> `SOLUCION.md` tiene el codigo completo.
+
+Ninguna de las tres funciones tiene mas de cinco lineas de codigo. La dificultad esta en
+entender que significan los numeros.
+
+QUÉ VAS A CONSTRUIR
+===================
+
+    model_flops_per_token          (ej. 1)  cuanto cuesta un token, desglosado
+    compute_mfu                    (ej. 2)  que fraccion de tu GPU aprovechas
+    chinchilla_optimal_allocation  (ej. 3)  como repartir el presupuesto de computo
+
+El ejercicio 3 reproduce un resultado que en 2022 demostro que la industria entera estaba
+entrenando mal sus modelos. Y lo vas a verificar contra modelos historicos reales.
+
+VOCABULARIO QUE VAS A NECESITAR
+===============================
+
+- **MFU** (Model FLOPs Utilization): tokens/s x FLOPs por token, dividido por el pico de tu
+  hardware. Nadie llega a 1.
+- **presupuesto de computo**: cuantos FLOPs totales te puedes permitir gastar entrenando.
+- **Chinchilla**: el paper de 2022 que midio como repartir ese presupuesto entre tamanyo de
+  modelo y cantidad de datos. Respuesta: ~20 tokens por parametro.
+- **parametros no-embedding**: el total menos la tabla de embeddings. Es lo que usan las
+  leyes de escala, porque los embeddings escalan distinto.
+- **sobreentrenado / infraentrenado**: por encima o por debajo de esos 20 tokens por
+  parametro. Ninguna de las dos cosas es necesariamente mala: depende de tu objetivo.
+
+    llmfs demo 12     mide tu MFU real y reproduce el resultado de Chinchilla
 """
 
 from __future__ import annotations

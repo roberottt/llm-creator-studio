@@ -1,7 +1,34 @@
 # 12 — Eficiencia y leyes de escala
 
-Dos preguntas que parecen distintas y son la misma: **¿estoy aprovechando mi GPU?** y
-**¿cómo debería gastar mi presupuesto de cómputo?**
+## Por qué importa este módulo
+
+**Porque "más grande es mejor" resultó ser falso, y eso cambió el campo.**
+
+Dos preguntas que parecen distintas y son la misma: ¿estoy aprovechando mi GPU? y ¿cómo
+debería repartir mi presupuesto entre tamaño de modelo y cantidad de datos?
+
+La segunda tiene una respuesta concreta, y en 2022 resultó que la industria entera la
+estaba haciendo mal. GPT-3 tenía 175.000 millones de parámetros y estaba **doce veces
+infra-entrenado**: con su mismo presupuesto de cómputo, un modelo tres veces más pequeño
+entrenado con más datos habría sido mejor. Lo demostraron entrenando uno.
+
+En este módulo vas a reproducir esa fórmula y comprobar que predice el tamaño real de
+Chinchilla con cuatro cifras de precisión. Y vas a medir la eficiencia de tu propio
+entrenamiento con la métrica estándar del campo.
+
+### Qué sabrás al terminar
+
+- Qué es la MFU, qué valor es razonable, y por qué el tuyo va a ser bajo (y no es culpa tuya)
+- Dónde mirar cuando un entrenamiento va más lento de lo que debería
+- La fórmula de Chinchilla, **verificada contra modelos históricos reales**
+- Por qué nuestro modelo está sobreentrenado a propósito, y por qué Llama-3 lo está 90 veces
+
+### Cuánto cuesta
+
+2 horas. Tres funciones de menos de cinco líneas cada una, pero deciden cómo diseñas un
+entrenamiento.
+
+---
 
 ## Parte 1: MFU, o cuánto de tu GPU estás usando
 

@@ -115,3 +115,58 @@ está haciendo con 283.313 contextos es prácticamente copiar trozos literales.
 
 Ahí está el argumento del curso entero. Contar da resultados decentes deprisa y se estrella
 contra un muro exponencial. Aprender representaciones cuesta más, pero escala.
+
+---
+
+## El código completo
+
+Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
+tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+
+Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
+muy bien; leerla en frío, no funciona nada.
+
+```python
+def next_token_probs(counts: Mapping[str, int]) -> dict[str, float]:
+    total = sum(counts.values())
+    if total == 0:
+        raise ValueError("no se puede normalizar una tabla de conteos vacia")
+    return {token: count / total for token, count in counts.items()}
+
+
+def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = None) -> str:
+    rng = rng or random.Random()
+    r = rng.random()
+    acumulado = 0.0
+    ultimo = ""
+    for token, p in probs.items():
+        acumulado += p
+        ultimo = token
+        if r < acumulado:
+            return token
+    # Solo se llega aqui por error de redondeo en coma flotante (acumulado = 0.9999...).
+    return ultimo
+
+
+def generate_naive(
+    table: dict[str, dict[str, int]],
+    start: str,
+    length: int = 200,
+    rng: random.Random | None = None,
+) -> str:
+    rng = rng or random.Random()
+    context_size = len(start)
+    salida = list(start)
+
+    for _ in range(max(0, length - len(start))):
+        contexto = "".join(salida[-context_size:])
+        counts = table.get(contexto)
+        if not counts:
+            break  # contexto desconocido: el modelo no sabe seguir
+        salida.append(sample_next_token(next_token_probs(counts), rng))
+
+    return "".join(salida)
+```
+
+Los imports que hacen falta ya están en el `ejercicios.py` del módulo, salvo los que
+aparezcan arriba del bloque.

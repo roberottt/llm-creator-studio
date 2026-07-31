@@ -1,9 +1,33 @@
 # 15 — Evaluación
 
-Tienes un modelo entrenado. La pregunta ahora es incómoda: **¿es bueno?**
+## Por qué importa este módulo
 
-Y la respuesta honesta es que no hay una sola métrica que lo conteste. Este módulo va de
-usar varias y saber qué mide cada una.
+**Porque "¿es bueno mi modelo?" es más difícil de responder de lo que parece.**
+
+Tienes un modelo entrenado y un número: la pérdida. ¿Y ahora qué? Ese número no te dice si
+el modelo escribe historias que alguien querría leer, y comparar tu número con el de otro
+modelo puede ser directamente engañoso.
+
+Aquí aprendes a usar tres herramientas distintas y, sobre todo, **qué mide cada una y dónde
+falla**. Incluida una métrica que sí es comparable entre modelos distintos y que casi nadie
+usa, y la parte que ninguna métrica automática sustituye: leer lo que escribe.
+
+Es también el módulo donde se pone en contexto lo que has construido, con expectativas
+concretas sobre qué puede y qué no puede hacer un modelo de 9M.
+
+### Qué sabrás al terminar
+
+- Por qué comparar perplejidades entre modelos con tokenizadores distintos **no significa
+  nada**, y se hace constantemente
+- Una métrica que sí es comparable, y su interpretación exacta: tu modelo es un compresor
+- Cómo evaluar cualitativamente con una batería fija de prompts
+- Qué esperar realmente de un modelo de 9M, para no llevarte una decepción injusta
+
+### Cuánto cuesta
+
+2 horas. Tres funciones cortas y un informe generado que puedes leer con calma.
+
+---
 
 ## Perplejidad: la métrica de siempre
 

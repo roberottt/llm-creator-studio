@@ -1,8 +1,32 @@
 # 07 — Normalización y conexiones residuales
 
-Dos piezas que no calculan nada interesante y sin las cuales una red profunda no entrena.
-Son la fontanería que mantiene los números en un rango razonable mientras atraviesan 6, 40
-o 100 capas.
+## Por qué importa este módulo
+
+**Porque sin esto, una red profunda no entrena. Punto.**
+
+Dos piezas que no calculan nada interesante y que son la diferencia entre un modelo que
+aprende y uno que devuelve `NaN` a los tres pasos. Son la fontanería del Transformer: nadie
+las menciona en los titulares y sin ellas no hay nada.
+
+El problema que resuelven es concreto y lo vas a ver medido: los números que atraviesan una
+red profunda tienden a explotar o a desvanecerse, y con 40 capas el gradiente llega a cero
+**exacto**. La demo lo mide.
+
+Además, aquí está una de las decisiones de diseño donde más se aprende comparando: dónde
+poner la normalización cambia si tu red necesita warmup o no.
+
+### Qué sabrás al terminar
+
+- Por qué los números se descontrolan al apilar capas, con la cuenta que lo explica
+- Qué hace exactamente LayerNorm, y **qué le sobra** (eso es RMSNorm)
+- Por qué `x + f(x)` es una de las ideas más importantes del deep learning
+- Pre-norm contra post-norm, medido: cuánto gradiente llega a la primera capa en cada caso
+
+### Cuánto cuesta
+
+1,5 horas. Tres ejercicios cortos, y el tercero es literalmente una línea.
+
+---
 
 ## El problema: los números se descontrolan
 
