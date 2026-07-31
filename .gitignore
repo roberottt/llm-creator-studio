@@ -8,7 +8,7 @@ __pycache__/
 uv.lock
 
 # Datos y artefactos pesados (se regeneran)
-data/
+/data/
 checkpoints/
 runs/
 *.bin
