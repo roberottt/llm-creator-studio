@@ -51,29 +51,42 @@ import torch.nn.functional as F
 def uniform_baseline_loss(vocab_size: int) -> float:
     """La perdida de un modelo que no sabe absolutamente nada.
 
-    QUE ES ESTO
-        El numero mas util de todo el entrenamiento, y se calcula en una linea.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Dos lineas.
 
-        Un modelo que reparte la probabilidad por igual entre las V palabras del
-        vocabulario le da 1/V a cada una. La perdida es -ln(probabilidad del correcto),
-        o sea -ln(1/V), que es ln(V).
+        1. Si `vocab_size < 1`, lanza `ValueError`.
+        2. `return math.log(vocab_size)`
 
-    PARA QUE SIRVE
-        Cuando lances el entrenamiento del modulo 11, la perdida del PASO 0 tiene que
-        valer casi exactamente esto:
+    DE DÓNDE SALE
+    -------------
+    Un modelo que reparte la probabilidad por igual entre las V palabras del vocabulario le da
+    `1/V` a cada una. La perdida es `-ln(probabilidad del token correcto)`, o sea `-ln(1/V)`,
+    que es `ln(V)`.
 
-            vocab 4096  ->  ln(4096) = 8.317
-            vocab 65    ->  ln(65)   = 4.174
+    PARA QUÉ SIRVE (esto es lo importante del ejercicio)
+    ----------------------------------------------------
+    Es el numero mas util de todo el curso. Cuando lances CUALQUIER entrenamiento, la perdida
+    del PASO 0 tiene que valer casi exactamente esto:
 
-        - Si sale MUCHO MAS ALTA (12, 20): la inicializacion esta mal. El modelo empieza
-          con opiniones fuertes y equivocadas en vez de con ignorancia.
-        - Si sale MAS BAJA: hay fuga de informacion. Casi siempre es la mascara causal
-          mal puesta y el modelo viendo la respuesta.
+        vocab 65    ->  ln(65)   = 4.174     (shakespeare a nivel caracter)
+        vocab 4096  ->  ln(4096) = 8.317     (el modelo final)
 
-        Es la comprobacion mas barata que existe y caza los dos bugs mas caros.
+    Y entonces:
+
+        - si sale MUCHO MAS ALTA: la inicializacion esta mal. El modelo arranca con opiniones
+          fuertes y equivocadas en vez de con ignorancia honesta.
+        - si sale MAS BAJA: hay fuga de informacion. Casi siempre es la mascara causal mal
+          puesta y el modelo viendo la respuesta.
+
+    El segundo caso parece una buena noticia y es el bug mas caro del curso: la perdida baja
+    espectacularmente, todo parece ir de maravilla, y el modelo entrenado no sirve para nada
+    porque en generacion ese futuro no existe.
+
+    Es la comprobacion mas barata que existe y caza los dos bugs mas caros.
 
     Args:
-        vocab_size: tamanyo del vocabulario. Tiene que ser >= 1.
+        vocab_size: el tamanyo del vocabulario. Tiene que ser >= 1.
 
     Returns:
         `ln(vocab_size)`, en nats.
@@ -87,39 +100,62 @@ def uniform_baseline_loss(vocab_size: int) -> float:
 def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
     """Cuenta cuantas veces sigue cada token a cada token.
 
-    QUE ES ESTO
-        Una matriz V x V donde `counts[i][j]` es el numero de veces que el token j vino
-        justo detras del token i. Es la tabla del modulo 00, ahora como tensor.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Cuatro lineas, sin bucles.
 
-    EJEMPLO CONCRETO
+        1. Crea la matriz de ceros:
+
+               counts = torch.zeros(vocab_size, vocab_size, dtype=torch.int64)
+
+        2. Pasa los ids a tensor:
+
+               tokens = torch.as_tensor(ids, dtype=torch.int64)
+
+        3. Si hay menos de 2 tokens, devuelve la matriz de ceros tal cual (no hay pares).
+
+        4. Rellena de golpe:
+
+               counts.index_put_(
+                   (tokens[:-1], tokens[1:]),
+                   torch.ones(tokens.numel() - 1, dtype=torch.int64),
+                   accumulate=True,
+               )
+
+        5. Devuelve `counts`.
+
+    CÓMO FUNCIONA EL PASO 4
+    -----------------------
+    `tokens[:-1]` son todos los "desde" y `tokens[1:]` todos los "hasta". `index_put_` recorre
+    esas dos listas en paralelo y suma 1 en cada posicion `(desde, hasta)`.
+
+    EJEMPLO PARA COMPROBAR
+    ----------------------
         ids = [0, 1, 0, 1, 2]  con vocab_size = 3
 
-        Los pares consecutivos son (0,1), (1,0), (0,1), (1,2). Asi que:
+        los pares son (0,1), (1,0), (0,1), (1,2), asi que:
 
             counts[0][1] = 2      el 1 siguio al 0 dos veces
             counts[1][0] = 1
             counts[1][2] = 1
-            el resto = 0
+            el resto     = 0
 
-    COMO SE HACE SIN BUCLES
-        Se puede con un `for` y funciona, pero con 500M tokens tardaria una eternidad.
-        La version vectorizada:
+    EL `accumulate=True` NO ES OPCIONAL
+    -----------------------------------
+    Sin el, `index_put_` ASIGNA en vez de sumar: cada par repetido pisa al anterior y todos los
+    conteos acaban valiendo 1.
 
-            tokens = torch.as_tensor(ids, dtype=torch.int64)
-            counts.index_put_((tokens[:-1], tokens[1:]),
-                              torch.ones(len(tokens)-1, dtype=torch.int64),
-                              accumulate=True)
+    Pruebalo con `[0,0,0,0,0]`: el resultado correcto es `counts[0][0] = 4`. Sin
+    `accumulate=True` saldria 1. Hay un test dedicado a esto.
 
-        `tokens[:-1]` son todos los "desde" y `tokens[1:]` todos los "hasta". El
-        `accumulate=True` es imprescindible: sin el, las posiciones repetidas se PISAN en
-        vez de sumarse, y todos los conteos saldrian 1.
-
-    CASO BORDE
-        Con menos de 2 tokens no hay ningun par: devuelve la matriz de ceros.
+    POR QUÉ VECTORIZADO Y NO UN BUCLE
+    ---------------------------------
+    Un `for` funciona y es mas legible, pero con 500M tokens son 500 millones de iteraciones de
+    python.
 
     Args:
         ids: la secuencia de tokens.
-        vocab_size: tamanyo del vocabulario.
+        vocab_size: el tamanyo del vocabulario.
 
     Returns:
         Tensor `int64` de forma `(vocab_size, vocab_size)`.
@@ -128,48 +164,68 @@ def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
 
 
 def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> float:
-    """La perdida media de una secuencia bajo un modelo de bigramas.
+    """Mide como de bien predice una tabla de bigramas.
 
-    QUE ES ESTO
-        Ya tienes los conteos (del texto de entrenamiento). Ahora mides como de bien
-        predicen OTRA secuencia (la de validacion).
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Cinco lineas.
+
+        1. Pasa los ids a tensor y valida que haya al menos 2:
+
+               tokens = torch.as_tensor(ids, dtype=torch.int64)
+               if tokens.numel() < 2:
+                   raise ValueError("hacen falta al menos 2 tokens")
+
+        2. Suma alpha a todos los conteos, en double:
+
+               smoothed = counts.double() + alpha
+
+        3. Normaliza cada FILA:
+
+               probs = smoothed / smoothed.sum(dim=1, keepdim=True)
+
+        4. Selecciona las probabilidades de los pares que aparecen de verdad:
+
+               selected = probs[tokens[:-1], tokens[1:]]
+
+        5. Devuelve la media de -ln:
+
+               return float(-torch.log(selected).mean())
 
     LA FORMULA
-
+    ----------
         P(b | a) = (C[a][b] + alpha) / (suma_b' C[a][b'] + alpha * V)
 
-        perdida = -media de ln( P(ids[i+1] | ids[i]) )
+    Fijate en que el paso 3 produce ese denominador SOLO: al haber sumado alpha a las V
+    entradas de cada fila en el paso 2, la suma de la fila ya crecio en `alpha * V`. No tienes
+    que escribir ese termino a mano.
 
-    POR QUE EL `alpha` (suavizado de Laplace)
-        Sin el, un par que nunca aparecio en entrenamiento tiene probabilidad 0. Su
-        logaritmo es -infinito. Y como la perdida es la MEDIA, un solo par no visto manda
-        la perdida de todo el conjunto de validacion a infinito.
+    POR QUÉ EL SUAVIZADO (el `alpha`)
+    ---------------------------------
+    Sin el, un par que nunca aparecio en entrenamiento tiene probabilidad 0, su logaritmo es
+    `-inf`, y como la perdida es una MEDIA, ese `-inf` se lleva por delante el resultado
+    entero. La perplejidad de todo tu conjunto de validacion se va a infinito por un solo par
+    que no viste.
 
-        Sumar alpha a todos los conteos antes de normalizar es admitir que "no lo he
-        visto" no es lo mismo que "es imposible". Con alpha=1 se le da a cada par no visto
-        la misma probabilidad que si lo hubieras visto una vez.
+    Sumar alpha a todo antes de normalizar es admitir que "no lo he visto" no es lo mismo que
+    "es imposible".
 
-        Fijate en el denominador: hay que sumar `alpha * V`, no solo `alpha`. Si sumas
-        alpha a las V entradas de una fila, el total de esa fila crece en alpha*V. Si no
-        lo compensas, las probabilidades no suman 1.
+    DOS TRAMPAS
+    -----------
+    **El `keepdim=True` del paso 3.** Sin el, `sum(dim=1)` devuelve forma `(V,)` en vez de
+    `(V, 1)`, y el broadcast dividiria por COLUMNAS en lugar de por filas. El resultado sale
+    numericamente plausible y es completamente incorrecto. Hay un test que lo caza.
 
-    COMO
-        1. `smoothed = counts.double() + alpha`
-           (a double, no a float: con 500M tokens, float32 pierde precision al sumar)
-        2. `probs = smoothed / smoothed.sum(dim=1, keepdim=True)`
-           El `keepdim=True` mantiene la forma (V,1) para que el broadcast divida cada
-           fila por su propia suma. Sin el, la forma seria (V,) y dividiria por columnas.
-        3. Selecciona las probabilidades de los pares reales:
-           `probs[tokens[:-1], tokens[1:]]`  <- indexacion avanzada, un tensor de (N-1,)
-        4. `float(-torch.log(seleccionadas).mean())`
+    **`.double()` y no `.float()`.** Con corpus grandes se suman millones de conteos, y float32
+    tiene 24 bits de mantisa: empieza a perder precision antes de lo que uno espera.
 
     Args:
         counts: la matriz del ejercicio 2, calculada sobre ENTRENAMIENTO.
         ids: la secuencia a evaluar (normalmente validacion).
-        alpha: constante de suavizado.
+        alpha: la constante de suavizado.
 
     Returns:
-        Perdida media en nats por token.
+        La perdida media en nats por token.
 
     Raises:
         ValueError: si `ids` tiene menos de 2 tokens.
@@ -178,39 +234,61 @@ def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> 
 
 
 class NeuralBigram(nn.Module):
-    """El mismo bigrama, pero aprendido por descenso de gradiente en vez de contando.
+    """El bigrama del ejercicio 2, pero aprendido por gradiente.
 
-    QUE ES ESTO
-        Una `nn.Embedding(V, V)`. La fila `i` de esa tabla son directamente los LOGITS del
-        token que sigue al token `i`.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    **En `__init__`** (dos lineas ademas del `super()`):
 
-        Parece un truco y es exactamente el modelo del ejercicio 2: entrenado con
-        cross-entropy, converge a los conteos normalizados. Lo interesante es ver que
-        contar y aprender dan lo mismo cuando el modelo es asi de simple. A partir de ahi,
-        aprender escala y contar no.
+        self.vocab_size = vocab_size
+        self.token_embedding = nn.Embedding(vocab_size, vocab_size)
 
-    POR QUE `nn.Embedding` Y NO `nn.Linear`
-        Son lo mismo matematicamente: un Embedding es un Linear cuya entrada es un vector
-        one-hot. Pero el Embedding solo LEE la fila que necesita en vez de multiplicar por
-        una matriz de V x V llena de ceros. Con V=4096 eso es la diferencia entre leer 4096
-        numeros y multiplicar 16 millones.
+    El nombre `token_embedding` importa: el test copia pesos por nombre.
 
-    SUBMODULOS (los tests copian pesos por nombre, respeta el nombre)
-        token_embedding: nn.Embedding(vocab_size, vocab_size)
+    **En `forward`** (cuatro lineas):
+
+        logits = self.token_embedding(idx)          # (B, T) -> (B, T, V)
+
+        if targets is None:
+            return logits, None
+
+        loss = F.cross_entropy(
+            logits.reshape(-1, self.vocab_size),
+            targets.reshape(-1),
+        )
+        return logits, loss
+
+    QUÉ ES ESTE MODELO
+    ------------------
+    Una tabla de V filas y V columnas donde la fila `i` son DIRECTAMENTE los logits del token
+    que sigue al token `i`.
+
+    Parece un truco y es exactamente el modelo del ejercicio 2: entrenado con cross-entropy,
+    converge a los conteos normalizados. Lo interesante es ver que CONTAR y APRENDER dan lo
+    mismo cuando el modelo es asi de simple. A partir de ahi, aprender escala y contar no.
+
+    POR QUÉ `nn.Embedding` Y NO `nn.Linear`
+    ---------------------------------------
+    Son la misma operacion: un Embedding es un Linear cuya entrada es un vector one-hot.
+
+    La diferencia es que el Embedding LEE la fila que necesita en lugar de multiplicar por una
+    matriz llena de ceros. Con V=4096, eso es leer 4096 numeros frente a hacer 16 millones de
+    multiplicaciones.
+
+    EL `reshape(-1, V)`
+    -------------------
+    `F.cross_entropy` espera `(N, clases)` y `(N,)`, pero tu tienes `(B, T, V)` y `(B, T)`.
+    Aplanar batch y tiempo en una sola dimension es el patron que vas a repetir en TODOS los
+    modelos del curso, incluido el GPT final.
+
+    Devuelve `(logits, None)` si no hay targets, no `(logits, 0)`.
 
     forward(idx, targets=None):
         Args:
             idx: `(B, T)` int64.
             targets: `(B, T)` int64, o `None`.
         Returns:
-            `(logits, loss)` con logits `(B, T, V)`. `loss` es None si no hay targets.
-
-        Para la perdida:
-            F.cross_entropy(logits.reshape(-1, V), targets.reshape(-1))
-
-        El `reshape(-1, V)` aplana batch y tiempo en una sola dimension, porque
-        `cross_entropy` espera `(N, clases)` y `(N,)`. Es el patron que vas a repetir en
-        todos los modelos del curso.
+            `(logits, loss)` con logits `(B, T, V)`.
     """
 
     def __init__(self, vocab_size: int) -> None:
@@ -226,43 +304,68 @@ class NeuralBigram(nn.Module):
 class BengioMLP(nn.Module):
     """El modelo de Bengio et al. 2003: el abuelo de los LLM modernos.
 
-    QUE ES ESTO
-        En vez de mirar solo el token anterior, mira los `block_size` anteriores.
-        Concatena sus embeddings en un vector largo y lo pasa por un MLP.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    **En `__init__`** (cinco lineas ademas del `super()`). Respeta los nombres:
 
-        Con block_size=4 y d_embed=32, el vector concatenado tiene 128 numeros, y de ahi
-        salen los logits sobre todo el vocabulario.
+        self.vocab_size = vocab_size
+        self.block_size = block_size
+        self.d_embed = d_embed
+        self.embedding = nn.Embedding(vocab_size, d_embed)
+        self.hidden = nn.Linear(block_size * d_embed, n_hidden)
+        self.output = nn.Linear(n_hidden, vocab_size)
 
-    POR QUE IMPORTA
-        Dos ideas suyas siguen vivas veinte anyos despues: representar cada palabra como un
-        VECTOR APRENDIDO (y no como un id sin estructura), y modelar la probabilidad del
-        siguiente token con una red.
+    **En `forward`** (cinco lineas):
 
-        Y su limitacion es exactamente lo que la atencion viene a resolver: el contexto es
-        de tamanyo fijo, y como se concatena, el numero de parametros de la primera capa
-        crece linealmente con la longitud del contexto. Con contexto 512 esa capa sola
-        seria enorme.
+        batch = idx.shape[0]
+        emb = self.embedding(idx)            # (B, block_size, d_embed)
+        flat = emb.reshape(batch, -1)        # (B, block_size * d_embed)
+        h = torch.tanh(self.hidden(flat))    # (B, n_hidden)
+        logits = self.output(h)              # (B, V)
 
-    SUBMODULOS (respeta los nombres)
-        embedding: nn.Embedding(vocab_size, d_embed)
-        hidden:    nn.Linear(block_size * d_embed, n_hidden)
-        output:    nn.Linear(n_hidden, vocab_size)
+        if targets is None:
+            return logits, None
+        return logits, F.cross_entropy(logits, targets)
+
+    Usa `tanh`, que es lo que usaba el paper original.
+
+    CONCATENAR, NO PROMEDIAR
+    ------------------------
+    El `reshape(batch, -1)` pega los embeddings de los tokens uno detras de otro.
+
+    Si hicieras `emb.mean(dim=1)` estarias promediando, y el modelo perderia el ORDEN: le
+    daria lo mismo `[el, gato, come]` que `[come, gato, el]`. Hay un test que lo comprueba
+    pasando el contexto al reves.
+
+    Y cuidado con donde va el `-1`: `reshape(batch, -1)`, no `reshape(-1, batch)`. El segundo
+    compila y produce basura.
+
+    OJO CON LA FORMA DE `targets`
+    -----------------------------
+    Aqui `targets` es `(B,)`, UN token por muestra, no una secuencia. Por eso `cross_entropy`
+    se llama sin `reshape`: los logits ya son `(B, V)`.
+
+    POR QUÉ IMPORTA ESTE MODELO
+    ---------------------------
+    Dos ideas suyas siguen vivas veinte anyos despues: representar cada palabra como un VECTOR
+    APRENDIDO (y no como un id sin estructura), y modelar la probabilidad del siguiente token
+    con una red.
+
+    Y su limitacion es exactamente lo que la atencion viene a resolver: la capa `hidden` es
+    `Linear(block_size * d_embed, n_hidden)`, asi que sus parametros crecen LINEALMENTE con la
+    longitud del contexto. Con contexto 512 y d_embed 320, esa capa sola tendria 163.840
+    entradas.
+
+    Y hay un problema mas profundo que el tamanyo: el modelo trata cada posicion como una
+    entrada independiente. No tiene forma de decir "de estos 512 tokens, los que me importan
+    ahora son el 3 y el 47".
 
     forward(idx, targets=None):
         Args:
             idx: `(B, block_size)` int64.
-            targets: `(B,)` int64, UN solo token por muestra (no una secuencia).
+            targets: `(B,)` int64, UN token por muestra.
         Returns:
             `(logits, loss)` con logits `(B, V)`.
-
-        Los pasos:
-            emb    = self.embedding(idx)        -> (B, block_size, d_embed)
-            flat   = emb.reshape(B, -1)         -> (B, block_size * d_embed)
-            h      = torch.tanh(self.hidden(flat))
-            logits = self.output(h)             -> (B, V)
-
-        Usa `tanh`, que es lo que usaba el paper original. Cuidado con el `reshape`: el
-        -1 tiene que estar en la SEGUNDA dimension, no en la primera.
     """
 
     def __init__(

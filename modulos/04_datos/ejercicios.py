@@ -47,45 +47,60 @@ MAX_UINT16 = 2**16
 def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
     """Convierte una lista de ids en un array `uint16`, validando que quepan.
 
-    QUE ES ESTO
-        Vas a guardar 500 millones de tokens en disco. El tipo que elijas multiplica o
-        divide el tamanyo del fichero:
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Cuatro pasos, y tres de ellos son la validacion.
 
-            int64  (el de python)  ->  4 GB
-            uint32                 ->  2 GB
-            uint16                 ->  1 GB
+        1. Si `vocab_size > 2**16`, lanza `ValueError` (no cabe en uint16, haria falta uint32).
 
-        Como nuestros ids van de 0 a 4095, uint16 (que llega a 65.535) sobra de largo.
+        2. Convierte a `int64` PRIMERO, que es donde todo cabe:
 
-    POR QUE HAY QUE VALIDAR ANTES
-        Esta es la parte importante del ejercicio. NumPy NO avisa si un numero no cabe:
-        hace wrap around en silencio.
+               array = np.asarray(ids, dtype=np.int64)
 
-            np.array([65536], dtype=np.int64).astype(np.uint16)   ->  [0]
+        3. Si el array NO esta vacio, comprueba el rango:
 
-        Sin excepcion, sin warning. Tus datos quedan corruptos, el modelo entrena peor y
-        no hay absolutamente nada que apunte a la causa. Podrias pasarte dias buscandolo.
+               if array.size and (array.min() < 0 or array.max() >= vocab_size):
+                   raise ValueError(f"... minimo={array.min()}, maximo={array.max()}")
 
-        Diez lineas de validacion aqui te ahorran eso.
+        4. Y solo entonces convierte:
 
-    QUE HAY QUE COMPROBAR
-        1. Que `vocab_size` quepa en uint16 (o sea, <= 65.536). Si no, hay que usar uint32
-           y el doble de disco.
-        2. Que ningun id sea negativo ni >= `vocab_size`.
+               return array.astype(np.uint16)
 
-        Y lanzar `ValueError` con un mensaje que diga QUE valor se ha salido, no solo que
-        algo esta mal.
+    POR QUÉ VALIDAR ANTES DE CONVERTIR
+    ----------------------------------
+    Numpy NO avisa si un numero no cabe: hace *wrap around* en silencio.
 
-    COMO
-        Convierte primero a `np.int64` (donde todo cabe), comprueba el minimo y el maximo,
-        y solo entonces convierte a `uint16` con `.astype(np.uint16)`.
+        np.array([65536], dtype=np.int64).astype(np.uint16)   ->   array([0])
 
-        Cuidado con el array vacio: `.min()` sobre un array de tamanyo 0 lanza excepcion.
-        Comprueba `array.size` antes.
+    Sin excepcion, sin warning. Tus datos quedan corruptos, el modelo entrena peor, y no hay
+    absolutamente nada que apunte a la causa. Podrias pasarte dias buscandolo.
+
+    Si convirtieras primero y validaras despues, el desbordamiento ya habria ocurrido y
+    estarias comprobando datos ya corruptos. Por eso el paso 2 va antes que el 3.
+
+    POR QUÉ EL `array.size and ...`
+    -------------------------------
+    Sobre un array vacio, `.min()` lanza una excepcion sobre reducciones de secuencias vacias:
+    un error real, pero que no tiene nada que ver con lo que estas validando y despista. El
+    cortocircuito lo evita.
+
+    PON LOS VALORES EN EL MENSAJE DE ERROR
+    --------------------------------------
+    "ids fuera de rango" no ayuda. "maximo=9999" te dice al instante que tu tokenizador esta
+    produciendo ids que no deberia, y con que magnitud. Hay un test que comprueba que el valor
+    aparece en el mensaje.
+
+    POR QUÉ uint16
+    --------------
+        int64  (el de python)  ->  500M tokens = 4 GB
+        uint32                 ->  2 GB
+        uint16                 ->  1 GB
+
+    uint16 llega hasta 65.535 y nuestros ids van de 0 a 4095: sobra de largo.
 
     Args:
         ids: los ids a empaquetar.
-        vocab_size: tamanyo del vocabulario. Todos los ids deben estar en [0, vocab_size).
+        vocab_size: el tamanyo del vocabulario. Todos los ids deben estar en [0, vocab_size).
 
     Returns:
         Un `np.ndarray` de dtype `uint16`.
@@ -99,42 +114,56 @@ def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
 def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
     """Separa un trozo del final para validacion.
 
-    QUE ES ESTO
-        Necesitas texto que el modelo NO vea al entrenar, para poder comprobar si esta
-        aprendiendo de verdad o solo memorizando.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Cuatro lineas.
 
-    POR QUE EL CORTE ES CONTIGUO Y POR EL FINAL, Y NO ALEATORIO
-        Es la unica decision de este ejercicio, y es la importante.
+        1. Valida que `val_fraction` este en (0, 1) y lanza `ValueError` si no.
 
-        Las ventanas de entrenamiento se solapan: la que empieza en la posicion 100 y la
-        que empieza en la 101 comparten 511 de sus 512 tokens. Si repartieras al azar,
-        tu conjunto de validacion estaria lleno de fragmentos que el modelo ya vio.
-        La perdida de validacion saldria estupenda y no significaria nada.
+        2. Calcula cuantos tokens van a validacion:
 
-        Cortando un bloque contiguo del final, lo que reservas son historias enteras que
-        el modelo no ha visto jamas.
+               n_val = max(1, int(len(tokens) * val_fraction))
 
-    COMO
-            n_val = max(1, int(len(tokens) * val_fraction))
-            train = tokens[:-n_val]
-            val   = tokens[-n_val:]
+        3. Si `n_val >= len(tokens)`, lanza `ValueError` (dejaria entrenamiento vacio).
 
-        El `max(1, ...)` evita que con un corpus pequenyo salga un conjunto de validacion
-        de tamanyo 0.
+        4. Devuelve las dos partes:
 
-        Devuelve VISTAS del array original (que es lo que hace el slicing de numpy), no
-        copias. Con 500M tokens, copiar seria un gigabyte de mas para nada.
+               return tokens[:-n_val], tokens[-n_val:]
+
+    LA ÚNICA DECISIÓN DEL EJERCICIO: POR QUÉ EL CORTE ES CONTIGUO Y POR EL FINAL
+    ---------------------------------------------------------------------------
+    El reflejo habitual seria barajar y repartir. Aqui es un error.
+
+    Las ventanas de entrenamiento SE SOLAPAN: la que empieza en la posicion 100 y la que
+    empieza en la 101 comparten 511 de sus 512 tokens. Si repartieras al azar —a nivel de
+    token o incluso de ventana— tu conjunto de validacion estaria lleno de fragmentos que el
+    modelo ya vio.
+
+    El sintoma seria precioso y enganyoso: perdida de validacion bajisima, casi identica a la
+    de entrenamiento, y ninguna senyal de sobreajuste jamas. Estarias midiendo memorizacion y
+    llamandolo generalizacion.
+
+    Cortando un bloque contiguo del final, lo que reservas son historias COMPLETAS que el
+    modelo no ha visto nunca.
+
+    DOS DETALLES
+    ------------
+    **El `max(1, ...)`.** Con un corpus de 50 tokens y `val_fraction=0.005`, `int(50*0.005)`
+    da 0 y te quedarias sin conjunto de validacion.
+
+    **Devuelve VISTAS, no copias.** El slicing de numpy no copia, y eso es lo que quieres: con
+    500M tokens, un `.copy()` gratuito serian 1 GB de RAM a la basura. Hay un test que lo
+    comprueba con `np.shares_memory`.
 
     Args:
         tokens: array 1-D con el corpus entero.
-        val_fraction: fraccion para validacion. Debe estar en (0, 1).
+        val_fraction: la fraccion para validacion. Debe estar en (0, 1).
 
     Returns:
         `(train, val)`.
 
     Raises:
-        ValueError: si `val_fraction` no esta en (0, 1), o si dejaria el conjunto de
-            entrenamiento vacio.
+        ValueError: si `val_fraction` no esta en (0, 1), o si dejaria el entrenamiento vacio.
     """
     raise NotImplementedError("TODO: modulo 04, ejercicio 2 - train_val_split")
 
@@ -146,60 +175,87 @@ def get_batch(
     device: torch.device | str | None = None,
     rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Saca un batch de ventanas al azar. Esta es la funcion que mas veces se ejecuta.
+    """Saca un lote de ventanas al azar. Es la funcion que mas veces se ejecuta del curso.
 
-    QUE ES ESTO
-        Eliges `batch_size` posiciones al azar del corpus. De cada una coges una ventana
-        de `context_length` tokens como entrada, y la MISMA ventana desplazada un token
-        como objetivo.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Seis pasos.
 
-    EL EJEMPLO QUE LO EXPLICA TODO
-        data = [5, 8, 2, 9, 1, 7, ...]   con context_length = 4, empezando en la posicion 0
+        1. Si `rng` es None, crea uno: `rng = rng or np.random.default_rng()`
+
+        2. Calcula hasta donde puedes empezar, y valida:
+
+               max_start = len(data) - context_length - 1
+               if max_start < 1:
+                   raise ValueError(f"el corpus ({len(data)}) es mas corto que el contexto ...")
+
+        3. Elige las posiciones de inicio:
+
+               starts = rng.integers(0, max_start, size=batch_size)
+
+        4. Apila las ventanas, la de entrada y la desplazada:
+
+               x_np = np.stack([data[i : i+context_length]     for i in starts]).astype(np.int64)
+               y_np = np.stack([data[i+1 : i+1+context_length] for i in starts]).astype(np.int64)
+
+        5. Pasa a tensores:
+
+               x, y = torch.from_numpy(x_np), torch.from_numpy(y_np)
+
+        6. Si hay `device`, muevelos:
+
+               device = torch.device(device)
+               if device.type == "cuda":
+                   x = x.pin_memory().to(device, non_blocking=True)
+                   y = y.pin_memory().to(device, non_blocking=True)
+               else:
+                   x, y = x.to(device), y.to(device)
+
+    LA IDEA, CON NÚMEROS
+    --------------------
+        data = [5, 8, 2, 9, 1, 7, ...]     empezando en 0, con context_length = 4
 
             x = [5, 8, 2, 9]      <- lo que ve el modelo
             y = [8, 2, 9, 1]      <- lo que tiene que predecir
 
-        Leelo columna a columna:
+    Leelo columna a columna:
 
-            viendo [5]          -> predecir 8
-            viendo [5,8]        -> predecir 2
-            viendo [5,8,2]      -> predecir 9
-            viendo [5,8,2,9]    -> predecir 1
+        viendo [5]          -> predecir 8
+        viendo [5,8]        -> predecir 2
+        viendo [5,8,2]      -> predecir 9
+        viendo [5,8,2,9]    -> predecir 1
 
-        UNA ventana de 4 tokens son CUATRO ejemplos de entrenamiento. Con contexto 512 son
-        512 predicciones por muestra. Por eso los modelos de lenguaje aprovechan tanto los
-        datos.
+    UNA ventana de 4 tokens son CUATRO ejemplos de entrenamiento. Con contexto 512, son 512
+    predicciones por muestra, y un batch de 48x512 son 24.576. Por eso los modelos de lenguaje
+    aprovechan tanto los datos.
 
-        (Esto funciona gracias a la mascara causal del modulo 06, que impide que la
-        posicion 2 pueda ver el token de la posicion 3. Sin ella el modelo veria la
-        respuesta.)
+    (Esto funciona gracias a la mascara causal del modulo 06, que impide que la posicion 2 vea
+    el token 3. Sin ella el modelo veria la respuesta.)
 
-    COMO
-        1. `max_start = len(data) - context_length - 1`
-           El `-1` es porque `y` necesita un token MAS alla del final de `x`. Sin el, la
-           ultima ventana se sale del array.
-           Si `max_start` sale menor que 1, el corpus es mas corto que el contexto: lanza
-           `ValueError` con un mensaje que diga los dos numeros.
+    EL `-1` DEL PASO 2 ES EL OFF-BY-ONE DEL EJERCICIO
+    -------------------------------------------------
+    `y` necesita un token MAS alla del final de `x`. Si `x` llega hasta `i + context_length - 1`,
+    `y` llega hasta `i + context_length`. Sin el `-1`, la ultima ventana posible desborda.
 
-        2. `starts = rng.integers(0, max_start, size=batch_size)`
+    Y numpy no lanza error al hacer slicing fuera de rango: simplemente devuelve menos
+    elementos. Lo que veras es un `np.stack` fallando por formas incompatibles, tres lineas mas
+    abajo y sin ninguna pista de la causa real.
 
-        3. Apila las ventanas:
-               x_np = np.stack([data[i : i+context_length]     for i in starts])
-               y_np = np.stack([data[i+1 : i+1+context_length] for i in starts])
+    EL `.astype(np.int64)` DEL PASO 4 HACE DOS COSAS
+    ------------------------------------------------
+    La obvia: `nn.Embedding` exige indices `int64`, y los datos estan en `uint16`.
 
-        4. Convierte a `np.int64` con `.astype(np.int64)`.
-           Es obligatorio: los indices de un `nn.Embedding` tienen que ser int64. Y de
-           paso esa conversion COPIA los datos, que es justo lo que quieres: sin la copia
-           te quedarias apuntando al fichero mapeado en disco y cada acceso seria una
-           lectura.
+    La menos obvia: la conversion COPIA. Sin esa copia, `torch.from_numpy` se quedaria
+    apuntando a memoria mapeada de disco y cada acceso del modelo seria potencialmente una
+    lectura de fichero.
 
-        5. `torch.from_numpy(...)` para pasarlo a tensores.
+    EL `pin_memory` DEL PASO 6, SOLO EN CUDA
+    ----------------------------------------
+    Memoria "fijada" es memoria que el sistema operativo se compromete a no mover de sitio, lo
+    que permite a la GPU leerla por DMA sin intervencion de la CPU. Con `non_blocking=True` la
+    llamada vuelve inmediatamente y la copia se solapa con lo que la GPU este calculando.
 
-        6. Si hay `device`:
-               - en CUDA:  `.pin_memory().to(device, non_blocking=True)`
-                 Memoria fijada + copia asincrona = la transferencia del siguiente batch
-                 se solapa con el calculo del actual. En MPS y CPU esto no aplica.
-               - en el resto: `.to(device)` a secas.
+    En MPS no aplica (la memoria es unificada, no hay copia que solapar) y en CPU tampoco.
 
     Args:
         data: array 1-D de tokens (normalmente un `np.memmap` de uint16).

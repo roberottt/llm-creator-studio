@@ -67,31 +67,47 @@ from llmfs.reference import apply_rope
 def causal_mask(seq_len: int, device: torch.device | str | None = None) -> torch.Tensor:
     """La mascara triangular que impide mirar hacia el futuro.
 
-    QUE ES ESTO
-        Al entrenar le damos al modelo la frase entera de golpe y le pedimos que prediga
-        cada token a partir de los anteriores. Sin una mascara, la posicion 3 podria mirar
-        a la 4, que es literalmente la respuesta que tiene que dar.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Una linea.
 
-    CONVENIO: True = SI se puede mirar
-        Es el mismo que usa `F.scaled_dot_product_attention` con `attn_mask` booleana, y
-        el que espera el resto del curso.
+        return torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()
 
-        Para seq_len=4:
+    `tril` = *triangular lower*. Por defecto usa `diagonal=0`, que INCLUYE la diagonal, que es
+    lo que quieres: un token si puede mirarse a si mismo.
 
-            [[ True, False, False, False],   el token 0 solo se ve a si mismo
-             [ True,  True, False, False],   el 1 ve al 0 y a si mismo
-             [ True,  True,  True, False],
-             [ True,  True,  True,  True]]
+    QUÉ TIENE QUE SALIR
+    -------------------
+    Para `seq_len = 4`, con el convenio `True = SI se puede mirar`:
 
-        La diagonal va INCLUIDA: un token si puede mirarse a si mismo.
+        [[ True, False, False, False],     el token 0 solo se ve a si mismo
+         [ True,  True, False, False],     el token 1 ve al 0 y a si mismo
+         [ True,  True,  True, False],
+         [ True,  True,  True,  True]]
 
-    COMO
-        Una matriz de unos y `.tril()` (triangular inferior). Una linea.
-        Cuidado con `.tril()` frente a `.triu()`, y con el argumento `diagonal`: por
-        defecto es 0, que incluye la diagonal, que es lo que quieres.
+    SI TE SALE MAL
+    --------------
+        - al reves        -> has usado `triu` en vez de `tril`
+        - diagonal False  -> has pasado `diagonal=-1`
+
+    POR QUÉ HACE FALTA
+    ------------------
+    Al entrenar le damos al modelo la frase entera de golpe y le pedimos que prediga cada token
+    a partir de los anteriores. Sin una mascara, la posicion 3 podria mirar a la 4, que es
+    literalmente la respuesta que tiene que dar.
+
+    Ese es el bug mas caro del curso: la perdida baja espectacularmente, todo parece ir de
+    maravilla, y el modelo no sirve para nada porque en generacion ese futuro no existe.
+
+    UN AVISO PARA MÁS ADELANTE
+    --------------------------
+    Usamos `True = permitido` porque es el convenio de `F.scaled_dot_product_attention`. Pero
+    `nn.MultiheadAttention` de PyTorch usa el CONTRARIO: su `attn_mask` booleana marca con
+    `True` lo que hay que PROHIBIR. Por eso el test que compara contra ella pasa `~mask`. Es
+    una inconsistencia real dentro de la propia libreria.
 
     Args:
-        seq_len: longitud de la secuencia.
+        seq_len: la longitud de la secuencia.
         device: donde crear el tensor.
 
     Returns:
@@ -108,42 +124,66 @@ def single_head_attention(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Atencion de una cabeza. El corazon del Transformer, en cuatro lineas.
 
-    LA FORMULA
-        salida = softmax( Q K^T / sqrt(d_k) + mascara ) V
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    Cuatro pasos, y cada uno tiene una trampa.
 
-    PASO A PASO
+        1. Coge la dimension y calcula las PUNTUACIONES:
 
-        1. PUNTUACIONES.  scores = q @ k.transpose(-2, -1)
-           Multiplicar (B, T, d_k) por (B, d_k, S) da (B, T, S). La casilla [b, i, j] es
-           el producto escalar de la query del token i con la key del token j: cuanto le
-           interesa a i el token j.
+               d_k = q.shape[-1]
+               scores = q @ k.transpose(-2, -1) / math.sqrt(d_k)
 
-           El `.transpose(-2, -1)` usa indices NEGATIVOS a proposito: asi funciona igual
-           con tensores de 3 dimensiones (B, T, d) que de 4 (B, heads, T, d). Si escribes
-           `.transpose(1, 2)` se te rompera en el ejercicio 3.
+        2. Si hay mascara, tapa lo prohibido:
 
-        2. ESCALADO.  scores = scores / sqrt(d_k)
-           donde d_k = q.shape[-1].
+               if mask is not None:
+                   scores = scores.masked_fill(~mask, float("-inf"))
 
-           Por que: el producto escalar de dos vectores de dimension d_k tiene varianza
-           d_k. Sin dividir, con d_k grande las puntuaciones se disparan, el softmax se
-           satura (devuelve casi [0,0,...,1,...,0]) y su derivada p(1-p) se va a cero. La
-           capa deja de aprender. La demo te lo ensenya midiendolo.
+        3. Convierte en pesos que sumen 1:
 
-        3. MASCARA.  scores = scores.masked_fill(~mask, float("-inf"))
-           El `~` invierte el booleano: donde la mascara dice False (prohibido), pon -inf.
-           Como e^(-inf) = 0, esas posiciones reciben peso exactamente cero.
+               weights = F.softmax(scores, dim=-1)
 
-           TIENE que ir ANTES del softmax. Si borraras los pesos despues, las filas ya no
-           sumarian 1.
+        4. Mezcla los valores y devuelve las dos cosas:
 
-        4. SOFTMAX Y MEZCLA.
-           weights = F.softmax(scores, dim=-1)      <- dim=-1, sobre la ultima dimension
-           salida  = weights @ v
+               return weights @ v, weights
 
-           El `dim=-1` es crucial: normalizas sobre las posiciones a las que se MIRA (cada
-           fila suma 1). Con `dim=-2` normalizarias sobre las que miran, que no significa
-           nada y es un bug clasico que no da error.
+    QUÉ ESTÁ PASANDO EN CADA PASO
+    -----------------------------
+    **Paso 1.** `q @ k.transpose(-2,-1)` multiplica `(B, T, d_k)` por `(B, d_k, S)` y da
+    `(B, T, S)`. La casilla `[b, i, j]` es el producto escalar de la query del token `i` con la
+    key del token `j`: cuanto le interesa a `i` el token `j`.
+
+    **Paso 2.** El `~` invierte el booleano: donde la mascara dice `False` (prohibido), pon
+    `-inf`. Como `e^(-inf) = 0`, esas posiciones reciben peso exactamente cero.
+
+    **Paso 3.** Softmax exponencia y normaliza, asi que cada fila acaba sumando 1.
+
+    **Paso 4.** `weights @ v` es la media ponderada: cada token se lleva una mezcla de los
+    valores, pesada por cuanto le interesa cada uno.
+
+    LAS TRES TRAMPAS
+    ----------------
+    **`transpose(-2, -1)` con indices NEGATIVOS.** Cuentan desde el final, asi que funcionan
+    igual con `(B, T, d)` que con `(B, heads, T, d)`. Si escribes `transpose(1, 2)`, este
+    ejercicio pasa y el ejercicio 3 se rompe con un error de formas que cuesta relacionar con
+    la causa.
+
+    **`dim=-1` en el softmax.** Estas normalizando sobre A QUIEN se mira, de forma que cada
+    fila sume 1. Con `dim=-2` normalizarias sobre quien mira, que no significa nada. Y no da
+    error: las formas son identicas, el modelo entrena, y aprende peor. Hay un test que
+    comprueba que cada fila suma 1.
+
+    **La mascara va ANTES del softmax.** Si borraras los pesos despues, las filas dejarian de
+    sumar 1 y estarias escalando la salida por un factor arbitrario distinto en cada posicion.
+
+    POR QUÉ SE DIVIDE POR sqrt(d_k)
+    -------------------------------
+    El producto escalar de dos vectores de dimension `d_k` tiene varianza `d_k`. Sin dividir,
+    con `d_k` grande las puntuaciones se disparan, y como softmax es exponencial, devuelve casi
+    `[0,0,...,1,...,0]`: la atencion colapsa a elegir un solo token.
+
+    Y el problema de verdad no es el forward, es el GRADIENTE: la derivada del softmax es
+    `p(1-p)`, y con `p` pegado a 0 o a 1 vale practicamente cero. La capa deja de aprender. La
+    demo del modulo lo mide.
 
     Args:
         q: `(B, T, d_k)` las preguntas.
@@ -152,8 +192,8 @@ def single_head_attention(
         mask: `(T, S)` o `(B, T, S)` booleana, `True` = permitido. `None` = sin mascara.
 
     Returns:
-        `(salida, pesos)` con salida `(B, T, d_v)` y pesos `(B, T, S)`.
-        Los pesos se devuelven porque son lo que dibuja el heatmap de la demo.
+        `(salida, pesos)` con salida `(B, T, d_v)` y pesos `(B, T, S)`. Los pesos se devuelven
+        porque son lo que dibuja el heatmap de la demo.
     """
     raise NotImplementedError("TODO: modulo 06, ejercicio 2 - single_head_attention")
 
@@ -161,62 +201,103 @@ def single_head_attention(
 class MultiHeadAttention(nn.Module):
     """Varias atenciones en paralelo, cada una con sus propias proyecciones.
 
-    QUE ES ESTO
-        Una sola cabeza tiene que resolver todas las relaciones de la frase con un unico
-        patron de atencion. Con varias, cada una puede especializarse: en modelos
-        entrenados se han encontrado cabezas que miran al token anterior, cabezas que
-        emparejan comillas de apertura y cierre, y las llamadas induction heads, que
-        detectan el patron "... A B ... A" y predicen B. Nadie las programo.
+    QUÉ TIENES QUE ESCRIBIR
+    -----------------------
+    **En `__init__`:**
 
-    NO CUESTA MAS
-        Con d_model=320 y 8 cabezas, cada una trabaja en head_dim = 320/8 = 40
-        dimensiones. En vez de una atencion de 320 haces ocho de 40, y el total de
-        parametros es identico.
+        1. Valida que `d_model` sea divisible por `n_heads`, y lanza `ValueError` si no.
 
-    EL TRUCO DE IMPLEMENTACION
-        NO se hacen 8 proyecciones separadas. Se hace UNA proyeccion de d_model -> d_model
-        y se parte el resultado en 8 trozos. Es matematicamente equivalente y mucho mas
-        rapido: un matmul grande en vez de ocho pequenyos.
+        2. Guarda: `self.d_model`, `self.n_heads`, `self.head_dim = d_model // n_heads`,
+           `self.dropout` y `self.use_sdpa`.
 
-        Partir:  (B, T, d_model) -> (B, T, n_heads, head_dim) -> (B, n_heads, T, head_dim)
-                 con .view(B, T, n_heads, head_dim).transpose(1, 2)
+        3. Crea las cuatro proyecciones y los dos dropouts. Los nombres importan (el test copia
+           pesos por nombre):
 
-        Juntar:  el camino inverso, con .transpose(1, 2).contiguous().view(B, T, d_model)
+               self.q_proj = nn.Linear(d_model, d_model, bias=bias)
+               self.k_proj = nn.Linear(d_model, d_model, bias=bias)
+               self.v_proj = nn.Linear(d_model, d_model, bias=bias)
+               self.out_proj = nn.Linear(d_model, d_model, bias=bias)
+               self.attn_dropout = nn.Dropout(dropout)
+               self.resid_dropout = nn.Dropout(dropout)
 
-        El `.contiguous()` no es opcional: `transpose` no mueve datos, solo cambia como se
-        recorren (los "strides"), y `.view()` exige memoria contigua. Sin el, PyTorch
-        lanza un error que menciona strides y no dice claramente que hacer.
+    **Dos ayudantes** (escribelos como metodos):
 
-    SUBMODULOS (respeta los nombres, los tests copian pesos por nombre)
-        q_proj, k_proj, v_proj, out_proj:  nn.Linear(d_model, d_model, bias=bias)
-        attn_dropout, resid_dropout:       nn.Dropout(dropout)
+        def _split_heads(self, x):          # (B, T, d_model) -> (B, n_heads, T, head_dim)
+            batch, seq_len, _ = x.shape
+            return x.view(batch, seq_len, self.n_heads, self.head_dim).transpose(1, 2)
 
-    __init__(self, d_model, n_heads, dropout=0.0, bias=False, use_sdpa=False)
-        Guarda d_model, n_heads, head_dim = d_model // n_heads, dropout y use_sdpa.
-        Valida que d_model sea divisible por n_heads y lanza ValueError si no.
+        def _merge_heads(self, x):          # (B, n_heads, T, head_dim) -> (B, T, d_model)
+            batch, _, seq_len, _ = x.shape
+            return x.transpose(1, 2).contiguous().view(batch, seq_len, self.d_model)
 
-    forward(self, x, mask=None, cos=None, sin=None, return_weights=False)
+    **En `forward`:**
+
+        1. `seq_len = x.shape[1]`, y si `mask` es None, generala con `causal_mask`.
+
+        2. Proyecta y parte en cabezas:
+
+               q = self._split_heads(self.q_proj(x))
+               k = self._split_heads(self.k_proj(x))
+               v = self._split_heads(self.v_proj(x))
+
+        3. Si `cos` y `sin` no son None, aplica RoPE a q y k (NUNCA a v):
+
+               q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
+
+        4. La atencion. Si `self.use_sdpa` y no piden pesos:
+
+               out = F.scaled_dot_product_attention(
+                   q, k, v, attn_mask=mask,
+                   dropout_p=self.dropout if self.training else 0.0,
+               )
+               weights = None
+
+           Si no, el calculo explicito (el mismo del ejercicio 2, pero con 4 dimensiones):
+
+               scores = q @ k.transpose(-2, -1) / math.sqrt(self.head_dim)
+               scores = scores.masked_fill(~mask, float("-inf"))
+               weights = F.softmax(scores, dim=-1)
+               out = self.attn_dropout(weights) @ v
+
+        5. Junta las cabezas y proyecta:
+
+               out = self.resid_dropout(self.out_proj(self._merge_heads(out)))
+               return (out, weights) if return_weights else out
+
+    CUATRO DETALLES QUE FALLAN SI NO LOS CUIDAS
+    -------------------------------------------
+    **El ORDEN del view en `_split_heads`.** Primero `view(B, T, n_heads, head_dim)` y LUEGO
+    `transpose`. Si hicieras `view(B, n_heads, T, head_dim)` directamente estarias mezclando
+    posiciones con cabezas: forma correcta, datos mal, cero errores. Hay un test que lo
+    detecta comprobando que las cabezas no dan patrones identicos.
+
+    **El `.contiguous()` en `_merge_heads`.** `transpose` no mueve datos, solo cambia como se
+    recorren (los "strides"), y `view` exige memoria contigua. Sin el, PyTorch lanza un error
+    que habla de strides y no dice claramente que hacer.
+
+    **RoPE va DESPUES de partir en cabezas.** La rotacion depende de `head_dim`, no de
+    `d_model`. Y solo a q y k: lo que debe depender de la posicion son las PUNTUACIONES, no el
+    contenido que se transporta.
+
+    **El `if self.training` del dropout de SDPA.** `F.scaled_dot_product_attention` no consulta
+    el modo por su cuenta: si le pasas `dropout_p` fijo, aplicaria dropout tambien en
+    evaluacion y tus muestras saldrian ruidosas y no reproducibles.
+
+    POR QUÉ UNA PROYECCIÓN GRANDE Y NO OCHO PEQUEÑAS
+    ------------------------------------------------
+    `nn.Linear(320, 320)` seguido de un `view` es matematicamente identico a ocho
+    `nn.Linear(320, 40)` cuyos resultados se concatenan. Pero es UN matmul grande en vez de
+    ocho pequenyos, y como viste en el modulo 01, las matrices grandes aprovechan mucho mejor
+    la GPU.
+
+    forward(x, mask=None, cos=None, sin=None, return_weights=False):
         Args:
             x: `(B, T, d_model)`.
-            mask: `(T, T)` booleana. Si es `None`, generala con `causal_mask`.
-            cos, sin: tablas de RoPE (modulo 09). Si NO son None, aplica
-                `apply_rope(q, cos, sin)` y lo mismo a k, DESPUES de partir en cabezas.
-                Solo a q y k, NUNCA a v.
-            return_weights: si `True`, devuelve `(salida, pesos)` en vez de solo la salida.
-
-        Los pasos:
-            1. proyectar x con q_proj, k_proj, v_proj
-            2. partir cada uno en cabezas -> (B, n_heads, T, head_dim)
-            3. si cos/sin: aplicar RoPE a q y k
-            4. atencion (la misma formula del ejercicio 2, pero ahora con 4 dimensiones;
-               por eso el transpose del ejercicio 2 tiene que usar indices negativos)
-            5. juntar las cabezas -> (B, T, d_model)
-            6. out_proj y resid_dropout
-
-        Si `self.use_sdpa` es True y no piden pesos, usa
-        `F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=...)`
-        en lugar del calculo explicito. Da el mismo resultado sin materializar la matriz
-        T x T. Se activa en el modulo 12, donde se mide cuanto gana.
+            mask: `(T, T)` booleana. Si es `None`, generala causal.
+            cos, sin: tablas de RoPE (modulo 09), o `None`.
+            return_weights: si `True`, devuelve `(salida, pesos)`.
+        Returns:
+            `(B, T, d_model)`, o la tupla si `return_weights`.
     """
 
     def __init__(
