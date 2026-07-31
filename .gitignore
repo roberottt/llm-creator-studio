@@ -1,0 +1,29 @@
+# Entorno
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+uv.lock
+
+# Datos y artefactos pesados (se regeneran)
+data/
+checkpoints/
+runs/
+*.bin
+*.idx
+*.pt
+*.safetensors
+
+# Progreso personal del curso
+.llmfs_progress.json
+
+# Figuras generadas por las demos
+*.png
+!docs/**/*.png
+
+# SO / editor
+.DS_Store
+.vscode/
+.idea/
