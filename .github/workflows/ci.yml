@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Instalar Python
+        run: uv python install 3.11
+
+      - name: Instalar dependencias
+        run: uv sync --extra compare
+
+      - name: Tests de infraestructura (tienen que estar siempre en verde)
+        run: uv run pytest tests/
+
+      - name: Tests de referencia del curso (salud del curso, siempre en verde)
+        run: LLMFS_TEST_REFERENCE=1 uv run pytest modulos/
