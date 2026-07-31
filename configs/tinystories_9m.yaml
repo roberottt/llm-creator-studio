@@ -1,0 +1,64 @@
+# El modelo final: ~8,93M parametros entrenados sobre TinyStories.
+#
+# Desglose del conteo (el modulo 09 lo reproduce y el test lo verifica):
+#   embeddings        4096 x 320                        = 1.310.720
+#   atencion / capa   4 x 320^2   (Wq, Wk, Wv, Wo)      =   409.600
+#   swiglu   / capa   3 x 320 x 896 (gate, up, down)    =   860.160
+#   rmsnorm  / capa   2 x 320                           =       640
+#   ---------------------------------------------------------------
+#   por capa                                            = 1.270.400
+#   x 6 capas                                           = 7.622.400
+#   rmsnorm final                                       =       320
+#   lm_head            atado a los embeddings           =         0
+#   ===============================================================
+#   TOTAL                                               = 8.933.440
+#
+# Presupuesto: 500M tokens / 7,62M parametros no-embedding = 65x. Chinchilla diria 20x.
+# Esta sobreentrenado a proposito; el modulo 11 explica por que eso es lo correcto aqui.
+
+name: tinystories_9m
+
+# --------------------------------------------------------------------- modelo
+vocab_size: 4096          # BPE propio entrenado sobre TinyStories (modulo 02)
+n_layers: 6
+d_model: 320
+n_heads: 8                # head_dim = 40
+d_ff: 896                 # SwiGLU: ceil_64(2/3 * 4 * 320) = ceil_64(853,3) = 896
+context_length: 512
+norm: rmsnorm
+pos: rope
+activation: swiglu
+tie_embeddings: true
+dropout: 0.0              # con ~1 epoca sobre 500M tokens no hace falta regularizar
+bias: false
+rope_theta: 10000.0
+
+# --------------------------------------------------------------------- datos
+dataset: tinystories
+tokenizer: bpe
+data_dir: data
+bpe_train_bytes: 150_000_000   # los merges se entrenan sobre una muestra; ver modulo 02
+val_fraction: 0.005
+num_workers: 4
+
+# --------------------------------------------------------------------- entrenamiento
+optimizer: adamw
+lr: 1.0e-3
+betas: [0.9, 0.95]
+weight_decay: 0.1         # no se aplica a normas ni sesgos (modulo 10)
+grad_clip: 1.0
+warmup_steps: 500
+schedule: cosine
+min_lr_ratio: 0.1         # el coseno decae hasta el 10% del lr, no hasta cero
+batch_size: 48
+grad_accum: 2             # 48 x 2 x 512 = 49.152 tokens por paso
+max_tokens: 500_000_000   # ~10.172 pasos
+eval_interval: 500
+eval_iters: 100
+log_interval: 10
+sample_interval: 500      # muestras de texto al log para ver como aprende a escribir
+seed: 1337
+compile: false            # Turing (sm_75): ver llmfs/device.py
+amp: null                 # null = politica del backend (CUDA fp16 + GradScaler, MPS fp32)
+
+out_dir: checkpoints
