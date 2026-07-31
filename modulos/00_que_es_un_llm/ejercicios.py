@@ -58,20 +58,7 @@ def next_token_probs(counts: Mapping[str, int]) -> dict[str, float]:
             y si no lo compruebas te llevas un ZeroDivisionError mucho mas adelante y en
             un sitio donde no vas a saber de donde viene.
     """
-    probs = {}
-    total = 0
-    for key in counts.keys():
-        total += counts[key]
-
-    if total == 0:
-        raise ValueError("no se puede normalizar una tabla de conteos vacia")
-        return {token: count / total for token, count in counts.items()}
-
-    for key in counts.keys():
-            probs[key] = counts[key]/total
-
-    return probs
-
+    raise NotImplementedError("TODO: modulo 00, ejercicio 1 - next_token_probs")
 
 
 def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = None) -> str:
@@ -117,16 +104,7 @@ def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = No
     Returns:
         Uno de los caracteres de `probs`.
     """
-    aleatorio = rng.random()
-    acumulador = 0
-    ultimo_token = ''
-    for token, probability in probs.items():
-        acumulador += probability
-        ultimo_token = token
-        if aleatorio < acumulador:
-            return token
-
-    return ultimo_token
+    raise NotImplementedError("TODO: modulo 00, ejercicio 2 - sample_next_token")
 
 
 def generate_naive(
@@ -180,19 +158,4 @@ def generate_naive(
     Returns:
         El texto generado, como una unica cadena.
     """
-    salida = list(start)
-    for caracter in range(length):
-        rng = rng or random.Random()
-        context_size = len(start)
-        salida = list(start)
-
-        for _ in range(max(0, length - len(start))):
-            contexto = "".join(salida[-context_size:])
-            counts = table.get(contexto)
-            if not counts:
-                break  # contexto desconocido: el modelo no sabe seguir
-            salida.append(sample_next_token(next_token_probs(counts), rng))
-
-        return "".join(salida)
-
-
+    raise NotImplementedError("TODO: modulo 00, ejercicio 3 - generate_naive")
