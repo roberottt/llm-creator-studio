@@ -3,6 +3,8 @@ name = "llmfs"
 version = "0.1.0"
 description = "LLM desde cero: curso-repositorio para construir un GPT de ~9M de parametros en PyTorch"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.5",
