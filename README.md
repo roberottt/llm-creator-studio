@@ -201,3 +201,7 @@ uv run python -m llmfs next
 El módulo 00 no tiene torch, ni matrices, ni derivadas: construyes un generador de texto con
 diccionarios y una división. Y ves el bucle autorregresivo funcionando antes de saber qué es
 un transformer.
+
+## Licencia
+
+MIT. Ver [LICENSE](LICENSE).
