@@ -1,43 +1,43 @@
-"""Modulo 16 - Post-training: SFT y LoRA.
+"""Module 16 - Post-training: SFT and LoRA.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 16` -> `llmfs hint 16 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 16` -> `llmfs hint 16 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Como convertir un modelo que continua texto en uno que responde:
+How to turn a model that continues text into one that answers:
 
-    build_chat_template  (ej. 1)  el formato que le ensenya donde empieza cada turno
-    mask_prompt_tokens   (ej. 2)  que aprenda a RESPONDER, no a preguntar
-    LoRALinear           (ej. 3)  entrenar el 0,7% de los parametros
-    merge_lora_weights   (ej. 4)  fundir los cambios sin dejar rastro
+    build_chat_template  (ex. 1)  the format that teaches it where each turn starts
+    mask_prompt_tokens   (ex. 2)  so it learns to ANSWER, not to ask
+    LoRALinear           (ex. 3)  training 0.7% of the parameters
+    merge_lora_weights   (ex. 4)  merging the changes without a trace
 
-Los dos primeros son de formato y son cortos. Los dos ultimos son LoRA.
+The first two are about format and they are short. The last two are LoRA.
 
-EL PROBLEMA
+THE PROBLEM
 ===========
 
-Escribele a tu modelo entrenado "¿Cual es la capital de Francia?" y lo mas probable es que
-responda con MAS preguntas. No esta roto: esta haciendo exactamente lo que le ensenyaste,
-que es continuar texto plausible.
+Write "What is the capital of France?" to your trained model and the most likely thing is
+that it answers with MORE questions. It is not broken: it is doing exactly what you taught
+it, which is continuing plausible text.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **pretraining**: la fase larga, aprender lenguaje prediciendo el siguiente token.
-- **post-training / SFT**: seguir entrenando sobre ejemplos de instruccion y respuesta.
-- **chat template**: los marcadores (`<|user|>`, `<|end|>`) que delimitan los turnos.
-- **ignore_index**: el valor (-100) que hace que `cross_entropy` salte una posicion sin
-  contarla en la perdida.
-- **LoRA**: entrenar dos matrices pequenyas anyadidas al modelo en vez de todos sus pesos.
-- **rango** (r) de LoRA: la dimension interna de esas matrices. Tipicamente 4, 8 o 16.
-- **congelar** un parametro: ponerle `requires_grad = False` para que no se entrene.
+- **pretraining**: the long phase, learning language by predicting the next token.
+- **post-training / SFT**: carrying on training on instruction-and-answer examples.
+- **chat template**: the markers (`<|user|>`, `<|end|>`) that delimit the turns.
+- **ignore_index**: the value (-100) that makes `cross_entropy` skip a position without
+  counting it in the loss.
+- **LoRA**: training two small matrices added to the model instead of all its weights.
+- **rank** (r) of LoRA: the internal dimension of those matrices. Typically 4, 8 or 16.
+- **freezing** a parameter: setting `requires_grad = False` so it is not trained.
 
-    llmfs demo 16     hace SFT de verdad y compara el antes y el despues
+    llmfs demo 16     does real SFT and compares the before and the after
 """
 
 from __future__ import annotations
@@ -48,308 +48,310 @@ from typing import Sequence
 import torch
 import torch.nn as nn
 
-# Los marcadores del chat template. Delimitan los turnos para que el modelo aprenda DONDE
-# empieza y acaba cada intervencion.
+# The chat template markers. They delimit the turns so the model learns WHERE each
+# intervention starts and ends.
 from llmfs.reference import CHAT_MARKERS
 
 
 def build_chat_template(
     messages: Sequence[dict[str, str]], add_generation_prompt: bool = False
 ) -> str:
-    """Serializa una conversacion a texto plano con marcadores.
+    """Serializes a conversation into plain text with markers.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un bucle y un `join`.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A loop and a `join`.
 
-        1. La lista donde acumular:
+        1. The list to accumulate into:
 
-               partes = []
+               parts = []
 
-        2. Un mensaje cada vez, validando el rol:
+        2. One message at a time, validating the role:
 
-               for mensaje in messages:
-                   rol = mensaje["role"]
-                   if rol not in CHAT_MARKERS:
-                       raise ValueError(f"rol desconocido: {rol!r}. Validos: system, user, assistant")
-                   partes.append(
-                       f"{CHAT_MARKERS[rol]}{mensaje['content']}{CHAT_MARKERS['end']}"
+               for message in messages:
+                   role = message["role"]
+                   if role not in CHAT_MARKERS:
+                       raise ValueError(
+                           f"unknown role: {role!r}. Valid ones: system, user, assistant"
+                       )
+                   parts.append(
+                       f"{CHAT_MARKERS[role]}{message['content']}{CHAT_MARKERS['end']}"
                    )
 
-        3. La apertura para la respuesta, si se pide:
+        3. The opening for the answer, if asked for:
 
                if add_generation_prompt:
-                   partes.append(CHAT_MARKERS["assistant"])
+                   parts.append(CHAT_MARKERS["assistant"])
 
-        4. `return "".join(partes)`
+        4. `return "".join(parts)`
 
-    Fijate en que se une con `""` y no con espacios ni saltos de linea: los marcadores ya
-    separan, y cualquier caracter extra seria uno mas que el modelo tiene que aprender a
-    predecir.
+    Note that it joins with `""` and not with spaces or newlines: the markers already
+    separate, and any extra character would be one more the model has to learn to predict.
 
-    QUÉ TIENE QUE SALIR
-    -------------------
-        [{"role": "user", "content": "Hola"},
-         {"role": "assistant", "content": "Que tal"}]
+    WHAT SHOULD COME OUT
+    --------------------
+        [{"role": "user", "content": "Hello"},
+         {"role": "assistant", "content": "How are you"}]
 
-        ->  <|user|>Hola<|end|><|assistant|>Que tal<|end|>
+        ->  <|user|>Hello<|end|><|assistant|>How are you<|end|>
 
-    Y con `add_generation_prompt=True` sobre solo el primer mensaje:
+    And with `add_generation_prompt=True` on only the first message:
 
-        ->  <|user|>Hola<|end|><|assistant|>
+        ->  <|user|>Hello<|end|><|assistant|>
 
-    La cadena queda ABIERTA a proposito.
+    The string is left OPEN on purpose.
 
-    QUÉ PROBLEMA RESUELVE
-    ---------------------
-    Un modelo preentrenado solo sabe continuar texto. Si le escribes "¿Cual es la capital de
-    Francia?" lo mas probable es que responda con MAS preguntas: un documento que empieza asi
-    suele seguir asi. No esta roto, esta haciendo exactamente lo que le ensenyaste.
+    WHAT PROBLEM IT SOLVES
+    ----------------------
+    A pretrained model only knows how to continue text. If you write "What is the capital of
+    France?" the most likely thing is that it answers with MORE questions: a document starting
+    like that usually carries on like that. It is not broken, it is doing exactly what you
+    taught it.
 
-    Para que RESPONDA hay que ensenyarle un FORMATO, y eso son los marcadores.
+    For it to ANSWER you have to teach it a FORMAT, and that is what the markers are.
 
-    EL `add_generation_prompt`
-    --------------------------
-    Es lo que se usa en INFERENCIA. Dejas la cadena abierta en `<|assistant|>`, el modelo
-    continua justo ahi, y lo que escriba es la respuesta. Sin esa apertura el modelo no sabe que
-    le toca hablar a el, y es bastante probable que genere otro `<|user|>` y se ponga a
-    inventarse tu siguiente pregunta.
+    THE `add_generation_prompt`
+    ---------------------------
+    It is what you use at INFERENCE time. You leave the string open at `<|assistant|>`, the
+    model continues right there, and what it writes is the answer. Without that opening the
+    model does not know it is its turn to speak, and it is quite likely to generate another
+    `<|user|>` and start making up your next question.
 
-    En ENTRENAMIENTO va a False: ahi la respuesta del assistant ya esta en los datos.
+    In TRAINING it goes to False: there the assistant's answer is already in the data.
 
-    POR QUÉ IMPORTA EL `<|end|>`
-    ----------------------------
-    Es lo que le ensenya al modelo CUANDO PARAR. Sin un marcador de fin, el modelo generaria
-    indefinidamente. En inferencia se usa como token de parada (el `eos_token` del modulo 14).
+    WHY THE `<|end|>` MATTERS
+    -------------------------
+    It is what teaches the model WHEN TO STOP. Without an end marker, the model would generate
+    indefinitely. At inference time it is used as a stop token (module 14's `eos_token`).
 
-    LOS MARCADORES NO SON MÁGICOS
-    -----------------------------
-    Son texto normal y corriente que el modelo aprende a reconocer durante el SFT. Cada familia
-    de modelos usa los suyos y son incompatibles entre si: usar el template equivocado con un
-    modelo degrada bastante su calidad, y es un error sorprendentemente frecuente porque no da
-    ningun aviso, solo respuestas peores.
+    THE MARKERS ARE NOT MAGICAL
+    ---------------------------
+    They are ordinary text the model learns to recognize during SFT. Every model family uses
+    its own and they are incompatible with each other: using the wrong template with a model
+    degrades its quality quite a lot, and it is a surprisingly frequent mistake because it
+    raises no warning, only worse answers.
 
     Args:
-        messages: lista de `{"role": ..., "content": ...}`. Roles validos: los de
-            `CHAT_MARKERS` menos "end".
-        add_generation_prompt: dejar la cadena abierta en `<|assistant|>`.
+        messages: list of `{"role": ..., "content": ...}`. Valid roles: those of
+            `CHAT_MARKERS` minus "end".
+        add_generation_prompt: leave the string open at `<|assistant|>`.
 
     Returns:
-        La conversacion serializada.
+        The serialized conversation.
 
     Raises:
-        ValueError: si algun rol no esta en `CHAT_MARKERS`. Mejor un error claro que generar
-            texto con un marcador inventado que el modelo no ha visto nunca.
+        ValueError: if some role is not in `CHAT_MARKERS`. Better a clear error than
+            generating text with a made-up marker the model has never seen.
     """
-    raise NotImplementedError("TODO: modulo 16, ejercicio 1 - build_chat_template")
+    raise NotImplementedError("TODO: module 16, exercise 1 - build_chat_template")
 
 
 def mask_prompt_tokens(
     input_ids: Sequence[int], prompt_len: int, ignore_index: int = -100
 ) -> list[int]:
-    """Construye los targets ignorando el prompt: solo se aprende de la RESPUESTA.
+    """Builds the targets ignoring the prompt: you only learn from the ANSWER.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cuatro lineas, y el rango del bucle es TODO el ejercicio.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Four lines, and the range of the loop is the WHOLE exercise.
 
-        1. Las validaciones:
+        1. The validations:
 
                if prompt_len < 1:
-                   raise ValueError("prompt_len tiene que ser al menos 1")
+                   raise ValueError("prompt_len has to be at least 1")
                if prompt_len > len(input_ids):
                    raise ValueError(
-                       f"prompt_len ({prompt_len}) mayor que la secuencia ({len(input_ids)})"
+                       f"prompt_len ({prompt_len}) larger than the sequence ({len(input_ids)})"
                    )
 
-        2. Todo ignorado de partida:
+        2. Everything ignored to start with:
 
                targets = [ignore_index] * len(input_ids)
 
-        3. Rellena solo el tramo que si cuenta:
+        3. Fill in only the stretch that does count:
 
                for i in range(prompt_len - 1, len(input_ids) - 1):
                    targets[i] = input_ids[i + 1]
 
         4. `return targets`
 
-    EL EJEMPLO, Y LÉELO CON CUIDADO
-    -------------------------------
-        input_ids = [10, 11, 12, 20, 21, 22]     con prompt_len = 3
+    THE EXAMPLE, AND READ IT CAREFULLY
+    ----------------------------------
+        input_ids = [10, 11, 12, 20, 21, 22]     with prompt_len = 3
         targets   = [-100, -100, 20, 21, 22, -100]
 
-    Hay DOS posiciones ignoradas al principio, no tres. Y una al final.
+    There are TWO ignored positions at the start, not three. And one at the end.
 
-    POR QUÉ DOS Y NO TRES
+    WHY TWO AND NOT THREE
     ---------------------
-    Los targets van DESPLAZADOS un token, como siempre en este curso: en la posicion `i` el
-    objetivo es `input_ids[i+1]`.
+    The targets are SHIFTED one token, as always in this course: at position `i` the target is
+    `input_ids[i+1]`.
 
-    Asi que en la posicion 2 —el ULTIMO token del prompt— el objetivo ya es `input_ids[3] = 20`,
-    que es el PRIMER token de la respuesta. Y ese si interesa muchisimo: es justo la transicion
-    de "se acabo la pregunta" a "empieza mi respuesta", lo mas importante que tiene que
-    aprender el modelo en todo el SFT.
+    So at position 2 —the LAST token of the prompt— the target is already `input_ids[3] = 20`,
+    which is the FIRST token of the answer. And that one matters enormously: it is precisely
+    the transition from "the question is over" to "my answer begins", the most important thing
+    the model has to learn in the whole of SFT.
 
-    De ahi el `prompt_len - 1` del `range`. Ese off-by-one es EL error del ejercicio, y no da
-    ninguna senyal: solo desperdicia la posicion mas valiosa que hay.
+    Hence the `prompt_len - 1` in the `range`. That off-by-one is THE mistake of the exercise,
+    and it gives no signal: it just wastes the most valuable position there is.
 
-    POR QUÉ LA ÚLTIMA TAMBIÉN SE IGNORA
-    -----------------------------------
-    En la ultima posicion no existe `input_ids[i+1]`: no hay nada que predecir. De ahi el
-    `len(input_ids) - 1` como final del `range`.
+    WHY THE LAST ONE IS ALSO IGNORED
+    --------------------------------
+    At the last position there is no `input_ids[i+1]`: there is nothing to predict. Hence the
+    `len(input_ids) - 1` as the end of the `range`.
 
-    QUÉ HACE EL -100
-    ----------------
-    `F.cross_entropy(..., ignore_index=-100)` SALTA esas posiciones: no contribuyen a la
-    perdida y no generan gradiente. El -100 es una convencion de PyTorch, no un numero magico;
-    podria ser cualquier valor imposible de token.
+    WHAT THE -100 DOES
+    ------------------
+    `F.cross_entropy(..., ignore_index=-100)` SKIPS those positions: they do not contribute to
+    the loss and they generate no gradient. The -100 is a PyTorch convention, not a magic
+    number; it could be any impossible token value.
 
-    Y por eso el `forward` de tu GPT (modulo 10) ya lleva `ignore_index=-100` puesto desde
-    entonces. Este es el modulo donde por fin sirve para algo.
+    And that is why your GPT's `forward` (module 10) has had `ignore_index=-100` set since
+    then. This is the module where it finally serves a purpose.
 
-    LA IDEA
-    -------
-    En SFT no quieres que el modelo aprenda a GENERAR las preguntas del usuario: quieres que
-    aprenda a RESPONDERLAS. Si contases la perdida sobre el prompt, estarias gastando capacidad
-    en aprender a imitar al usuario, que es exactamente lo contrario de lo que buscas.
+    THE IDEA
+    --------
+    In SFT you do not want the model to learn to GENERATE the user's questions: you want it to
+    learn to ANSWER them. If you counted the loss over the prompt, you would be spending
+    capacity on learning to imitate the user, which is exactly the opposite of what you want.
 
     Args:
-        input_ids: la secuencia completa, prompt y respuesta juntos.
-        prompt_len: cuantos tokens ocupa el prompt.
-        ignore_index: el valor que `cross_entropy` ignora. -100 es la convencion de PyTorch.
+        input_ids: the complete sequence, prompt and answer together.
+        prompt_len: how many tokens the prompt takes.
+        ignore_index: the value `cross_entropy` ignores. -100 is the PyTorch convention.
 
     Returns:
-        La lista de targets, de la MISMA longitud que `input_ids`.
+        The list of targets, of the SAME length as `input_ids`.
 
     Raises:
-        ValueError: si `prompt_len` es menor que 1 o mayor que la secuencia.
+        ValueError: if `prompt_len` is less than 1 or larger than the sequence.
     """
-    raise NotImplementedError("TODO: modulo 16, ejercicio 2 - mask_prompt_tokens")
+    raise NotImplementedError("TODO: module 16, exercise 2 - mask_prompt_tokens")
 
 
 class LoRALinear(nn.Module):
-    """Una capa lineal con adaptadores de rango bajo.
+    """A linear layer with low-rank adapters.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    **En `__init__`**, seis pasos:
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    **In `__init__`**, six steps:
 
-        1. Valida el rango:
+        1. Validate the rank:
 
                if r <= 0:
-                   raise ValueError(f"r tiene que ser positivo: {r}")
+                   raise ValueError(f"r has to be positive: {r}")
 
-        2. Guarda la base y CONGÉLALA. Esto es el punto entero de LoRA:
+        2. Keep the base layer and FREEZE it. This is the whole point of LoRA:
 
                self.base = base_layer
                for p in self.base.parameters():
                    p.requires_grad = False
 
-        3. Las dimensiones salen de la propia capa:
+        3. The dimensions come from the layer itself:
 
                d_in = base_layer.in_features
                d_out = base_layer.out_features
 
-        4. Los dos adaptadores:
+        4. The two adapters:
 
                self.lora_A = nn.Parameter(torch.empty(r, d_in))
                self.lora_B = nn.Parameter(torch.zeros(d_out, r))
 
-        5. La inicializacion, que NO es simetrica (ver abajo):
+        5. The initialization, which is NOT symmetric (see below):
 
                nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-               # lora_B se queda a CEROS
+               # lora_B stays at ZEROS
 
-        6. La escala y el dropout:
+        6. The scale and the dropout:
 
                self.r = r
                self.alpha = alpha
                self.scaling = alpha / r
                self.lora_dropout = nn.Dropout(dropout)
 
-    **En `forward`**, una linea:
+    **In `forward`**, one line:
 
         return (
             self.base(x)
             + self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T * self.scaling
         )
 
-    SIGUE LAS FORMAS DE LA LÍNEA DEL `forward`
-    ------------------------------------------
+    FOLLOW THE SHAPES OF THE `forward` LINE
+    ---------------------------------------
         x            (..., d_in)
-        @ lora_A.T   con lora_A de (r, d_in), su T es (d_in, r)   ->  (..., r)
-        @ lora_B.T   con lora_B de (d_out, r), su T es (r, d_out) ->  (..., d_out)
+        @ lora_A.T   with lora_A of (r, d_in), its T is (d_in, r)   ->  (..., r)
+        @ lora_B.T   with lora_B of (d_out, r), its T is (r, d_out) ->  (..., d_out)
 
-    Cuadra con la salida de `self.base(x)`, que es `(..., d_out)`. Si te lias con las
-    transpuestas, sigue las formas asi: es mas rapido que pensarlo.
+    It lines up with the output of `self.base(x)`, which is `(..., d_out)`. If you get tangled
+    up with the transposes, follow the shapes like this: it is faster than thinking it through.
 
-    LA INICIALIZACIÓN ASIMÉTRICA ES LO IMPORTANTE DEL EJERCICIO
-    ------------------------------------------------------------
-    `lora_B` empieza a CEROS. Por tanto `B @ A = 0` al construir la capa, y la salida es
-    EXACTAMENTE la de la capa original. El fine-tuning arranca sin perturbar absolutamente nada.
+    THE ASYMMETRIC INITIALIZATION IS THE IMPORTANT PART OF THE EXERCISE
+    ------------------------------------------------------------------
+    `lora_B` starts at ZEROS. Therefore `B @ A = 0` when the layer is built, and the output is
+    EXACTLY that of the original layer. Fine-tuning starts without perturbing anything at all.
 
-    Si inicializaras las dos al azar, el modelo empezaria degradado y tendria que gastar los
-    primeros pasos recuperando lo que ya sabia antes de empezar a mejorar.
+    If you initialized both at random, the model would start degraded and would have to spend
+    the first steps recovering what it already knew before starting to improve.
 
-    ¿Y por que no las DOS a cero? Porque entonces el gradiente de ambas seria cero para siempre
-    (el gradiente de A pasa por B y viceversa) y nunca aprenderian nada. Una a cero rompe la
-    simetria, las dos a cero la congelan.
+    And why not BOTH at zero? Because then the gradient of both would be zero forever (A's
+    gradient goes through B and vice versa) and they would never learn anything. One at zero
+    breaks the symmetry, both at zero freeze it.
 
-    Hay un test que construye la capa y comprueba que su salida es identica a la de la base.
+    There is a test that builds the layer and checks its output is identical to the base one's.
 
-    LA IDEA (Hu et al. 2021)
-    ------------------------
-    Hacer fine-tuning completo de un modelo grande necesita memoria para los pesos, los
-    gradientes Y los dos estados de Adam: unos 12 bytes por parametro. Con 7B de parametros eso
-    son 84 GB, y no cabe en ninguna GPU de consumo.
+    THE IDEA (Hu et al. 2021)
+    -------------------------
+    Full fine-tuning of a large model needs memory for the weights, the gradients AND Adam's
+    two states: about 12 bytes per parameter. With 7B parameters that is 84 GB, and it does not
+    fit in any consumer GPU.
 
-    LoRA parte de una observacion: los cambios que hace el fine-tuning tienen RANGO BAJO. No
-    hace falta poder modificar la matriz en cualquier direccion posible; bastan unas pocas
-    direcciones. Asi que se CONGELA W y se le suma el producto de dos matrices flacas:
+    LoRA starts from an observation: the changes fine-tuning makes are LOW RANK. You do not
+    need to be able to modify the matrix in every possible direction; a few directions are
+    enough. So W is FROZEN and the product of two skinny matrices is added to it:
 
-        salida = x @ W^T  +  (alpha/r) * x @ A^T @ B^T
+        output = x @ W^T  +  (alpha/r) * x @ A^T @ B^T
 
-    con A de `(r, d_in)`, B de `(d_out, r)` y r pequenyo (4, 8, 16).
+    with A of `(r, d_in)`, B of `(d_out, r)` and r small (4, 8, 16).
 
-    LA ARITMÉTICA, CON NUESTROS NÚMEROS
-    -----------------------------------
-    Con d_in = d_out = 320 y r = 8:
+    THE ARITHMETIC, WITH OUR NUMBERS
+    --------------------------------
+    With d_in = d_out = 320 and r = 8:
 
-        W entera:  320 x 320        = 102.400 parametros
-        A y B:     8x320 + 320x8    =   5.120 parametros     (el 5%)
+        the whole W:  320 x 320        = 102,400 parameters
+        A and B:      8x320 + 320x8    =   5,120 parameters     (5%)
 
-    Aplicado al GPT de 9M solo en `q_proj` y `v_proj`, con r=8: 61.440 parametros entrenables,
-    o sea el 0,68% del modelo.
+    Applied to the 9M GPT only in `q_proj` and `v_proj`, with r=8: 61,440 trainable parameters,
+    that is 0.68% of the model.
 
-    LA ESCALA `alpha/r`
+    THE `alpha/r` SCALE
     -------------------
-    Existe para que cambiar `r` no obligue a reajustar el learning rate. Con r mas alto, `B @ A`
-    tiene mas terminos y su magnitud crece; dividir por r lo compensa. Guardala en
-    `self.scaling` porque el ejercicio 4 la necesita.
+    It exists so that changing `r` does not force you to retune the learning rate. With a
+    higher r, `B @ A` has more terms and its magnitude grows; dividing by r compensates. Keep
+    it in `self.scaling` because exercise 4 needs it.
 
-    CONGELAR LA BASE NO ES OPCIONAL
-    -------------------------------
-    Sin el `requires_grad = False` del paso 2 estarias entrenando el modelo entero Y ademas los
-    adaptadores: lo peor de los dos mundos. Y no da ningun error, solo consume la memoria que
-    querias ahorrar. Si al aplicar LoRA a tu modelo ves que el 86% de los parametros son
-    entrenables en vez del 0,7%, esto es lo que ha pasado.
+    FREEZING THE BASE IS NOT OPTIONAL
+    ---------------------------------
+    Without the `requires_grad = False` of step 2 you would be training the whole model AND the
+    adapters on top: the worst of both worlds. And it raises no error, it just consumes the
+    memory you wanted to save. If on applying LoRA to your model you see that 86% of the
+    parameters are trainable instead of 0.7%, this is what happened.
 
-    SUBMÓDULOS (respeta los nombres, el ejercicio 4 los usa)
-        base:         la capa original, congelada
-        lora_A:       `nn.Parameter` de forma `(r, d_in)`
-        lora_B:       `nn.Parameter` de forma `(d_out, r)`, a ceros
+    SUBMODULES (respect the names, exercise 4 uses them)
+        base:         the original layer, frozen
+        lora_A:       `nn.Parameter` of shape `(r, d_in)`
+        lora_B:       `nn.Parameter` of shape `(d_out, r)`, at zeros
         lora_dropout: `nn.Dropout(dropout)`
-        scaling:      el float `alpha / r`
+        scaling:      the float `alpha / r`
 
     __init__(self, base_layer, r=8, alpha=16.0, dropout=0.0)
         Raises:
-            ValueError: si `r` no es positivo.
+            ValueError: if `r` is not positive.
 
     forward(self, x):
         Args:
             x: `(..., d_in)`.
         Returns:
-            `(..., d_out)`, la misma forma que daria la capa base.
+            `(..., d_out)`, the same shape the base layer would give.
     """
 
     def __init__(
@@ -360,86 +362,86 @@ class LoRALinear(nn.Module):
         dropout: float = 0.0,
     ) -> None:
         super().__init__()
-        raise NotImplementedError("TODO: modulo 16, ejercicio 3 - LoRALinear.__init__")
+        raise NotImplementedError("TODO: module 16, exercise 3 - LoRALinear.__init__")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError("TODO: modulo 16, ejercicio 3 - LoRALinear.forward")
+        raise NotImplementedError("TODO: module 16, exercise 3 - LoRALinear.forward")
 
 
 def merge_lora_weights(layer: LoRALinear) -> nn.Linear:
-    """Funde los adaptadores en la matriz base y devuelve un `nn.Linear` normal.
+    """Merges the adapters into the base matrix and returns a normal `nn.Linear`.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cuatro lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Four lines.
 
-        1. La capa vacia, con las mismas dimensiones y el mismo sesgo (o su ausencia):
+        1. The empty layer, with the same dimensions and the same bias (or its absence):
 
                d_in = layer.base.in_features
                d_out = layer.base.out_features
-               fundida = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
+               merged = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
 
-        2. La fusion, dentro de `no_grad`:
+        2. The merge, inside `no_grad`:
 
                with torch.no_grad():
                    delta = layer.lora_B @ layer.lora_A * layer.scaling
-                   fundida.weight.copy_(layer.base.weight + delta)
+                   merged.weight.copy_(layer.base.weight + delta)
                    if layer.base.bias is not None:
-                       fundida.bias.copy_(layer.base.bias)
+                       merged.bias.copy_(layer.base.bias)
 
-        3. `return fundida`
+        3. `return merged`
 
-    EL ORDEN `B @ A` NO ES INTERCAMBIABLE
-    -------------------------------------
-        B es (d_out, r)  y  A es (r, d_in)
-        B @ A            ->  (d_out, d_in)
+    THE `B @ A` ORDER IS NOT INTERCHANGEABLE
+    ----------------------------------------
+        B is (d_out, r)  and  A is (r, d_in)
+        B @ A            ->   (d_out, d_in)
 
-    Que es justo la forma de `weight` en un `nn.Linear`. Al reves (`A @ B`) las formas ni
-    siquiera cuadran salvo que d_in == d_out, y en ese caso cuadrarian dando el resultado
-    equivocado, que es peor.
+    Which is exactly the shape of `weight` in an `nn.Linear`. The other way round (`A @ B`) the
+    shapes do not even line up unless d_in == d_out, and in that case they would line up giving
+    the wrong result, which is worse.
 
-    POR QUÉ `copy_` Y NO UNA ASIGNACIÓN
-    -----------------------------------
-    `fundida.weight.copy_(...)` escribe DENTRO del tensor que ya creo `nn.Linear`, conservando
-    su identidad y sus metadatos (que esta registrado como parametro, su `requires_grad`, su
-    sitio en el `state_dict`).
+    WHY `copy_` AND NOT AN ASSIGNMENT
+    ---------------------------------
+    `merged.weight.copy_(...)` writes INSIDE the tensor `nn.Linear` already created, preserving
+    its identity and its metadata (that it is registered as a parameter, its `requires_grad`,
+    its place in the `state_dict`).
 
-    `fundida.weight = ...` con un tensor normal fallaria: `nn.Module` solo acepta `nn.Parameter`
-    en ese atributo. Es el mismo tipo de distincion que ya viste con el weight tying del modulo
-    10, donde ahi si querias reasignar.
+    `merged.weight = ...` with a normal tensor would fail: `nn.Module` only accepts
+    `nn.Parameter` in that attribute. It is the same kind of distinction you already saw with
+    the weight tying of module 10, where there you did want to reassign.
 
-    EL `no_grad`
-    ------------
-    Estas escribiendo sobre parametros. Sin el, cada `copy_` construiria grafo de autograd que
-    no sirve para nada y ademas mantendria vivos los tensores originales en memoria.
+    THE `no_grad`
+    -------------
+    You are writing over parameters. Without it, each `copy_` would build an autograd graph
+    that serves no purpose and would additionally keep the original tensors alive in memory.
 
-    POR QUÉ IMPORTA ESTO
-    --------------------
-    Durante el entrenamiento, LoRA anyade dos multiplicaciones de matriz por capa, y eso se nota
-    en inferencia: mas kernels que lanzar, mas latencia por token.
+    WHY THIS MATTERS
+    ----------------
+    During training, LoRA adds two matrix multiplications per layer, and that shows at
+    inference time: more kernels to launch, more latency per token.
 
-    Fundiendo los pesos, el modelo resultante es INDISTINGUIBLE de uno normal: mismo coste,
-    mismas formas, y se puede servir sin ninguna dependencia del codigo de LoRA.
+    By merging the weights, the resulting model is INDISTINGUISHABLE from a normal one: same
+    cost, same shapes, and it can be served with no dependency on the LoRA code.
 
-    Es una ventaja de LoRA frente a otros metodos de fine-tuning eficiente: la adaptacion es
-    EXACTAMENTE una suma de matrices, asi que se absorbe sin aproximar nada. No pierdes ni un
-    decimal.
+    It is an advantage of LoRA over other efficient fine-tuning methods: the adaptation is
+    EXACTLY a sum of matrices, so it is absorbed without approximating anything. You do not
+    lose a single decimal.
 
-    Y tiene una consecuencia practica bonita: puedes guardar varios adaptadores de 60 KB para
-    tareas distintas sobre un unico modelo base, y fundir el que toque en cada momento.
+    And it has a nice practical consequence: you can keep several 60 KB adapters for different
+    tasks over a single base model, and merge whichever one you need at any moment.
 
-    LA COMPROBACIÓN
-    ---------------
-    La capa fundida tiene que dar la MISMA salida que la capa LoRA, hasta el error de coma
-    flotante. Hay un test que lo verifica con `torch.allclose`.
+    THE CHECK
+    ---------
+    The merged layer has to give the SAME output as the LoRA layer, up to floating point error.
+    There is a test that verifies it with `torch.allclose`.
 
-    (Con `dropout > 0` compara en modo `eval()`: en `train()` el dropout aleatoriza la salida de
-    la capa LoRA y no habria nada que comparar.)
+    (With `dropout > 0` compare in `eval()` mode: in `train()` the dropout randomizes the LoRA
+    layer's output and there would be nothing to compare.)
 
     Args:
-        layer: la capa LoRA ya entrenada.
+        layer: the already trained LoRA layer.
 
     Returns:
-        Un `nn.Linear` normal con los pesos ya fundidos.
+        A normal `nn.Linear` with the weights already merged.
     """
-    raise NotImplementedError("TODO: modulo 16, ejercicio 4 - merge_lora_weights")
+    raise NotImplementedError("TODO: module 16, exercise 4 - merge_lora_weights")

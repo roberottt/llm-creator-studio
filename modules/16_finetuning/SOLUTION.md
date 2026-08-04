@@ -1,33 +1,33 @@
-# 16 — Solución comentada
+# 16 — Annotated solution
 
-## Ejercicio 1 — `build_chat_template`
+## Exercise 1 — `build_chat_template`
 
 ```python
-partes = []
-for mensaje in messages:
-    rol = mensaje["role"]
-    if rol not in CHAT_MARKERS:
-        raise ValueError(f"rol desconocido: {rol!r}")
-    partes.append(f"{CHAT_MARKERS[rol]}{mensaje['content']}{CHAT_MARKERS['end']}")
+parts = []
+for message in messages:
+    role = message["role"]
+    if role not in CHAT_MARKERS:
+        raise ValueError(f"unknown role: {role!r}")
+    parts.append(f"{CHAT_MARKERS[role]}{message['content']}{CHAT_MARKERS['end']}")
 
 if add_generation_prompt:
-    partes.append(CHAT_MARKERS["assistant"])
+    parts.append(CHAT_MARKERS["assistant"])
 
-return "".join(partes)
+return "".join(parts)
 ```
 
-**El `add_generation_prompt` deja la cadena abierta**, sin `<|end|>`. Es lo que se usa en
-inferencia: el modelo continúa justo ahí y lo que escriba es la respuesta. Sin esa apertura,
-el modelo no sabe que le toca hablar a él.
+**The `add_generation_prompt` leaves the string open**, without `<|end|>`. It is what you use
+at inference time: the model continues right there and what it writes is the answer. Without
+that opening, the model does not know it is its turn to speak.
 
-**El `<|end|>` es lo que le enseña cuándo parar.** Sin un marcador de fin, un modelo generaría
-indefinidamente. En inferencia se usa como token de parada.
+**The `<|end|>` is what teaches it when to stop.** Without an end marker, a model would
+generate indefinitely. At inference time it is used as a stop token.
 
-**Los marcadores no son mágicos:** son texto que el modelo aprende a reconocer durante el
-SFT. Cada familia de modelos usa los suyos y son incompatibles entre sí. Usar el template
-equivocado degrada bastante la calidad, y es un error sorprendentemente frecuente.
+**The markers are not magical:** they are text the model learns to recognize during SFT. Every
+model family uses its own and they are incompatible with each other. Using the wrong template
+degrades quality quite a lot, and it is a surprisingly frequent mistake.
 
-## Ejercicio 2 — `mask_prompt_tokens`
+## Exercise 2 — `mask_prompt_tokens`
 
 ```python
 targets = [ignore_index] * len(input_ids)
@@ -36,32 +36,32 @@ for i in range(prompt_len - 1, len(input_ids) - 1):
 return targets
 ```
 
-### El off-by-one, que es todo el ejercicio
+### The off-by-one, which is the whole exercise
 
 ```
 input_ids = [10, 11, 12, 20, 21, 22]      prompt_len = 3
 targets   = [-100, -100, 20, 21, 22, -100]
 ```
 
-**Dos posiciones ignoradas al principio, no tres.** El bucle empieza en `prompt_len - 1`.
+**Two ignored positions at the start, not three.** The loop starts at `prompt_len - 1`.
 
-La razón: los targets van desplazados un token. En la posición 2 —el **último** token del
-prompt— el objetivo ya es `input_ids[3] = 20`, que es el primer token de la respuesta. Y ese
-sí interesa: es justo la transición *"se acabó la pregunta, me toca responder"*, que es lo más
-importante que el modelo tiene que aprender del SFT.
+The reason: the targets are shifted one token. At position 2 —the **last** token of the
+prompt— the target is already `input_ids[3] = 20`, which is the first token of the answer. And
+that one does matter: it is precisely the *"the question is over, my turn to answer"*
+transition, which is the most important thing the model has to learn from SFT.
 
-Si empezaras en `prompt_len`, te saltarías precisamente esa transición. Y no da ninguna señal:
-solo desperdicias la posición más informativa del ejemplo.
+If you started at `prompt_len`, you would skip exactly that transition. And it gives no signal:
+you just waste the most informative position of the example.
 
-**La última posición también se ignora** porque no hay `input_ids[i+1]` que predecir.
+**The last position is also ignored** because there is no `input_ids[i+1]` to predict.
 
-## Ejercicio 3 — `LoRALinear`
+## Exercise 3 — `LoRALinear`
 
 ```python
 def __init__(self, base_layer, r=8, alpha=16.0, dropout=0.0):
     super().__init__()
     if r <= 0:
-        raise ValueError(f"el rango r tiene que ser positivo: {r}")
+        raise ValueError(f"the rank r has to be positive: {r}")
 
     self.base = base_layer
     self.r, self.alpha = r, alpha
@@ -79,100 +79,100 @@ def __init__(self, base_layer, r=8, alpha=16.0, dropout=0.0):
 
 def forward(self, x):
     base = self.base(x)
-    adaptacion = self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T
-    return base + adaptacion * self.scaling
+    adaptation = self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T
+    return base + adaptation * self.scaling
 ```
 
-### La inicialización asimétrica es lo importante
+### The asymmetric initialization is the important part
 
 ```
 A ~ Kaiming
-B = ceros
+B = zeros
 ```
 
-Con `B = 0`, el producto `BA` vale cero al empezar y **la capa es exactamente la original**.
-El fine-tuning arranca sin perturbar nada. El test
-`test_al_inicializar_la_salida_es_identica_a_la_base` lo comprueba directamente.
+With `B = 0`, the product `BA` is zero at the start and **the layer is exactly the original
+one**. Fine-tuning starts without perturbing anything. The test
+`test_on_initialization_the_output_is_identical_to_the_base` checks it directly.
 
-Si inicializaras las dos al azar, el modelo empezaría degradado y tendría que recuperarse
-antes de empezar a mejorar.
+If you initialized both at random, the model would start degraded and would have to recover
+before starting to improve.
 
-**¿Y por qué no las dos a cero?** Porque entonces el gradiente de ambas sería cero —cada una
-multiplica a la otra— y nunca aprenderían nada. Hay un test para eso también.
+**And why not both at zero?** Because then the gradient of both would be zero —each one
+multiplies the other— and they would never learn anything. There is a test for that too.
 
-### Congelar la base no es opcional
+### Freezing the base is not optional
 
 ```python
 for p in self.base.parameters():
     p.requires_grad = False
 ```
 
-Es el punto entero de LoRA. Sin eso estarías entrenando todo *y además* los adaptadores.
+It is the whole point of LoRA. Without that you would be training everything *and* the
+adapters on top.
 
-### Las transpuestas
+### The transposes
 
-`lora_A` es `(r, d_in)`, así que `x @ lora_A.T` da `(..., r)`. Luego `@ lora_B.T` con
-`lora_B` de `(d_out, r)` da `(..., d_out)`. Correcto.
+`lora_A` is `(r, d_in)`, so `x @ lora_A.T` gives `(..., r)`. Then `@ lora_B.T` with `lora_B` of
+`(d_out, r)` gives `(..., d_out)`. Correct.
 
-## Ejercicio 4 — `merge_lora_weights`
+## Exercise 4 — `merge_lora_weights`
 
 ```python
-fundida = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
+merged = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
 with torch.no_grad():
     delta = (layer.lora_B @ layer.lora_A) * layer.scaling
-    fundida.weight.copy_(layer.base.weight + delta)
+    merged.weight.copy_(layer.base.weight + delta)
     if layer.base.bias is not None:
-        fundida.bias.copy_(layer.base.bias)
-return fundida
+        merged.bias.copy_(layer.base.bias)
+return merged
 ```
 
-**El orden `B @ A`** y no al revés: `B` es `(d_out, r)` y `A` es `(r, d_in)`, así que el
-producto da `(d_out, d_in)`, que es exactamente la forma de `weight` en un `nn.Linear`.
+**The `B @ A` order** and not the other way round: `B` is `(d_out, r)` and `A` is `(r, d_in)`,
+so the product gives `(d_out, d_in)`, which is exactly the shape of `weight` in an `nn.Linear`.
 
-**Por qué importa fundir.** Durante el entrenamiento LoRA añade dos matmuls por capa, y eso
-se nota en inferencia. Fundido, el modelo es indistinguible de uno normal: mismo coste,
-mismas formas, y se puede servir sin ninguna dependencia de LoRA.
+**Why merging matters.** During training LoRA adds two matmuls per layer, and that shows at
+inference time. Merged, the model is indistinguishable from a normal one: same cost, same
+shapes, and it can be served with no LoRA dependency.
 
-Es una ventaja de LoRA frente a otros métodos de fine-tuning eficiente: la adaptación es
-**exactamente** una suma de matrices, así que se absorbe sin aproximar nada. El demo lo
-verifica: error de $1{,}3 \times 10^{-6}$ entre la capa LoRA y la fundida.
+It is an advantage of LoRA over other efficient fine-tuning methods: the adaptation is
+**exactly** a sum of matrices, so it is absorbed without approximating anything. The demo
+verifies it: an error of $1.3 \times 10^{-6}$ between the LoRA layer and the merged one.
 
-## Un bug que encontré escribiendo la referencia
+## A bug I found writing the reference
 
-`apply_lora_to_model` daba **86% de parámetros entrenables** cuando LoRA debería dar ~1%.
+`apply_lora_to_model` gave **86% trainable parameters** when LoRA should give ~1%.
 
-La causa: `LoRALinear` congela su propia capa base, pero eso no toca los embeddings, los FFN
-ni las normalizaciones, que se quedaban entrenables. Congelar el modelo **entero primero** y
-añadir los adaptadores después:
+The cause: `LoRALinear` freezes its own base layer, but that does not touch the embeddings, the
+FFNs or the normalizations, which stayed trainable. Freeze the **whole model first** and add
+the adapters afterwards:
 
 ```python
 for p in model.parameters():
     p.requires_grad = False
-# ... y ahora sí, sustituir las capas objetivo
+# ... and now yes, replace the target layers
 ```
 
-Con eso los números salen como deben:
+With that the numbers come out as they should:
 
-| r | entrenables | % del modelo |
+| r | trainable | % of the model |
 |---|---|---|
-| 4 | 30.720 | **0,34%** |
-| 8 | 61.440 | **0,68%** |
-| 16 | 122.880 | **1,36%** |
+| 4 | 30,720 | **0.34%** |
+| 8 | 61,440 | **0.68%** |
+| 16 | 122,880 | **1.36%** |
 
-Es un error fácil de cometer y silencioso: el entrenamiento funciona, simplemente no estás
-haciendo LoRA.
+It is an easy mistake to make and a silent one: training works, you are simply not doing LoRA.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-El SFT sobre el modelo de Shakespeare, con 96 ejemplos y 150 pasos:
+The SFT on the Shakespeare model, with 96 examples and 150 steps:
 
 ```
-ANTES:    Q: Who is the king?
+BEFORE:   Q: Who is the king?
           A:
           I have the courtesy? I do hear thee a dealth,
           Company, but
 
-DESPUÉS:  Q: Who is the king?
+AFTER:    Q: Who is the king?
           A:
           I say we must go.
 
@@ -180,112 +180,16 @@ DESPUÉS:  Q: Who is the king?
           The castle.
 ```
 
-**Lo que hay que mirar no es si la respuesta es correcta.** Con 0,8M de parámetros y 96
-ejemplos, no lo va a ser: *"I say we must go"* es literalmente una de las respuestas del
-conjunto de entrenamiento, memorizada.
+**What you have to look at is not whether the answer is correct.** With 0.8M parameters and 96
+examples, it is not going to be: *"I say we must go"* is literally one of the answers from the
+training set, memorized.
 
-Lo que hay que mirar es el **formato**: antes divagaba en Shakespeare indefinidamente,
-después produce una respuesta corta. El post-entrenamiento ha hecho su trabajo.
+What you have to look at is the **format**: before, it rambled on in Shakespeare indefinitely;
+afterwards, it produces a short answer. The post-training has done its job.
 
-Y ésa es la lección del módulo: **el post-entrenamiento no añade conocimiento**. Saca a la
-superficie un comportamiento que ya estaba latente. Un modelo que no sabe algo tras el
-pretraining no lo aprende con mil ejemplos de conversación.
-
----
-
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-def build_chat_template(
-    messages: Sequence[dict[str, str]], add_generation_prompt: bool = False
-) -> str:
-    partes: list[str] = []
-    for mensaje in messages:
-        rol = mensaje["role"]
-        if rol not in CHAT_MARKERS:
-            raise ValueError(f"rol desconocido: {rol!r}. Validos: system, user, assistant")
-        partes.append(f"{CHAT_MARKERS[rol]}{mensaje['content']}{CHAT_MARKERS['end']}")
-
-    if add_generation_prompt:
-        partes.append(CHAT_MARKERS["assistant"])
-
-    return "".join(partes)
-
-
-def mask_prompt_tokens(
-    input_ids: Sequence[int], prompt_len: int, ignore_index: int = -100
-) -> list[int]:
-    if prompt_len < 1:
-        raise ValueError("prompt_len tiene que ser al menos 1")
-    if prompt_len > len(input_ids):
-        raise ValueError(
-            f"prompt_len ({prompt_len}) mayor que la secuencia ({len(input_ids)})"
-        )
-
-    targets = [ignore_index] * len(input_ids)
-    for i in range(prompt_len - 1, len(input_ids) - 1):
-        targets[i] = input_ids[i + 1]
-    return targets
-
-
-class LoRALinear(nn.Module):
-
-    def __init__(
-        self,
-        base_layer: nn.Linear,
-        r: int = 8,
-        alpha: float = 16.0,
-        dropout: float = 0.0,
-    ) -> None:
-        super().__init__()
-        if r <= 0:
-            raise ValueError(f"el rango r tiene que ser positivo: {r}")
-
-        self.base = base_layer
-        self.r = r
-        self.alpha = alpha
-        self.scaling = alpha / r
-
-        # La capa base se congela: es el punto de LoRA.
-        for p in self.base.parameters():
-            p.requires_grad = False
-
-        d_in, d_out = base_layer.in_features, base_layer.out_features
-        self.lora_A = nn.Parameter(torch.empty(r, d_in))
-        self.lora_B = nn.Parameter(torch.zeros(d_out, r))
-        self.lora_dropout = nn.Dropout(dropout)
-
-        nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))
-        # lora_B se queda en ceros: al arrancar, la capa es identica a la original.
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        base = self.base(x)
-        adaptacion = self.lora_dropout(x) @ self.lora_A.T @ self.lora_B.T
-        return base + adaptacion * self.scaling
-
-
-def merge_lora_weights(layer: LoRALinear) -> nn.Linear:
-    d_in = layer.base.in_features
-    d_out = layer.base.out_features
-    fundida = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)
-
-    with torch.no_grad():
-        delta = (layer.lora_B @ layer.lora_A) * layer.scaling
-        fundida.weight.copy_(layer.base.weight + delta)
-        if layer.base.bias is not None:
-            fundida.bias.copy_(layer.base.bias)
-
-    return fundida
-```
-
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+And that is the module's lesson: **post-training does not add knowledge**. It brings to the
+surface a behaviour that was already latent. A model that does not know something after
+pretraining does not learn it from a thousand conversation examples.
 
 ---
 

@@ -1,183 +1,183 @@
-# 16 — Post-training: SFT y LoRA
+# 16 — Post-training: SFT and LoRA
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque tu modelo entrenado no responde preguntas: las continúa.**
+**Because your trained model does not answer questions: it continues them.**
 
-Escríbele *"¿Cuál es la capital de Francia?"* y lo más probable es que siga con más
-preguntas. No está roto: está haciendo exactamente lo que le enseñaste, que es continuar
-texto plausible. Un documento que empieza con una pregunta suele seguir con más.
+Write *"What is the capital of France?"* and the most likely thing is that it carries on with
+more questions. It is not broken: it is doing exactly what you taught it, which is continuing
+plausible text. A document that starts with a question usually carries on with more.
 
-Convertir eso en algo que responde es una fase distinta con sus propios métodos, y es donde
-se instala buena parte de lo que asocias a un asistente. En este módulo la haces: SFT de
-verdad sobre tu modelo, y ves el antes y el después.
+Turning that into something that answers is a separate phase with its own methods, and it is
+where a good part of what you associate with an assistant gets installed. In this module you
+do it: real SFT on your model, and you see the before and the after.
 
-Y aprendes LoRA, que es la técnica que hace que el fine-tuning de modelos grandes sea
-accesible: entrenar el **0,7%** de los parámetros en vez del 100%.
+And you learn LoRA, the technique that makes fine-tuning large models accessible: training
+**0.7%** of the parameters instead of 100%.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- La diferencia real entre pretraining y post-training, y qué añade cada uno
-- Por qué un modelo necesita marcadores para saber cuándo le toca hablar y cuándo callarse
-- Un off-by-one que decide si el modelo aprende a responder o a preguntar
-- Cómo entrenar el 0,7% de un modelo y luego **fundir los cambios** sin dejar rastro
+- The real difference between pretraining and post-training, and what each one adds
+- Why a model needs markers to know when it is its turn to speak and when to shut up
+- An off-by-one that decides whether the model learns to answer or to ask
+- How to train 0.7% of a model and then **merge the changes** without a trace
 
-### Cuánto cuesta
+### What it costs
 
-3 horas. La demo hace SFT de verdad sobre tu modelo del módulo 13.
+3 hours. The demo does real SFT on your model from module 13.
 
 ---
 
-## Pretraining contra post-training
+## Pretraining against post-training
 
 | | pretraining | post-training |
 |---|---|---|
-| **objetivo** | aprender lenguaje | aprender a comportarse |
-| **datos** | todo el texto que puedas | ejemplos curados, pocos |
-| **cantidad** | miles de millones de tokens | miles o decenas de miles |
-| **coste** | meses y millones | horas |
-| **qué cambia** | el conocimiento | el formato de la respuesta |
+| **goal** | learning language | learning to behave |
+| **data** | all the text you can get | curated examples, few |
+| **amount** | billions of tokens | thousands or tens of thousands |
+| **cost** | months and millions | hours |
+| **what changes** | the knowledge | the format of the answer |
 
-Lo importante, y es una idea que cuesta aceptar: **el post-entrenamiento no añade
-conocimiento**. Lo que hace es sacar a la superficie un comportamiento que ya estaba
-latente. Un modelo que no sabe algo tras el pretraining no lo va a aprender con mil ejemplos
-de conversación.
+The important thing, and it is an idea that is hard to accept: **post-training does not add
+knowledge**. What it does is bring to the surface a behaviour that was already latent. A model
+that does not know something after pretraining is not going to learn it from a thousand
+conversation examples.
 
-## SFT: enseñar el formato
+## SFT: teaching the format
 
-*Supervised Fine-Tuning* es seguir entrenando con la misma pérdida de siempre, pero sobre
-pares de instrucción y respuesta.
+*Supervised Fine-Tuning* is carrying on training with the same loss as always, but on pairs of
+instruction and answer.
 
-Dos piezas lo hacen funcionar.
+Two pieces make it work.
 
-### El chat template
+### The chat template
 
-Un modelo preentrenado no tiene ni idea de dónde acaba una pregunta y empieza una respuesta.
-Se le enseña con **marcadores**:
-
-```
-<|user|>¿Cuál es la capital de Francia?<|end|><|assistant|>París.<|end|>
-```
-
-Los marcadores no tienen nada de mágico: son texto que el modelo aprende a reconocer durante
-el SFT. Aprende que después de `<|assistant|>` toca responder, y que `<|end|>` significa
-parar — **sin eso, un modelo no sabe cuándo callarse**.
-
-Cada familia de modelos usa los suyos y son incompatibles entre sí. Usar el template
-equivocado con un modelo degrada bastante su calidad, y es un error sorprendentemente
-frecuente.
-
-### Enmascarar el prompt
-
-Aquí está la parte sutil. No quieres que el modelo aprenda a **generar las preguntas del
-usuario**: quieres que aprenda a **responderlas**.
-
-La solución es poner `-100` en los targets de las posiciones del prompt.
-`F.cross_entropy(..., ignore_index=-100)` las salta.
+A pretrained model has no idea where a question ends and an answer begins. You teach it with
+**markers**:
 
 ```
-input_ids = [10, 11, 12, 20, 21, 22]      con prompt_len = 3
+<|user|>What is the capital of France?<|end|><|assistant|>Paris.<|end|>
+```
+
+There is nothing magical about the markers: they are text the model learns to recognize during
+SFT. It learns that after `<|assistant|>` it is time to answer, and that `<|end|>` means stop —
+**without that, a model does not know when to shut up**.
+
+Every model family uses its own and they are incompatible with each other. Using the wrong
+template with a model degrades its quality quite a lot, and it is a surprisingly frequent
+mistake.
+
+### Masking the prompt
+
+Here is the subtle part. You do not want the model to learn to **generate the user's
+questions**: you want it to learn to **answer them**.
+
+The solution is to put `-100` in the targets of the prompt positions.
+`F.cross_entropy(..., ignore_index=-100)` skips them.
+
+```
+input_ids = [10, 11, 12, 20, 21, 22]      with prompt_len = 3
 targets   = [-100, -100, 20, 21, 22, -100]
 ```
 
-**Fíjate en que hay dos posiciones ignoradas, no tres.** Los targets van desplazados un
-token, así que en la posición 2 —el último token del prompt— el objetivo ya es el primer
-token de la respuesta, y ese sí interesa.
+**Note there are two ignored positions, not three.** The targets are shifted one token, so at
+position 2 —the last token of the prompt— the target is already the first token of the answer,
+and that one does matter.
 
-Ese off-by-one es el error típico, y no da ningún error visible: solo desperdicia (o
-aprovecha de más) una posición.
+That off-by-one is the typical mistake, and it raises no visible error: it just wastes (or
+over-uses) one position.
 
-## LoRA: entrenar el 1% del modelo
+## LoRA: training 1% of the model
 
-Hacer SFT completo sobre un modelo de 70B requiere memoria para los pesos, los gradientes y
-los estados de Adam: del orden de 12 bytes por parámetro, casi un terabyte.
+Doing full SFT on a 70B model requires memory for the weights, the gradients and Adam's
+states: on the order of 12 bytes per parameter, almost a terabyte.
 
-**LoRA** (Hu et al., 2021) resuelve esto con una observación: los cambios que hace el
-fine-tuning tienen **rango bajo**. No hace falta poder modificar la matriz en cualquier
-dirección; basta con unas pocas.
+**LoRA** (Hu et al., 2021) solves this with one observation: the changes fine-tuning makes are
+**low rank**. You do not need to be able to modify the matrix in any direction; a few are
+enough.
 
-Así que se congela `W` y se le suma el producto de dos matrices flacas:
+So `W` is frozen and the product of two skinny matrices is added to it:
 
 $$W' = W + \frac{\alpha}{r} BA$$
 
-con $A$ de $r \times d_{in}$ y $B$ de $d_{out} \times r$, y $r$ pequeño (4, 8, 16).
+with $A$ of $r \times d_{in}$ and $B$ of $d_{out} \times r$, and $r$ small (4, 8, 16).
 
-### La aritmética que lo justifica
+### The arithmetic that justifies it
 
-Con $d_{in} = d_{out} = 320$ y $r = 8$:
+With $d_{in} = d_{out} = 320$ and $r = 8$:
 
 ```
-W entera:  320 × 320       = 102.400 parámetros
-A y B:     8×320 + 320×8   =   5.120 parámetros    (el 5%)
+the whole W:  320 × 320       = 102,400 parameters
+A and B:      8×320 + 320×8   =   5,120 parameters    (5%)
 ```
 
-Aplicado a nuestro modelo de 9M, adaptando solo `q_proj` y `v_proj`:
+Applied to our 9M model, adapting only `q_proj` and `v_proj`:
 
-| r | entrenables | % del modelo |
+| r | trainable | % of the model |
 |---|---|---|
-| 4 | 30.720 | **0,34%** |
-| 8 | 61.440 | **0,68%** |
-| 16 | 122.880 | **1,36%** |
+| 4 | 30,720 | **0.34%** |
+| 8 | 61,440 | **0.68%** |
+| 16 | 122,880 | **1.36%** |
 
-Y como el estado del optimizador solo existe para lo entrenable, la memoria de Adam baja en
-la misma proporción. En modelos grandes es la diferencia entre necesitar ocho GPUs o una.
+And since the optimizer state only exists for what is trainable, Adam's memory drops in the
+same proportion. On large models it is the difference between needing eight GPUs or one.
 
-### La inicialización, que no es simétrica
+### The initialization, which is not symmetric
 
 ```
 A ~ normal (Kaiming)
-B = CEROS
+B = ZEROS
 ```
 
-Con $B = 0$, el producto $BA$ vale cero al empezar y **la capa es exactamente la original**.
-El fine-tuning arranca sin perturbar nada.
+With $B = 0$, the product $BA$ is zero at the start and **the layer is exactly the original
+one**. Fine-tuning starts without perturbing anything.
 
-Si inicializaras las dos al azar, el modelo empezaría degradado y tendría que recuperarse
-antes de empezar a mejorar. Es una de esas decisiones que parecen un detalle y no lo son.
+If you initialized both at random, the model would start degraded and would have to recover
+before starting to improve. It is one of those decisions that look like a detail and are not.
 
-### Fundir los pesos
+### Merging the weights
 
-Al terminar, los adaptadores se **absorben** en la matriz base:
+When you finish, the adapters are **absorbed** into the base matrix:
 
-$$W_{\text{nueva}} = W + \frac{\alpha}{r} BA$$
+$$W_{\text{new}} = W + \frac{\alpha}{r} BA$$
 
-El modelo resultante es indistinguible de uno normal: mismo coste de inferencia, mismas
-formas, y se puede servir sin ninguna dependencia de LoRA.
+The resulting model is indistinguishable from a normal one: same inference cost, same shapes,
+and it can be served with no LoRA dependency at all.
 
-Esa es una ventaja de LoRA frente a otros métodos de fine-tuning eficiente: la adaptación es
-**exactamente** una suma de matrices, así que se puede absorber sin aproximar nada.
+That is one of LoRA's advantages over other efficient fine-tuning methods: the adaptation is
+**exactly** a sum of matrices, so it can be absorbed without approximating anything.
 
-## Lo que NO vamos a hacer, y es importante
+## What we are NOT going to do, and it matters
 
-Después del SFT, los modelos comerciales pasan por **RLHF** o **DPO**: se recogen
-preferencias humanas entre pares de respuestas y se ajusta el modelo hacia las preferidas.
+After SFT, commercial models go through **RLHF** or **DPO**: human preferences between pairs of
+answers are collected and the model is adjusted towards the preferred ones.
 
-Eso es lo que hace que un modelo sea *útil* en lugar de solo *obediente al formato*, y es
-también donde se instala buena parte del comportamiento que asocias a un asistente.
+That is what makes a model *useful* instead of merely *obedient to the format*, and it is also
+where a good part of the behaviour you associate with an assistant gets installed.
 
-No lo haremos aquí. Requiere datos de preferencias que no tenemos, y un modelo de 9M no
-tiene capacidad para aprovecharlo. Merece la pena saber que existe ese escalón.
+We will not do it here. It requires preference data we do not have, and a 9M model does not
+have the capacity to take advantage of it. It is worth knowing that step exists.
 
-## Dónde está el debate
+## Where the debate is
 
-**Por qué funciona LoRA no está claro.** La hipótesis del "rango bajo intrínseco" es
-razonable y tiene evidencia, pero no está demostrada. Hay trabajos que muestran que LoRA
-rinde peor que el fine-tuning completo en tareas que requieren aprender conocimiento nuevo,
-y comparable en las que solo cambian el estilo — lo cual encaja con la hipótesis, pero es
-correlación.
+**Why LoRA works is not clear.** The "intrinsic low rank" hypothesis is reasonable and has
+evidence, but it is not proven. There is work showing that LoRA performs worse than full
+fine-tuning on tasks that require learning new knowledge, and comparably on those that only
+change the style — which fits the hypothesis, but is correlation.
 
-**Cuánta capacidad añade realmente el post-entrenamiento** es una discusión activa. La
-hipótesis del *superficial alignment* sostiene que casi todo el conocimiento está en el
-pretraining y el post-entrenamiento solo selecciona el formato. Hay evidencia a favor —se
-consiguen resultados muy decentes con mil ejemplos— y también en contra.
+**How much capability post-training really adds** is an active discussion. The *superficial
+alignment* hypothesis holds that almost all the knowledge is in the pretraining and
+post-training only selects the format. There is evidence in favour —very decent results are
+achieved with a thousand examples— and also against.
 
-Y una honesta sobre este módulo: **con un modelo de 9M entrenado sobre TinyStories, el SFT no
-va a producir un asistente**. Vas a ver que aprende el formato —responde tras el marcador,
-para al final— y poco más. El ejercicio enseña el mecanismo, no produce un producto.
+And an honest one about this module: **with a 9M model trained on TinyStories, SFT is not going
+to produce an assistant**. You are going to see it learn the format —it answers after the
+marker, it stops at the end— and little else. The exercise teaches the mechanism, it does not
+produce a product.
 
 ---
 
-**Para ampliar:** Hu et al. 2021, [LoRA](https://arxiv.org/abs/2106.09685) · Ouyang et al.
+**Further reading:** Hu et al. 2021, [LoRA](https://arxiv.org/abs/2106.09685) · Ouyang et al.
 2022, [InstructGPT](https://arxiv.org/abs/2203.02155) (RLHF) · Zhou et al. 2023,
-[LIMA](https://arxiv.org/abs/2305.11206) (la hipótesis del superficial alignment).
-Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+[LIMA](https://arxiv.org/abs/2305.11206) (the superficial alignment hypothesis).
+Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).
