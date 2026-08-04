@@ -1,13 +1,13 @@
-"""Demo del modulo 04: el pipeline de datos completo, con ficheros de verdad.
+"""Demo for module 04: the complete data pipeline, with real files.
 
     llmfs demo 04
 
-Hace el recorrido entero: texto -> tokens -> fichero binario -> memmap -> batch en la GPU.
-Y por el camino ensenya:
-  1. Cuanto ocupa el corpus en cada formato, y por que uint16.
-  2. Un batch de verdad, con la correspondencia x/y token a token.
-  3. Cuantos batches por segundo da tu disco, comparado con lo que tarda un paso de
-     entrenamiento. Si el dato va mas lento que el calculo, la GPU se queda parada.
+It does the whole journey: text -> tokens -> binary file -> memmap -> batch on the GPU.
+And along the way it shows:
+  1. How much the corpus takes in each format, and why uint16.
+  2. A real batch, with the x/y correspondence token by token.
+  3. How many batches per second your disk delivers, compared with how long a training step
+     takes. If the data is slower than the computation, the GPU sits idle.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import time
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -40,174 +40,176 @@ BATCH = 8
 
 def main() -> None:
     cfg = get_device()
-    texto, _ = fetch_tinyshakespeare()
+    text, _ = fetch_tinyshakespeare()
 
-    # ------------------------------------------------------------- 1. tokenizar
-    console.rule("[bold]1. De texto a tokens[/bold]")
-    vocab_chars = sorted(set(texto))
+    # ------------------------------------------------------------- 1. tokenize
+    console.rule("[bold]1. From text to tokens[/bold]")
+    vocab_chars = sorted(set(text))
     stoi = {c: i for i, c in enumerate(vocab_chars)}
     itos = {i: c for c, i in stoi.items()}
-    ids = [stoi[c] for c in texto]
+    ids = [stoi[c] for c in text]
 
     console.print(
-        f"Tokenizador de caracteres (el mas simple posible, para que la demo sea rapida).\n"
-        f"  texto      : {len(texto):,} caracteres\n"
-        f"  vocabulario: {len(vocab_chars)} tokens\n"
-        f"  tokens     : {len(ids):,}\n"
+        f"Character tokenizer (the simplest possible, to keep the demo fast).\n"
+        f"  text      : {len(text):,} characters\n"
+        f"  vocabulary: {len(vocab_chars)} tokens\n"
+        f"  tokens    : {len(ids):,}\n"
     )
 
     tokens = pack_tokens_uint16(ids, len(vocab_chars))
 
-    tabla = Table(title="Lo que ocupa el corpus en cada formato", header_style="bold")
-    tabla.add_column("formato")
-    tabla.add_column("bytes/token", justify="right")
-    tabla.add_column("este corpus", justify="right")
-    tabla.add_column("500M tokens", justify="right")
-    for nombre, ancho in [("int64 (python)", 8), ("uint32", 4), ("uint16", 2)]:
-        tabla.add_row(
-            nombre,
-            str(ancho),
-            f"{len(ids) * ancho / 1e6:.1f} MB",
-            f"{500e6 * ancho / 1e9:.1f} GB",
-            style="bold green" if ancho == 2 else "",
+    table = Table(title="What the corpus takes in each format", header_style="bold")
+    table.add_column("format")
+    table.add_column("bytes/token", justify="right")
+    table.add_column("this corpus", justify="right")
+    table.add_column("500M tokens", justify="right")
+    for name, width in [("int64 (python)", 8), ("uint32", 4), ("uint16", 2)]:
+        table.add_row(
+            name,
+            str(width),
+            f"{len(ids) * width / 1e6:.1f} MB",
+            f"{500e6 * width / 1e9:.1f} GB",
+            style="bold green" if width == 2 else "",
         )
-    console.print(tabla)
+    console.print(table)
 
-    # ------------------------------------------------------------- 2. a disco
-    console.rule("[bold]2. A disco, y de vuelta con memmap[/bold]")
+    # ------------------------------------------------------------- 2. to disk
+    console.rule("[bold]2. To disk, and back with memmap[/bold]")
     train, val = train_val_split(tokens, 0.05)
-    ruta = data_dir() / "demo_shakespeare_char.bin"
-    ruta.parent.mkdir(parents=True, exist_ok=True)
-    train.tofile(ruta)
+    path = data_dir() / "demo_shakespeare_char.bin"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    train.tofile(path)
 
-    mb = ruta.stat().st_size / 1e6
+    mb = path.stat().st_size / 1e6
 
-    # Se mide dos veces cada una y se coge la mejor, para que el orden no decida el
-    # resultado: la primera lectura calienta la cache de paginas del sistema operativo y
-    # la segunda medicion sale artificialmente rapida.
-    def cronometra(fn) -> float:
-        mejor = float("inf")
+    # Each is measured several times and the best is taken, so the order does not decide the
+    # result: the first read warms the operating system's page cache and the second
+    # measurement comes out artificially fast.
+    def time_it(fn) -> float:
+        best = float("inf")
         for _ in range(3):
             t0 = time.perf_counter()
             fn()
-            mejor = min(mejor, time.perf_counter() - t0)
-        return mejor
+            best = min(best, time.perf_counter() - t0)
+        return best
 
-    t_memmap = cronometra(lambda: np.memmap(ruta, dtype=np.uint16, mode="r"))
-    t_ram = cronometra(lambda: np.fromfile(ruta, dtype=np.uint16))
-    mapeado = np.memmap(ruta, dtype=np.uint16, mode="r")
+    t_memmap = time_it(lambda: np.memmap(path, dtype=np.uint16, mode="r"))
+    t_ram = time_it(lambda: np.fromfile(path, dtype=np.uint16))
+    mapped = np.memmap(path, dtype=np.uint16, mode="r")
 
     console.print(
-        f"  entrenamiento: {len(train):,} tokens  ({mb:.1f} MB en disco)\n"
-        f"  validacion   : {len(val):,} tokens (el 5% final, contiguo)\n\n"
-        f"  abrir con memmap    : {t_memmap * 1000:6.2f} ms\n"
-        f"  cargar entero a RAM : {t_ram * 1000:6.2f} ms\n"
+        f"  training  : {len(train):,} tokens  ({mb:.1f} MB on disk)\n"
+        f"  validation: {len(val):,} tokens (the last 5%, contiguous)\n\n"
+        f"  open with memmap    : {t_memmap * 1000:6.2f} ms\n"
+        f"  load fully into RAM : {t_ram * 1000:6.2f} ms\n"
     )
     console.print(
-        f"[bold yellow]No leas nada en estos dos numeros.[/bold yellow] Con {mb:.0f} MB, el "
-        "fichero entra entero en la\ncache del sistema operativo y lo que estas midiendo es "
-        "ruido y coste fijo de\nabrir un descriptor. Cual salga mas rapido depende del dia.\n"
+        f"[bold yellow]Do not read anything into these two numbers.[/bold yellow] With "
+        f"{mb:.0f} MB, the file fits entirely in\nthe operating system's cache and what you "
+        "are measuring is noise and the fixed cost\nof opening a descriptor. Which one comes "
+        "out faster depends on the day.\n"
     )
     console.print(
-        "Y tampoco extrapolo a 1 GB a partir de ellos, porque seria cometer el mismo\n"
-        "error: la velocidad que acabas de medir es la de la cache, no la del disco.\n\n"
-        "El argumento a favor de memmap no es de velocidad de lectura, es este:\n\n"
-        "  - [bold]arranque[/bold]: cargar el fichero entero cuesta lo que cuesta, y lo "
-        "pagas cada vez\n    que lanzas el script. memmap no lee nada hasta que tocas los "
-        "datos.\n"
-        "  - [bold]gestion[/bold]: como accedes a posiciones aleatorias una y otra vez, la "
-        "cache del\n    sistema operativo acaba reteniendo lo que mas usas. Gratis, y "
-        "mejor de lo\n    que lo harias tu.\n"
-        "  - [bold]escala[/bold]: el mismo codigo vale igual si manyana el corpus son 50 GB.\n\n"
-        "[dim]Con 16 GB de RAM, el corpus real de 1 GB tambien cabria cargado entero. Si\n"
-        "prefieres np.fromfile por simplicidad, es una opcion perfectamente defendible a\n"
-        "esta escala. Aqui no hay magia.[/dim]"
+        "And I am not extrapolating to 1 GB from them either, because that would be the\n"
+        "same mistake: the speed you just measured is the cache's, not the disk's.\n\n"
+        "The argument for memmap is not read speed, it is this:\n\n"
+        "  - [bold]startup[/bold]: loading the whole file costs what it costs, and you pay "
+        "it every\n    time you launch the script. memmap reads nothing until you touch the "
+        "data.\n"
+        "  - [bold]management[/bold]: since you access random positions over and over, the "
+        "operating\n    system's cache ends up holding what you use most. Free, and better "
+        "than you\n    would do it.\n"
+        "  - [bold]scale[/bold]: the same code works just as well if tomorrow the corpus is "
+        "50 GB.\n\n"
+        "[dim]With 16 GB of RAM, the real 1 GB corpus would also fit fully loaded. If you\n"
+        "prefer np.fromfile for simplicity, that is a perfectly defensible option at this\n"
+        "scale. There is no magic here.[/dim]"
     )
 
-    # ------------------------------------------------------------- 3. un batch
-    console.rule("[bold]3. Un batch de verdad[/bold]")
-    x, y = get_batch(mapeado, BATCH, CONTEXT, device=cfg.device, rng=np.random.default_rng(0))
-    console.print(f"x: {tuple(x.shape)} {x.dtype} en {x.device}")
-    console.print(f"y: {tuple(y.shape)} {y.dtype} en {y.device}\n")
+    # ------------------------------------------------------------- 3. a batch
+    console.rule("[bold]3. A real batch[/bold]")
+    x, y = get_batch(mapped, BATCH, CONTEXT, device=cfg.device, rng=np.random.default_rng(0))
+    console.print(f"x: {tuple(x.shape)} {x.dtype} on {x.device}")
+    console.print(f"y: {tuple(y.shape)} {y.dtype} on {y.device}\n")
 
-    fila = x[0, :12].tolist()
-    objetivo = y[0, :12].tolist()
-    console.print("Los primeros 12 tokens de la primera muestra:\n")
-    console.print("  x (entrada) : " + " ".join(f"{repr(itos[i])[1:-1]:>4}" for i in fila))
-    console.print("  y (objetivo): " + " ".join(f"{repr(itos[i])[1:-1]:>4}" for i in objetivo))
+    row = x[0, :12].tolist()
+    target = y[0, :12].tolist()
+    console.print("The first 12 tokens of the first sample:\n")
+    console.print("  x (input) : " + " ".join(f"{repr(itos[i])[1:-1]:>4}" for i in row))
+    console.print("  y (target): " + " ".join(f"{repr(itos[i])[1:-1]:>4}" for i in target))
     console.print(
-        f"\n  como texto  : x = {''.join(itos[i] for i in fila)!r}"
-        f"\n                y = {''.join(itos[i] for i in objetivo)!r}\n"
+        f"\n  as text   : x = {''.join(itos[i] for i in row)!r}"
+        f"\n              y = {''.join(itos[i] for i in target)!r}\n"
     )
 
-    console.print("Y esto es lo que aprende el modelo de esta UNICA muestra:\n")
+    console.print("And this is what the model learns from this SINGLE sample:\n")
     for k in range(1, 6):
-        contexto = "".join(itos[i] for i in fila[:k])
-        console.print(f"  viendo {contexto!r:<12} -> debe predecir {itos[objetivo[k - 1]]!r}")
+        context = "".join(itos[i] for i in row[:k])
+        console.print(f"  seeing {context!r:<12} -> it must predict {itos[target[k - 1]]!r}")
     console.print(
-        f"  [dim]... y asi hasta {CONTEXT} predicciones, de una sola ventana.[/dim]\n"
-        f"[bold]Un batch de {BATCH}x{CONTEXT} son {BATCH * CONTEXT:,} predicciones.[/bold] "
-        "Por eso los modelos de\nlenguaje aprovechan tanto cada pasada por los datos."
+        f"  [dim]... and so on up to {CONTEXT} predictions, from a single window.[/dim]\n"
+        f"[bold]A {BATCH}x{CONTEXT} batch is {BATCH * CONTEXT:,} predictions.[/bold] "
+        "That is why language\nmodels get so much out of each pass over the data."
     )
 
-    # ------------------------------------------------------------- 4. velocidad
-    console.rule("[bold]4. Velocidad del pipeline[/bold]")
-    tamanyos = [(8, 64), (16, 128), (32, 256), (48, 512)]
-    tokens_por_seg: list[float] = []
-    etiquetas: list[str] = []
+    # ------------------------------------------------------------- 4. speed
+    console.rule("[bold]4. Pipeline speed[/bold]")
+    sizes = [(8, 64), (16, 128), (32, 256), (48, 512)]
+    tokens_per_second: list[float] = []
+    labels: list[str] = []
 
     rng = np.random.default_rng(0)
-    for b, t in tamanyos:
-        if len(mapeado) < t + 2:
+    for b, t in sizes:
+        if len(mapped) < t + 2:
             continue
-        for _ in range(3):  # calentar
-            get_batch(mapeado, b, t, device=cfg.device, rng=rng)
+        for _ in range(3):  # warm up
+            get_batch(mapped, b, t, device=cfg.device, rng=rng)
         cfg.synchronize()
-        inicio = time.perf_counter()
+        started = time.perf_counter()
         n = 20
         for _ in range(n):
-            get_batch(mapeado, b, t, device=cfg.device, rng=rng)
+            get_batch(mapped, b, t, device=cfg.device, rng=rng)
         cfg.synchronize()
-        transcurrido = time.perf_counter() - inicio
-        tps = n * b * t / transcurrido
-        tokens_por_seg.append(tps)
-        etiquetas.append(f"{b}x{t}")
+        elapsed = time.perf_counter() - started
+        tps = n * b * t / elapsed
+        tokens_per_second.append(tps)
+        labels.append(f"{b}x{t}")
         console.print(
             f"  batch {b:>2} x {t:>3} = {b * t:>6,} tokens  ->  "
-            f"{transcurrido / n * 1000:6.2f} ms/batch   {tps / 1e6:6.2f} M tokens/s"
+            f"{elapsed / n * 1000:6.2f} ms/batch   {tps / 1e6:6.2f} M tokens/s"
         )
 
     console.print(
-        "\n[dim]Compara el ms/batch de la ultima fila (48x512, el del modelo final) con lo\n"
-        "que tarda un paso de entrenamiento. Lo mediras en el modulo 12: si el dato tarda\n"
-        "mas que el calculo, la GPU se pasa el rato esperando y hay que paralelizar la\n"
-        "carga.[/dim]"
+        "\n[dim]Compare the ms/batch of the last row (48x512, the final model's) with how\n"
+        "long a training step takes. You will measure that in module 12: if the data takes\n"
+        "longer than the computation, the GPU spends its time waiting and the loading has\n"
+        "to be parallelized.[/dim]"
     )
 
-    # ------------------------------------------------------------- grafica
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    # ------------------------------------------------------------- plot
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    anchos = [8, 4, 2]
-    nombres = ["int64", "uint32", "uint16"]
-    colores = ["tab:red", "tab:orange", "tab:green"]
-    izq.bar(nombres, [500e6 * a / 1e9 for a in anchos], color=colores)
-    for i, a in enumerate(anchos):
-        izq.text(i, 500e6 * a / 1e9, f"{500e6 * a / 1e9:.1f} GB", ha="center", va="bottom")
-    izq.set_ylabel("GB en disco")
-    izq.set_title("500M tokens, segun el tipo elegido")
-    izq.grid(alpha=0.3, axis="y")
+    widths = [8, 4, 2]
+    names = ["int64", "uint32", "uint16"]
+    colours = ["tab:red", "tab:orange", "tab:green"]
+    left.bar(names, [500e6 * w / 1e9 for w in widths], color=colours)
+    for i, w in enumerate(widths):
+        left.text(i, 500e6 * w / 1e9, f"{500e6 * w / 1e9:.1f} GB", ha="center", va="bottom")
+    left.set_ylabel("GB on disk")
+    left.set_title("500M tokens, by the chosen type")
+    left.grid(alpha=0.3, axis="y")
 
-    der.bar(etiquetas, [t / 1e6 for t in tokens_por_seg], color="tab:blue")
-    der.set_ylabel("millones de tokens/s")
-    der.set_xlabel("batch x contexto")
-    der.set_title(f"Velocidad de get_batch ({cfg.kind})")
-    der.grid(alpha=0.3, axis="y")
+    right.bar(labels, [t / 1e6 for t in tokens_per_second], color="tab:blue")
+    right.set_ylabel("millions of tokens/s")
+    right.set_xlabel("batch x context")
+    right.set_title(f"get_batch throughput ({cfg.kind})")
+    right.grid(alpha=0.3, axis="y")
 
     fig.tight_layout()
-    destino = figures_dir() / "04_data.png"
-    fig.savefig(destino, dpi=120)
+    target_path = figures_dir() / "04_data.png"
+    fig.savefig(target_path, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target_path}[/green]")
 
 
 if __name__ == "__main__":

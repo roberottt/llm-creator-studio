@@ -1,45 +1,43 @@
-# 04 — Solución comentada
+# 04 — Annotated solution
 
-## Ejercicio 1 — `pack_tokens_uint16`
+## Exercise 1 — `pack_tokens_uint16`
 
 ```python
 if vocab_size > MAX_UINT16:
-    raise ValueError(f"vocab_size={vocab_size} no cabe en uint16...")
+    raise ValueError(f"vocab_size={vocab_size} does not fit in uint16...")
 
 array = np.asarray(ids, dtype=np.int64)
 if array.size and (array.min() < 0 or array.max() >= vocab_size):
     raise ValueError(
-        f"ids fuera del vocabulario [0, {vocab_size}): "
-        f"minimo={array.min()}, maximo={array.max()}"
+        f"ids outside the vocabulary [0, {vocab_size}): "
+        f"min={array.min()}, max={array.max()}"
     )
 return array.astype(np.uint16)
 ```
 
-**El orden importa: `int64` primero, comprobar, `uint16` después.** Si convirtieras
-directamente a `uint16`, el desbordamiento ya habría ocurrido y estarías comprobando datos
-ya corruptos. Hay que validar en un tipo donde todo quepa.
+**The order matters: `int64` first, check, `uint16` afterwards.** If you converted straight
+to `uint16`, the overflow would already have happened and you would be checking data that is
+already corrupted. You have to validate in a type where everything fits.
 
-**Por qué esto merece un ejercicio propio.** El comportamiento de NumPy aquí es
-genuinamente peligroso:
+**Why this deserves its own exercise.** NumPy's behaviour here is genuinely dangerous:
 
 ```python
 np.array([65536], dtype=np.int64).astype(np.uint16)   # -> array([0], dtype=uint16)
 ```
 
-Sin excepción, sin warning. En un pipeline de datos, un bug silencioso que corrompe una
-fracción pequeña del corpus es de los peores que existen: el modelo entrena, la pérdida
-baja, todo *parece* funcionar, y simplemente el resultado es peor de lo que debería sin que
-nada apunte a la causa. La validación cuesta tres líneas.
+No exception, no warning. In a data pipeline, a silent bug that corrupts a small fraction of
+the corpus is one of the worst there is: the model trains, the loss drops, everything
+*appears* to work, and the result is simply worse than it should be with nothing pointing at
+the cause. The validation costs three lines.
 
-**El `array.size and ...`.** Sobre un array vacío, `.min()` lanza `ValueError` con un
-mensaje sobre operaciones de reducción en secuencias vacías — un error real, pero que no
-tiene nada que ver con lo que estás validando y despista. El cortocircuito lo evita.
+**The `array.size and ...`.** On an empty array, `.min()` raises `ValueError` with a message
+about reduction operations on empty sequences — a real error, but one that has nothing to do
+with what you are validating and sends you off track. The short-circuit avoids it.
 
-**El mensaje de error dice los valores.** `"ids fuera de rango"` no ayuda; `"maximo=9999"`
-te dice inmediatamente que tu tokenizador está produciendo ids que no debería, y con qué
-magnitud.
+**The error message states the values.** `"ids out of range"` does not help; `"max=9999"`
+tells you immediately that your tokenizer is producing ids it should not, and by how much.
 
-## Ejercicio 2 — `train_val_split`
+## Exercise 2 — `train_val_split`
 
 ```python
 if not 0.0 < val_fraction < 1.0:
@@ -47,35 +45,35 @@ if not 0.0 < val_fraction < 1.0:
 
 n_val = max(1, int(len(tokens) * val_fraction))
 if n_val >= len(tokens):
-    raise ValueError("val_fraction deja el conjunto de entrenamiento vacio")
+    raise ValueError("val_fraction leaves the training set empty")
 return tokens[:-n_val], tokens[-n_val:]
 ```
 
-Dos líneas de lógica y una decisión de diseño que sí importa.
+Two lines of logic and one design decision that does matter.
 
-**Por qué contiguo y por el final.** Es lo único que hay que entender de este ejercicio.
-Las ventanas de entrenamiento se solapan masivamente: la que empieza en la posición 100 y
-la que empieza en la 101 comparten 511 de sus 512 tokens. Si repartieras al azar —a nivel
-de token o incluso de ventana— el conjunto de validación estaría plagado de fragmentos que
-el modelo ya vio en entrenamiento.
+**Why contiguous and from the end.** It is the only thing to understand in this exercise.
+The training windows overlap massively: the one starting at position 100 and the one
+starting at 101 share 511 of their 512 tokens. If you split at random — at the token level
+or even the window level — the validation set would be riddled with fragments the model
+already saw in training.
 
-El síntoma sería precioso y engañoso: pérdida de validación bajísima, casi idéntica a la de
-entrenamiento, y ninguna señal de sobreajuste jamás. Estarías midiendo memorización y
-llamándolo generalización.
+The symptom would be beautiful and misleading: a very low validation loss, almost identical
+to the training one, and never any sign of overfitting. You would be measuring memorization
+and calling it generalization.
 
-Cortando un bloque contiguo del final, lo que reservas son historias completas de
-TinyStories que el modelo no ha visto nunca. Es la unidad correcta: el conjunto de
-validación tiene que ser independiente del de entrenamiento *en la unidad que importa*, y
-aquí la unidad no es el token, es la historia.
+By cutting a contiguous block off the end, what you set aside are complete TinyStories
+stories the model has never seen. It is the right unit: the validation set has to be
+independent of the training one *in the unit that matters*, and here the unit is not the
+token, it is the story.
 
-**Devolver vistas, no copias.** El slicing de NumPy no copia. Con 500M tokens, un `.copy()`
-gratuito serían 1 GB de RAM tirado a la basura. El test `test_devuelve_vistas_y_no_copias`
-lo comprueba con `np.shares_memory`.
+**Returning views, not copies.** NumPy slicing does not copy. With 500M tokens, a needless
+`.copy()` would be 1 GB of RAM thrown in the bin. The test
+`test_it_returns_views_and_not_copies` checks it with `np.shares_memory`.
 
-**El `max(1, ...)`.** Con un corpus de 50 tokens y `val_fraction=0.005`, `int(50*0.005)` es
-0, y te quedarías sin conjunto de validación. El `max` garantiza al menos un token.
+**The `max(1, ...)`.** With a 50-token corpus and `val_fraction=0.005`, `int(50*0.005)` is
+0, and you would be left with no validation set. The `max` guarantees at least one token.
 
-## Ejercicio 3 — `get_batch`
+## Exercise 3 — `get_batch`
 
 ```python
 rng = rng or np.random.default_rng()
@@ -99,200 +97,51 @@ if device is not None:
 return x, y
 ```
 
-**El `-1` de `max_start`.** Es el off-by-one del ejercicio. `y` necesita un token más allá
-del final de `x`: si `x` llega hasta `i + context_length - 1`, `y` llega hasta
-`i + context_length`. Sin el `-1`, la última ventana posible desborda el array. NumPy no
-lanza error al hacer slicing fuera de rango —simplemente devuelve menos elementos— así que
-lo que obtendrías es un `np.stack` fallando con un mensaje sobre formas incompatibles, tres
-líneas más abajo y sin ninguna pista de la causa real.
+**The `-1` in `max_start`.** It is the exercise's off-by-one. `y` needs one token beyond the
+end of `x`: if `x` reaches `i + context_length - 1`, `y` reaches `i + context_length`.
+Without the `-1`, the last possible window overflows the array. NumPy does not raise on
+out-of-range slicing — it simply returns fewer elements — so what you would get is an
+`np.stack` failing with a message about incompatible shapes, three lines further down and
+with no clue about the real cause.
 
-**El `.astype(np.int64)` hace dos cosas a la vez.** La obvia: `nn.Embedding` exige índices
-`int64`, y los datos están en `uint16`. La menos obvia: la conversión **copia**. Sin esa
-copia, `torch.from_numpy` se quedaría apuntando a memoria mapeada de disco, y cada acceso
-del modelo sería potencialmente una lectura de fichero.
+**The `.astype(np.int64)` does two things at once.** The obvious one: `nn.Embedding`
+requires `int64` indices, and the data is `uint16`. The less obvious one: the conversion
+**copies**. Without that copy, `torch.from_numpy` would be left pointing at disk-mapped
+memory, and every model access would potentially be a file read.
 
-**`pin_memory` + `non_blocking`, solo en CUDA.** Memoria "fijada" es memoria que el sistema
-operativo se compromete a no mover de sitio, lo cual permite a la GPU leerla por DMA sin
-intervención de la CPU. Con `non_blocking=True`, la llamada vuelve inmediatamente y la copia
-se solapa con lo que la GPU esté calculando. En MPS no aplica —la memoria es unificada, no
-hay copia que solapar— y en CPU tampoco.
+**`pin_memory` + `non_blocking`, CUDA only.** "Pinned" memory is memory the operating system
+commits to not moving, which lets the GPU read it by DMA with no CPU involvement. With
+`non_blocking=True`, the call returns immediately and the copy overlaps with whatever the
+GPU is computing. On MPS it does not apply — the memory is unified, there is no copy to
+overlap — and neither does it on CPU.
 
-**El generador `rng` como parámetro.** Es lo que hace el ejercicio testeable: dos llamadas
-con `np.random.default_rng(42)` producen exactamente el mismo batch, y el test puede
-compararlo con la referencia elemento a elemento. Sin él, solo podrías comprobar formas.
+**The `rng` generator as a parameter.** It is what makes the exercise testable: two calls
+with `np.random.default_rng(42)` produce exactly the same batch, and the test can compare it
+with the reference element by element. Without it, you could only check shapes.
 
-**Sobre el muestreo con reemplazo.** Elegir posiciones al azar en cada llamada significa
-que algunas ventanas saldrán varias veces y otras ninguna. No es una "época" en sentido
-estricto. Es lo que hace nanoGPT y funciona bien con una sola pasada sobre 500M tokens; con
-muchas épocas sobre un corpus pequeño, un recorrido barajado daría mejores garantías de
-cobertura.
+**About sampling with replacement.** Picking random positions on each call means some
+windows will come up several times and others never. It is not an "epoch" in the strict
+sense. It is what nanoGPT does and it works well with a single pass over 500M tokens; with
+many epochs over a small corpus, a shuffled traversal would give better coverage guarantees.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-La correspondencia `x`/`y` sobre texto real:
+The `x`/`y` correspondence over real text:
 
 ```
 x = 'ot accidenta'
 y = 't accidental'
 
-viendo 'o'      -> debe predecir 't'
-viendo 'ot'     -> debe predecir ' '
-viendo 'ot '    -> debe predecir 'a'
+seeing 'o'      -> it must predict 't'
+seeing 'ot'     -> it must predict ' '
+seeing 'ot '    -> it must predict 'a'
 ```
 
-Y el número que resume el módulo: **un batch de 8×64 son 512 predicciones**, no 8. Con la
-configuración final, 48×512 son 24.576 predicciones por batch. Ahí está la razón de que
-entrenar un modelo de lenguaje sea tan eficiente en datos comparado con casi cualquier otra
-tarea de aprendizaje supervisado.
+And the number that sums the module up: **an 8×64 batch is 512 predictions**, not 8. With
+the final configuration, 48×512 is 24,576 predictions per batch. That is the reason training
+a language model is so data-efficient compared with almost any other supervised learning
+task.
 
-La sección de velocidad conviene mirarla con calma en el módulo 12: si `get_batch` tarda
-más que un paso de entrenamiento, la GPU se pasa el rato esperando y hay que mover la carga
-de datos a un hilo aparte.
-
----
-
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
-    if vocab_size > MAX_UINT16:
-        raise ValueError(
-            f"vocab_size={vocab_size} no cabe en uint16. Usa uint32 (y el doble de disco)."
-        )
-
-    array = np.asarray(ids, dtype=np.int64)
-    if array.size and (array.min() < 0 or array.max() >= vocab_size):
-        raise ValueError(
-            f"ids fuera del vocabulario [0, {vocab_size}): "
-            f"minimo={array.min()}, maximo={array.max()}"
-        )
-    return array.astype(np.uint16)
-
-
-def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
-    if not 0.0 < val_fraction < 1.0:
-        raise ValueError(f"val_fraction debe estar en (0, 1), no {val_fraction}")
-
-    n_val = max(1, int(len(tokens) * val_fraction))
-    if n_val >= len(tokens):
-        raise ValueError("val_fraction deja el conjunto de entrenamiento vacio")
-    return tokens[:-n_val], tokens[-n_val:]
-
-
-def get_batch(
-    data: np.ndarray,
-    batch_size: int,
-    context_length: int,
-    device: torch.device | str | None = None,
-    rng: np.random.Generator | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    rng = rng or np.random.default_rng()
-    max_start = len(data) - context_length - 1
-    if max_start < 1:
-        raise ValueError(
-            f"El corpus ({len(data)} tokens) es mas corto que el contexto "
-            f"({context_length} + 1)."
-        )
-
-    starts = rng.integers(0, max_start, size=batch_size)
-    # astype(int64) tambien materializa el memmap: sin la copia, torch se quedaria
-    # apuntando a memoria mapeada de disco y cada acceso seria una lectura.
-    x_np = np.stack([data[i : i + context_length] for i in starts]).astype(np.int64)
-    y_np = np.stack([data[i + 1 : i + 1 + context_length] for i in starts]).astype(np.int64)
-
-    x = torch.from_numpy(x_np)
-    y = torch.from_numpy(y_np)
-
-    if device is not None:
-        device = torch.device(device)
-        if device.type == "cuda":
-            x = x.pin_memory().to(device, non_blocking=True)
-            y = y.pin_memory().to(device, non_blocking=True)
-        else:
-            x, y = x.to(device), y.to(device)
-
-    return x, y
-```
-
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
-
----
-
-## The complete code
-
-If you got stuck, here is the whole implementation. **Copy it, paste it and run the
-tests**: seeing them pass with code you understand beats staying blocked.
-
-And then go back to the exercise and write it yourself. Reading a solution you have already
-wrestled with works very well; reading it cold does not work at all.
-
-```python
-def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
-    if vocab_size > MAX_UINT16:
-        raise ValueError(
-            f"vocab_size={vocab_size} does not fit in uint16. Use uint32 (and twice the disk)."
-        )
-
-    array = np.asarray(ids, dtype=np.int64)
-    if array.size and (array.min() < 0 or array.max() >= vocab_size):
-        raise ValueError(
-            f"ids outside the vocabulary [0, {vocab_size}): "
-            f"min={array.min()}, max={array.max()}"
-        )
-    return array.astype(np.uint16)
-
-
-def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
-    if not 0.0 < val_fraction < 1.0:
-        raise ValueError(f"val_fraction must be in (0, 1), not {val_fraction}")
-
-    n_val = max(1, int(len(tokens) * val_fraction))
-    if n_val >= len(tokens):
-        raise ValueError("val_fraction leaves the training set empty")
-    return tokens[:-n_val], tokens[-n_val:]
-
-
-def get_batch(
-    data: np.ndarray,
-    batch_size: int,
-    context_length: int,
-    device: torch.device | str | None = None,
-    rng: np.random.Generator | None = None,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    rng = rng or np.random.default_rng()
-    max_start = len(data) - context_length - 1
-    if max_start < 1:
-        raise ValueError(
-            f"The corpus ({len(data)} tokens) is shorter than the context "
-            f"({context_length} + 1)."
-        )
-
-    starts = rng.integers(0, max_start, size=batch_size)
-    # astype(int64) also materializes the memmap: without the copy, torch would be left
-    # pointing at disk-mapped memory and every access would be a read.
-    x_np = np.stack([data[i : i + context_length] for i in starts]).astype(np.int64)
-    y_np = np.stack([data[i + 1 : i + 1 + context_length] for i in starts]).astype(np.int64)
-
-    x = torch.from_numpy(x_np)
-    y = torch.from_numpy(y_np)
-
-    if device is not None:
-        device = torch.device(device)
-        if device.type == "cuda":
-            x = x.pin_memory().to(device, non_blocking=True)
-            y = y.pin_memory().to(device, non_blocking=True)
-        else:
-            x, y = x.to(device), y.to(device)
-
-    return x, y
-```
-
-The imports you need are already in the module's `exercises.py`, except for any that appear
-at the top of the block.
+The speed section is worth looking at carefully in module 12: if `get_batch` takes longer
+than a training step, the GPU spends its time waiting and the data loading has to be moved
+to a separate thread.

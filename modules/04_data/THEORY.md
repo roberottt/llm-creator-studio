@@ -1,95 +1,96 @@
-# 04 — Datos: de texto a batches en la GPU
+# 04 — Data: from text to batches on the GPU
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque la GPU no puede estar esperando.**
+**Because the GPU cannot be left waiting.**
 
-Es el módulo menos glamuroso del curso y uno de los que más rendimiento decide. Si preparar
-el siguiente lote de datos tarda más que procesarlo, tu GPU se pasa la mitad del tiempo
-parada y tu entrenamiento dura el doble. Con un modelo pequeño como el nuestro, ese riesgo
-es real.
+It is the least glamorous module in the course and one of the ones that decides the most
+performance. If preparing the next batch of data takes longer than processing it, your GPU
+spends half its time idle and your training run takes twice as long. With a small model like
+ours, that risk is real.
 
-Y hay algo más importante que la velocidad: aquí es donde se define **qué aprende el
-modelo**. La forma en que emparejas entradas y objetivos es lo que convierte un montón de
-texto en una tarea de aprendizaje. Es una idea de tres líneas y es la que hace que los
-modelos de lenguaje sean tan eficientes con los datos.
+And there is something more important than speed: this is where **what the model learns**
+gets defined. The way you pair up inputs and targets is what turns a pile of text into a
+learning task. It is a three-line idea and it is what makes language models so
+data-efficient.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué 500 millones de tokens ocupan 1 GB y no 4
-- Un bug silencioso de NumPy que te corrompería los datos sin dar ningún error
-- **Por qué una sola ventana de 512 tokens son 512 ejemplos de entrenamiento**, no uno
-- Por qué el conjunto de validación NO se coge al azar, y qué pasa si lo haces
+- Why 500 million tokens take 1 GB and not 4
+- A silent NumPy bug that would corrupt your data without giving any error
+- **Why a single 512-token window is 512 training examples**, not one
+- Why the validation set is NOT picked at random, and what happens if you do
 
-### Cuánto cuesta
+### What it costs
 
-2 horas. Tres funciones cortas, pero la del batch la va a ejecutar tu entrenamiento
-decenas de miles de veces.
+2 hours. Three short functions, but your training run will execute the batch one tens of
+thousands of times.
 
 ---
 
-## El problema: la GPU no puede estar esperando
+## The problem: the GPU cannot be left waiting
 
-Durante el entrenamiento, la GPU procesa un lote de datos y pide el siguiente. Si
-prepararlo tarda más que procesarlo, la GPU se queda parada. Con un modelo pequeño como el
-nuestro —que procesa un batch en centésimas de segundo— esto es un riesgo real: es fácil
-que el cuello de botella sea leer el disco, no calcular.
+During training, the GPU processes a batch of data and asks for the next one. If preparing
+it takes longer than processing it, the GPU sits idle. With a small model like ours — which
+processes a batch in hundredths of a second — this is a real risk: it is easy for the
+bottleneck to be reading the disk, not computing.
 
-Y hay un segundo problema, más tonto pero más caro: **tokenizar 2 GB de texto con tu BPE en
-Python puro tarda del orden de una hora**. Hacerlo cada vez que arrancas un entrenamiento
-es inaceptable. Hay que hacerlo **una vez** y guardar el resultado.
+And there is a second problem, sillier but more expensive: **tokenizing 2 GB of text with
+your BPE in pure Python takes on the order of an hour**. Doing it every time you start a
+training run is unacceptable. It has to be done **once** and the result stored.
 
-## La solución: un array de enteros en disco
+## The solution: an array of integers on disk
 
-El plan es: tokenizas el corpus entero una sola vez, guardas los ids en un fichero binario
-plano, y a partir de ahí lees de ahí siempre.
+The plan is: you tokenize the whole corpus once, store the ids in a flat binary file, and
+from then on you always read from there.
 
-### Elegir el tipo: `uint16`
+### Choosing the type: `uint16`
 
-Un token de nuestro modelo es un número entre 0 y 4095. ¿Cuántos bytes le dedicas?
+A token in our model is a number between 0 and 4095. How many bytes do you give it?
 
-| tipo | rango | 500M tokens ocupan |
+| type | range | 500M tokens take |
 |---|---|---|
-| `int64` (el de Python) | ±9·10¹⁸ | **4 GB** |
-| `uint32` | 0 a 4·10⁹ | 2 GB |
-| `uint16` | **0 a 65.535** | **1 GB** |
+| `int64` (Python's) | ±9·10¹⁸ | **4 GB** |
+| `uint32` | 0 to 4·10⁹ | 2 GB |
+| `uint16` | **0 to 65,535** | **1 GB** |
 
-`uint16` llega hasta 65.535, de sobra para nuestros 4.096. Y ocupa la cuarta parte que el
-`int64` que usaría Python por defecto.
+`uint16` goes up to 65,535, plenty for our 4,096. And it takes a quarter of the space of the
+`int64` Python would use by default.
 
-**Cuidado con una trampa muy fea de NumPy:** si un id se sale del rango, no avisa. Hace
-*wrap around* en silencio. El 65.536 se convierte en 0, el 65.537 en 1. No hay excepción,
-no hay warning: simplemente tus datos quedan corruptos y el modelo aprende peor sin que
-nada apunte a la causa. Por eso el ejercicio 1 te obliga a validar antes de convertir. Diez
-líneas de comprobación ahora contra días de depuración después.
+**Watch out for a very ugly NumPy trap:** if an id goes out of range, it does not warn. It
+*wraps around* silently. 65,536 becomes 0, 65,537 becomes 1. There is no exception, no
+warning: your data is simply corrupted and the model learns worse with nothing pointing at
+the cause. That is why exercise 1 forces you to validate before converting. Ten lines of
+checking now against days of debugging later.
 
-### Guardarlo con `memmap`
+### Storing it with `memmap`
 
-Un `np.memmap` es un array de NumPy que vive en disco pero se usa **exactamente igual** que
-uno normal: `data[100:200]` funciona sin más. El sistema operativo se encarga de cargar en
-memoria solo las páginas que tocas, y de descartarlas cuando hace falta sitio.
+An `np.memmap` is a NumPy array that lives on disk but is used **exactly like** a normal
+one: `data[100:200]` just works. The operating system takes care of loading into memory only
+the pages you touch, and discarding them when space is needed.
 
-Aquí conviene ser honesto, porque se suele explicar mal. Nuestro fichero de 1 GB **cabría
-perfectamente en tus 16 GB de RAM**. La razón de usar `memmap` no es que no quepa:
+Here it is worth being honest, because this often gets explained badly. Our 1 GB file
+**would fit perfectly well in your 16 GB of RAM**. The reason for using `memmap` is not that
+it does not fit:
 
-1. **Arranque instantáneo.** Cargar 1 GB del disco a RAM son unos segundos cada vez que
-   lanzas el script. Con `memmap` es inmediato: no se lee nada hasta que se toca.
-2. **La caché del sistema operativo hace el trabajo.** Como accedes a posiciones aleatorias
-   repetidamente, el SO acaba manteniendo en RAM lo que más usas. Gratis y mejor de lo que
-   lo harías tú.
-3. **Escala sin cambiar nada.** Si mañana entrenas con un corpus de 50 GB, el mismo código
-   sigue funcionando.
+1. **Instant startup.** Loading 1 GB from disk into RAM is a few seconds every time you
+   launch the script. With `memmap` it is immediate: nothing is read until it is touched.
+2. **The operating system's cache does the work.** Since you access random positions
+   repeatedly, the OS ends up keeping in RAM what you use most. Free, and better than you
+   would do it.
+3. **It scales without changing anything.** If tomorrow you train with a 50 GB corpus, the
+   same code keeps working.
 
-Si tu corpus es pequeño, cargarlo en RAM con `np.fromfile` es igual de válido y más simple.
-No hay magia aquí.
+If your corpus is small, loading it into RAM with `np.fromfile` is just as valid and
+simpler. There is no magic here.
 
-## Cómo se saca un batch
+## How a batch is drawn
 
-Aquí está la idea que hace que entrenar un modelo de lenguaje sea tan eficiente en datos.
+Here is the idea that makes training a language model so data-efficient.
 
-Tienes el corpus como una tira larguísima de números. Eliges una posición al azar y coges
-una ventana. La entrada es la ventana, y el objetivo es **la misma ventana desplazada un
-token**:
+You have the corpus as one extremely long strip of numbers. You pick a position at random
+and take a window. The input is the window, and the target is **the same window shifted by
+one token**:
 
 ```
 corpus = [ 5, 8, 2, 9, 1, 7, ...]
@@ -98,74 +99,72 @@ x      = [ 5, 8, 2, 9]
 y      = [ 8, 2, 9, 1]
 ```
 
-Lee la correspondencia columna a columna:
+Read the correspondence column by column:
 
 ```
-viendo [5]            hay que predecir 8
-viendo [5,8]          hay que predecir 2
-viendo [5,8,2]        hay que predecir 9
-viendo [5,8,2,9]      hay que predecir 1
+seeing [5]            you must predict 8
+seeing [5,8]          you must predict 2
+seeing [5,8,2]        you must predict 9
+seeing [5,8,2,9]      you must predict 1
 ```
 
-**Una sola ventana de 4 tokens produce 4 ejemplos de entrenamiento**, no uno. Con nuestro
-contexto de 512, cada muestra da 512 predicciones. Por eso los modelos de lenguaje aprenden
-tanto de cada pasada: la señal de entrenamiento es densísima.
+**A single 4-token window produces 4 training examples**, not one. With our context of 512,
+each sample gives 512 predictions. That is why language models learn so much from each pass:
+the training signal is extremely dense.
 
-Esto es posible gracias a la máscara causal del módulo 06, que impide que la posición 2
-pueda ver el token 3. Sin ella, el modelo vería la respuesta y no aprendería nada.
+This is possible thanks to module 06's causal mask, which stops position 2 from being able
+to see token 3. Without it, the model would see the answer and learn nothing.
 
-Un batch son varias de estas ventanas apiladas. Con `batch_size=48` y `context_length=512`,
-cada `x` es una matriz de `(48, 512)` = 24.576 tokens.
+A batch is several of these windows stacked. With `batch_size=48` and `context_length=512`,
+each `x` is a `(48, 512)` matrix = 24,576 tokens.
 
-## Entrenamiento y validación: por qué el corte no es aleatorio
+## Training and validation: why the cut is not random
 
-Necesitas texto que el modelo **no** haya visto, para saber si está aprendiendo de verdad o
-simplemente memorizando.
+You need text the model has **not** seen, so you can tell whether it is really learning or
+just memorizing.
 
-El reflejo habitual es barajar y repartir. **Aquí es un error**, y la razón es sutil: como
-las ventanas se solapan, dos muestras que empiezan en las posiciones 100 y 101 comparten 511
-de sus 512 tokens. Si repartieras a nivel de token o de ventana, tu conjunto de validación
-estaría lleno de fragmentos que el modelo ya vio en entrenamiento. La pérdida de validación
-saldría preciosa y no significaría nada.
+The usual reflex is to shuffle and split. **Here that is a mistake**, and the reason is
+subtle: since the windows overlap, two samples starting at positions 100 and 101 share 511
+of their 512 tokens. If you split at the token or window level, your validation set would be
+full of fragments the model already saw in training. The validation loss would look
+beautiful and mean nothing.
 
-La solución es cortar **contiguo y por el final**: el último 0,5% del corpus se reserva
-entero. Como TinyStories son historias independientes, eso son historias completas que el
-modelo no ha visto jamás.
+The fix is to cut **contiguously and from the end**: the last 0.5% of the corpus is set
+aside whole. Since TinyStories is made of independent stories, those are complete stories
+the model has never seen.
 
-Es un caso particular de un principio general: el conjunto de validación tiene que ser
-independiente del de entrenamiento *en la unidad que importa*. Aquí la unidad no es el
-token, es la historia.
+It is a particular case of a general principle: the validation set has to be independent of
+the training one *in the unit that matters*. Here the unit is not the token, it is the
+story.
 
-## Detalles de rendimiento que sí notas
+## Performance details you actually notice
 
-**`pin_memory` y `non_blocking`** (solo en CUDA). Memoria "fijada" es memoria que el
-sistema operativo promete no mover, y eso permite a la GPU leerla por DMA sin que la CPU
-intervenga. Combinado con `non_blocking=True`, la copia del siguiente batch se solapa con
-el cálculo del actual. En un modelo pequeño, donde el cálculo dura poco, esto se nota.
+**`pin_memory` and `non_blocking`** (CUDA only). "Pinned" memory is memory the operating
+system promises not to move, and that lets the GPU read it by DMA without the CPU getting
+involved. Combined with `non_blocking=True`, the next batch's copy overlaps with the current
+computation. In a small model, where the computation is short, this shows.
 
-**La copia con `.astype(np.int64)`.** Los índices de un `nn.Embedding` tienen que ser
-`int64`, así que hay que convertir. Y esa conversión, además, materializa el `memmap`: sin
-ella, PyTorch se quedaría apuntando a memoria mapeada de disco y cada acceso sería una
-lectura.
+**The copy with `.astype(np.int64)`.** An `nn.Embedding`'s indices have to be `int64`, so
+conversion is needed. And that conversion also materializes the `memmap`: without it,
+PyTorch would be left pointing at disk-mapped memory and every access would be a read.
 
-## Dónde está el debate
+## Where the debate is
 
-El muestreo aleatorio con reemplazo que vamos a usar no es una época en sentido estricto:
-algunas ventanas saldrán varias veces y otras ninguna. Es lo que hace nanoGPT y funciona
-bien, pero no es lo único razonable — un recorrido ordenado y barajado por bloques da
-garantías de cobertura que este método no da. Con 500M tokens y una sola pasada la
-diferencia es pequeña; con muchas épocas sobre un corpus pequeño, importaría más.
+The random sampling with replacement we are going to use is not an epoch in the strict
+sense: some windows will come up several times and others never. It is what nanoGPT does and
+it works well, but it is not the only reasonable choice — an ordered traversal shuffled by
+blocks gives coverage guarantees this method does not. With 500M tokens and a single pass
+the difference is small; with many epochs over a small corpus, it would matter more.
 
-Más discutido todavía es qué debería haber *dentro* del corpus. El paper de TinyStories
-sostiene que un dataset pequeño y muy limpio, con vocabulario de niño de 4 años, permite a
-modelos diminutos generar texto coherente — algo que no se consigue entrenando el mismo
-modelo con un fragmento de internet del mismo tamaño. Que la calidad y la *distribución* de
-los datos importen tanto o más que su cantidad es hoy una de las líneas más activas del
-campo, y también una de las menos publicadas: los laboratorios grandes no cuentan qué hay
-en sus datasets.
+Even more debated is what should be *inside* the corpus. The TinyStories paper argues that a
+small, very clean dataset with the vocabulary of a 4-year-old lets tiny models generate
+coherent text — something you do not get by training the same model on an equally sized
+chunk of the internet. That the quality and *distribution* of the data matter as much as or
+more than the quantity is today one of the most active lines in the field, and also one of
+the least published: the big labs do not say what is in their datasets.
 
 ---
 
-**Para ampliar:** Eldan & Li 2023, [TinyStories](https://arxiv.org/abs/2305.07759) ·
-[nanoGPT](https://github.com/karpathy/nanoGPT) (su `get_batch` es prácticamente el de este
-módulo). Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+**Further reading:** Eldan & Li 2023, [TinyStories](https://arxiv.org/abs/2305.07759) ·
+[nanoGPT](https://github.com/karpathy/nanoGPT) (its `get_batch` is practically this
+module's). Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

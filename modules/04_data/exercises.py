@@ -1,36 +1,35 @@
-"""Modulo 04 - Datos: de texto a batches en la GPU.
+"""Module 04 - Data: from text to batches on the GPU.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 04` -> `llmfs hint 04 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 04` -> `llmfs hint 04 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-El puente entre el texto tokenizado y la GPU. Tres funciones:
+The bridge between tokenized text and the GPU. Three functions:
 
-    pack_tokens_uint16   (ej. 1)  ids -> array de 2 bytes por token, validando
-    train_val_split      (ej. 2)  separar un trozo para validacion
-    get_batch            (ej. 3)  sacar un lote de ventanas al azar
+    pack_tokens_uint16   (ex. 1)  ids -> a 2-bytes-per-token array, with validation
+    train_val_split      (ex. 2)  set a chunk aside for validation
+    get_batch            (ex. 3)  draw a batch of random windows
 
-La tercera la va a ejecutar tu entrenamiento decenas de miles de veces, y es donde esta la
-idea importante del modulo: como se convierte texto en una tarea de aprendizaje.
+Your training run will execute the third one tens of thousands of times, and it is where the
+module's important idea lives: how text is turned into a learning task.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **batch**: un grupo de muestras que se procesan a la vez. Ir de una en una desaprovecha
-  la GPU.
-- **ventana / contexto**: cuantos tokens seguidos ve el modelo de golpe. El nuestro, 512.
-- **memmap**: un array que vive en disco pero se usa como si estuviera en memoria. El
-  sistema operativo carga solo lo que tocas.
-- **conjunto de validacion**: texto que el modelo NO ve al entrenar, para saber si esta
-  aprendiendo o solo memorizando.
-- **uint16**: entero sin signo de 2 bytes, de 0 a 65.535.
+- **batch**: a group of samples processed at once. Going one at a time wastes the GPU.
+- **window / context**: how many consecutive tokens the model sees at once. Ours, 512.
+- **memmap**: an array that lives on disk but is used as if it were in memory. The operating
+  system loads only what you touch.
+- **validation set**: text the model does NOT see during training, so you can tell whether
+  it is learning or just memorizing.
+- **uint16**: unsigned 2-byte integer, from 0 to 65,535.
 
-    llmfs demo 04     el pipeline entero, de texto a batch en la GPU
+    llmfs demo 04     the whole pipeline, from text to a batch on the GPU
 """
 
 from __future__ import annotations
@@ -40,132 +39,134 @@ from typing import Sequence
 import numpy as np
 import torch
 
-#: uint16 llega hasta 65.535. Con vocab_size=4096 sobra, y ocupa la mitad que uint32.
+#: uint16 goes up to 65,535. With vocab_size=4096 that is plenty, and it is half of uint32.
 MAX_UINT16 = 2**16
 
 
 def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
-    """Convierte una lista de ids en un array `uint16`, validando que quepan.
+    """Turns a list of ids into a `uint16` array, validating that they fit.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cuatro pasos, y tres de ellos son la validacion.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Four steps, and three of them are the validation.
 
-        1. Si `vocab_size > 2**16`, lanza `ValueError` (no cabe en uint16, haria falta uint32).
+        1. If `vocab_size > 2**16`, raise `ValueError` (it does not fit in uint16, you would
+           need uint32).
 
-        2. Convierte a `int64` PRIMERO, que es donde todo cabe:
+        2. Convert to `int64` FIRST, which is where everything fits:
 
                array = np.asarray(ids, dtype=np.int64)
 
-        3. Si el array NO esta vacio, comprueba el rango:
+        3. If the array is NOT empty, check the range:
 
                if array.size and (array.min() < 0 or array.max() >= vocab_size):
-                   raise ValueError(f"... minimo={array.min()}, maximo={array.max()}")
+                   raise ValueError(f"... min={array.min()}, max={array.max()}")
 
-        4. Y solo entonces convierte:
+        4. And only then convert:
 
                return array.astype(np.uint16)
 
-    POR QUÉ VALIDAR ANTES DE CONVERTIR
-    ----------------------------------
-    Numpy NO avisa si un numero no cabe: hace *wrap around* en silencio.
+    WHY VALIDATE BEFORE CONVERTING
+    ------------------------------
+    Numpy does NOT warn you if a number does not fit: it *wraps around* silently.
 
         np.array([65536], dtype=np.int64).astype(np.uint16)   ->   array([0])
 
-    Sin excepcion, sin warning. Tus datos quedan corruptos, el modelo entrena peor, y no hay
-    absolutamente nada que apunte a la causa. Podrias pasarte dias buscandolo.
+    No exception, no warning. Your data is corrupted, the model trains worse, and there is
+    absolutely nothing pointing at the cause. You could spend days looking for it.
 
-    Si convirtieras primero y validaras despues, el desbordamiento ya habria ocurrido y
-    estarias comprobando datos ya corruptos. Por eso el paso 2 va antes que el 3.
+    If you converted first and validated afterwards, the overflow would already have
+    happened and you would be checking data that is already corrupted. That is why step 2
+    comes before step 3.
 
-    POR QUÉ EL `array.size and ...`
-    -------------------------------
-    Sobre un array vacio, `.min()` lanza una excepcion sobre reducciones de secuencias vacias:
-    un error real, pero que no tiene nada que ver con lo que estas validando y despista. El
-    cortocircuito lo evita.
+    WHY THE `array.size and ...`
+    ----------------------------
+    On an empty array, `.min()` raises an exception about reductions over empty sequences: a
+    real error, but one that has nothing to do with what you are validating and sends you off
+    track. The short-circuit avoids it.
 
-    PON LOS VALORES EN EL MENSAJE DE ERROR
-    --------------------------------------
-    "ids fuera de rango" no ayuda. "maximo=9999" te dice al instante que tu tokenizador esta
-    produciendo ids que no deberia, y con que magnitud. Hay un test que comprueba que el valor
-    aparece en el mensaje.
+    PUT THE VALUES IN THE ERROR MESSAGE
+    -----------------------------------
+    "ids out of range" does not help. "max=9999" tells you instantly that your tokenizer is
+    producing ids it should not, and by how much. There is a test that checks the value
+    appears in the message.
 
-    POR QUÉ uint16
-    --------------
-        int64  (el de python)  ->  500M tokens = 4 GB
-        uint32                 ->  2 GB
-        uint16                 ->  1 GB
+    WHY uint16
+    ----------
+        int64  (python's)  ->  500M tokens = 4 GB
+        uint32             ->  2 GB
+        uint16             ->  1 GB
 
-    uint16 llega hasta 65.535 y nuestros ids van de 0 a 4095: sobra de largo.
+    uint16 goes up to 65,535 and our ids run from 0 to 4095: plenty to spare.
 
     Args:
-        ids: los ids a empaquetar.
-        vocab_size: el tamanyo del vocabulario. Todos los ids deben estar en [0, vocab_size).
+        ids: the ids to pack.
+        vocab_size: the vocabulary size. Every id must be in [0, vocab_size).
 
     Returns:
-        Un `np.ndarray` de dtype `uint16`.
+        An `np.ndarray` of dtype `uint16`.
 
     Raises:
-        ValueError: si `vocab_size` no cabe en uint16, o si algun id se sale del rango.
+        ValueError: if `vocab_size` does not fit in uint16, or if some id is out of range.
     """
-    raise NotImplementedError("TODO: modulo 04, ejercicio 1 - pack_tokens_uint16")
+    raise NotImplementedError("TODO: module 04, exercise 1 - pack_tokens_uint16")
 
 
 def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
-    """Separa un trozo del final para validacion.
+    """Sets a chunk of the end aside for validation.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cuatro lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Four lines.
 
-        1. Valida que `val_fraction` este en (0, 1) y lanza `ValueError` si no.
+        1. Validate that `val_fraction` is in (0, 1) and raise `ValueError` if not.
 
-        2. Calcula cuantos tokens van a validacion:
+        2. Compute how many tokens go to validation:
 
                n_val = max(1, int(len(tokens) * val_fraction))
 
-        3. Si `n_val >= len(tokens)`, lanza `ValueError` (dejaria entrenamiento vacio).
+        3. If `n_val >= len(tokens)`, raise `ValueError` (it would leave training empty).
 
-        4. Devuelve las dos partes:
+        4. Return the two parts:
 
                return tokens[:-n_val], tokens[-n_val:]
 
-    LA ÚNICA DECISIÓN DEL EJERCICIO: POR QUÉ EL CORTE ES CONTIGUO Y POR EL FINAL
-    ---------------------------------------------------------------------------
-    El reflejo habitual seria barajar y repartir. Aqui es un error.
+    THE ONLY DECISION IN THE EXERCISE: WHY THE CUT IS CONTIGUOUS AND FROM THE END
+    ----------------------------------------------------------------------------
+    The usual reflex would be to shuffle and split. Here that is a mistake.
 
-    Las ventanas de entrenamiento SE SOLAPAN: la que empieza en la posicion 100 y la que
-    empieza en la 101 comparten 511 de sus 512 tokens. Si repartieras al azar —a nivel de
-    token o incluso de ventana— tu conjunto de validacion estaria lleno de fragmentos que el
-    modelo ya vio.
+    The training windows OVERLAP: the one starting at position 100 and the one starting at
+    101 share 511 of their 512 tokens. If you split at random — at the token level or even
+    the window level — your validation set would be full of fragments the model has already
+    seen.
 
-    El sintoma seria precioso y enganyoso: perdida de validacion bajisima, casi identica a la
-    de entrenamiento, y ninguna senyal de sobreajuste jamas. Estarias midiendo memorizacion y
-    llamandolo generalizacion.
+    The symptom would be beautiful and misleading: a very low validation loss, almost
+    identical to the training one, and never any sign of overfitting. You would be measuring
+    memorization and calling it generalization.
 
-    Cortando un bloque contiguo del final, lo que reservas son historias COMPLETAS que el
-    modelo no ha visto nunca.
+    By cutting a contiguous block off the end, what you set aside are COMPLETE stories the
+    model has never seen.
 
-    DOS DETALLES
-    ------------
-    **El `max(1, ...)`.** Con un corpus de 50 tokens y `val_fraction=0.005`, `int(50*0.005)`
-    da 0 y te quedarias sin conjunto de validacion.
+    TWO DETAILS
+    -----------
+    **The `max(1, ...)`.** With a 50-token corpus and `val_fraction=0.005`, `int(50*0.005)`
+    gives 0 and you would be left with no validation set.
 
-    **Devuelve VISTAS, no copias.** El slicing de numpy no copia, y eso es lo que quieres: con
-    500M tokens, un `.copy()` gratuito serian 1 GB de RAM a la basura. Hay un test que lo
-    comprueba con `np.shares_memory`.
+    **Return VIEWS, not copies.** Numpy slicing does not copy, and that is what you want:
+    with 500M tokens, a needless `.copy()` would be 1 GB of RAM thrown away. There is a test
+    that checks it with `np.shares_memory`.
 
     Args:
-        tokens: array 1-D con el corpus entero.
-        val_fraction: la fraccion para validacion. Debe estar en (0, 1).
+        tokens: 1-D array with the whole corpus.
+        val_fraction: the fraction for validation. Must be in (0, 1).
 
     Returns:
         `(train, val)`.
 
     Raises:
-        ValueError: si `val_fraction` no esta en (0, 1), o si dejaria el entrenamiento vacio.
+        ValueError: if `val_fraction` is not in (0, 1), or if it would leave training empty.
     """
-    raise NotImplementedError("TODO: modulo 04, ejercicio 2 - train_val_split")
+    raise NotImplementedError("TODO: module 04, exercise 2 - train_val_split")
 
 
 def get_batch(
@@ -175,34 +176,34 @@ def get_batch(
     device: torch.device | str | None = None,
     rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Saca un lote de ventanas al azar. Es la funcion que mas veces se ejecuta del curso.
+    """Draws a batch of random windows. It is the most-executed function in the course.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Seis pasos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Six steps.
 
-        1. Si `rng` es None, crea uno: `rng = rng or np.random.default_rng()`
+        1. If `rng` is None, create one: `rng = rng or np.random.default_rng()`
 
-        2. Calcula hasta donde puedes empezar, y valida:
+        2. Compute how far you can start, and validate:
 
                max_start = len(data) - context_length - 1
                if max_start < 1:
-                   raise ValueError(f"el corpus ({len(data)}) es mas corto que el contexto ...")
+                   raise ValueError(f"the corpus ({len(data)}) is shorter than the context ...")
 
-        3. Elige las posiciones de inicio:
+        3. Pick the starting positions:
 
                starts = rng.integers(0, max_start, size=batch_size)
 
-        4. Apila las ventanas, la de entrada y la desplazada:
+        4. Stack the windows, the input one and the shifted one:
 
                x_np = np.stack([data[i : i+context_length]     for i in starts]).astype(np.int64)
                y_np = np.stack([data[i+1 : i+1+context_length] for i in starts]).astype(np.int64)
 
-        5. Pasa a tensores:
+        5. Turn them into tensors:
 
                x, y = torch.from_numpy(x_np), torch.from_numpy(y_np)
 
-        6. Si hay `device`, muevelos:
+        6. If there is a `device`, move them:
 
                device = torch.device(device)
                if device.type == "cuda":
@@ -211,64 +212,65 @@ def get_batch(
                else:
                    x, y = x.to(device), y.to(device)
 
-    LA IDEA, CON NÚMEROS
-    --------------------
-        data = [5, 8, 2, 9, 1, 7, ...]     empezando en 0, con context_length = 4
+    THE IDEA, WITH NUMBERS
+    ----------------------
+        data = [5, 8, 2, 9, 1, 7, ...]     starting at 0, with context_length = 4
 
-            x = [5, 8, 2, 9]      <- lo que ve el modelo
-            y = [8, 2, 9, 1]      <- lo que tiene que predecir
+            x = [5, 8, 2, 9]      <- what the model sees
+            y = [8, 2, 9, 1]      <- what it has to predict
 
-    Leelo columna a columna:
+    Read it column by column:
 
-        viendo [5]          -> predecir 8
-        viendo [5,8]        -> predecir 2
-        viendo [5,8,2]      -> predecir 9
-        viendo [5,8,2,9]    -> predecir 1
+        seeing [5]          -> predict 8
+        seeing [5,8]        -> predict 2
+        seeing [5,8,2]      -> predict 9
+        seeing [5,8,2,9]    -> predict 1
 
-    UNA ventana de 4 tokens son CUATRO ejemplos de entrenamiento. Con contexto 512, son 512
-    predicciones por muestra, y un batch de 48x512 son 24.576. Por eso los modelos de lenguaje
-    aprovechan tanto los datos.
+    ONE 4-token window is FOUR training examples. With a context of 512, that is 512
+    predictions per sample, and a 48x512 batch is 24,576. That is why language models use
+    data so well.
 
-    (Esto funciona gracias a la mascara causal del modulo 06, que impide que la posicion 2 vea
-    el token 3. Sin ella el modelo veria la respuesta.)
+    (This works thanks to module 06's causal mask, which stops position 2 from seeing token
+    3. Without it the model would see the answer.)
 
-    EL `-1` DEL PASO 2 ES EL OFF-BY-ONE DEL EJERCICIO
-    -------------------------------------------------
-    `y` necesita un token MAS alla del final de `x`. Si `x` llega hasta `i + context_length - 1`,
-    `y` llega hasta `i + context_length`. Sin el `-1`, la ultima ventana posible desborda.
+    THE `-1` IN STEP 2 IS THE EXERCISE'S OFF-BY-ONE
+    -----------------------------------------------
+    `y` needs one token MORE than the end of `x`. If `x` reaches `i + context_length - 1`,
+    `y` reaches `i + context_length`. Without the `-1`, the last possible window overflows.
 
-    Y numpy no lanza error al hacer slicing fuera de rango: simplemente devuelve menos
-    elementos. Lo que veras es un `np.stack` fallando por formas incompatibles, tres lineas mas
-    abajo y sin ninguna pista de la causa real.
+    And numpy does not raise on out-of-range slicing: it simply returns fewer elements. What
+    you will see is an `np.stack` failing on incompatible shapes, three lines further down
+    and with no clue about the real cause.
 
-    EL `.astype(np.int64)` DEL PASO 4 HACE DOS COSAS
+    THE `.astype(np.int64)` IN STEP 4 DOES TWO THINGS
     ------------------------------------------------
-    La obvia: `nn.Embedding` exige indices `int64`, y los datos estan en `uint16`.
+    The obvious one: `nn.Embedding` requires `int64` indices, and the data is `uint16`.
 
-    La menos obvia: la conversion COPIA. Sin esa copia, `torch.from_numpy` se quedaria
-    apuntando a memoria mapeada de disco y cada acceso del modelo seria potencialmente una
-    lectura de fichero.
+    The less obvious one: the conversion COPIES. Without that copy, `torch.from_numpy` would
+    be left pointing at disk-mapped memory and every model access would potentially be a file
+    read.
 
-    EL `pin_memory` DEL PASO 6, SOLO EN CUDA
-    ----------------------------------------
-    Memoria "fijada" es memoria que el sistema operativo se compromete a no mover de sitio, lo
-    que permite a la GPU leerla por DMA sin intervencion de la CPU. Con `non_blocking=True` la
-    llamada vuelve inmediatamente y la copia se solapa con lo que la GPU este calculando.
+    THE `pin_memory` IN STEP 6, CUDA ONLY
+    -------------------------------------
+    "Pinned" memory is memory the operating system commits to not moving, which lets the GPU
+    read it by DMA with no CPU involvement. With `non_blocking=True` the call returns
+    immediately and the copy overlaps with whatever the GPU is computing.
 
-    En MPS no aplica (la memoria es unificada, no hay copia que solapar) y en CPU tampoco.
+    On MPS it does not apply (the memory is unified, there is no copy to overlap) and neither
+    does it on CPU.
 
     Args:
-        data: array 1-D de tokens (normalmente un `np.memmap` de uint16).
-        batch_size: cuantas ventanas.
-        context_length: cuantos tokens por ventana.
-        device: a donde mover los tensores. `None` los deja en CPU.
-        rng: generador de numpy. Pasale uno con semilla fija y obtendras siempre el mismo
-            batch, que es lo que permite al test comparar contra la referencia.
+        data: 1-D array of tokens (usually a uint16 `np.memmap`).
+        batch_size: how many windows.
+        context_length: how many tokens per window.
+        device: where to move the tensors. `None` leaves them on the CPU.
+        rng: numpy generator. Pass one with a fixed seed and you will always get the same
+            batch, which is what lets the test compare against the reference.
 
     Returns:
-        `(x, y)`, ambos tensores `int64` de forma `(batch_size, context_length)`.
+        `(x, y)`, both `int64` tensors of shape `(batch_size, context_length)`.
 
     Raises:
-        ValueError: si el corpus es mas corto que `context_length + 1`.
+        ValueError: if the corpus is shorter than `context_length + 1`.
     """
-    raise NotImplementedError("TODO: modulo 04, ejercicio 3 - get_batch")
+    raise NotImplementedError("TODO: module 04, exercise 3 - get_batch")
