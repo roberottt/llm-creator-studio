@@ -1,4 +1,4 @@
-"""Tests del modulo 13. Ejecutalos con `llmfs check 13`."""
+"""Module 13 tests. Run them with `llmfs check 13`."""
 
 from __future__ import annotations
 
@@ -12,10 +12,10 @@ from llmfs.config import ModelConfig
 from llmfs.device import set_seed
 from llmfs.testing import load_exercises
 
-ej = load_exercises(__file__)
+ex = load_exercises(__file__)
 
 
-def modelito() -> torch.nn.Module:
+def small_model() -> torch.nn.Module:
     set_seed(0)
     return ref.GPT(
         ModelConfig(vocab_size=64, n_layers=2, d_model=32, n_heads=4, d_ff=96, context_length=16)
@@ -28,44 +28,44 @@ def batch(vocab: int = 64, b: int = 4, t: int = 8) -> tuple[torch.Tensor, torch.
     return seq[:, :-1], seq[:, 1:]
 
 
-# ------------------------------------------------- ejercicio 1: overfit_single_batch
+# ------------------------------------------------- exercise 1: overfit_single_batch
 
 
-def test_la_perdida_baja_casi_a_cero():
-    """LA comprobacion: un modelo sano memoriza cuatro secuencias sin despeinarse."""
+def test_the_loss_drops_to_almost_zero():
+    """THE check: a healthy model memorizes four sequences without breaking a sweat."""
     x, y = batch()
-    historial = ej.overfit_single_batch(modelito(), x, y, steps=300, lr=3e-3)
-    assert historial[-1] < 0.1, (
-        f"la perdida se ha quedado en {historial[-1]:.4f} memorizando un solo batch. "
-        "Si no baja, hay un bug en el modelo o en el bucle."
+    history = ex.overfit_single_batch(small_model(), x, y, steps=300, lr=3e-3)
+    assert history[-1] < 0.1, (
+        f"the loss got stuck at {history[-1]:.4f} memorizing a single batch. "
+        "If it does not drop, there is a bug in the model or in the loop."
     )
 
 
-def test_arranca_cerca_de_ln_del_vocabulario():
+def test_it_starts_close_to_ln_of_the_vocabulary():
     x, y = batch()
-    historial = ej.overfit_single_batch(modelito(), x, y, steps=10, lr=1e-3)
-    assert abs(historial[0] - math.log(64)) < 0.5, (
-        f"arranca en {historial[0]:.4f} y deberia rondar ln(64)={math.log(64):.4f}"
+    history = ex.overfit_single_batch(small_model(), x, y, steps=10, lr=1e-3)
+    assert abs(history[0] - math.log(64)) < 0.5, (
+        f"it starts at {history[0]:.4f} and should be around ln(64)={math.log(64):.4f}"
     )
 
 
-def test_devuelve_una_perdida_por_paso():
+def test_it_returns_one_loss_per_step():
     x, y = batch()
-    assert len(ej.overfit_single_batch(modelito(), x, y, steps=37, lr=1e-3)) == 37
+    assert len(ex.overfit_single_batch(small_model(), x, y, steps=37, lr=1e-3)) == 37
 
 
-def test_la_perdida_es_monotona_a_grandes_rasgos():
+def test_the_loss_is_roughly_monotonic():
     x, y = batch()
-    h = ej.overfit_single_batch(modelito(), x, y, steps=200, lr=3e-3)
-    primer_tercio = sum(h[:60]) / 60
-    ultimo_tercio = sum(h[-60:]) / 60
-    assert ultimo_tercio < primer_tercio / 5
+    h = ex.overfit_single_batch(small_model(), x, y, steps=200, lr=3e-3)
+    first_third = sum(h[:60]) / 60
+    last_third = sum(h[-60:]) / 60
+    assert last_third < first_third / 5
 
 
-def test_acepta_un_optimizador_propio():
+def test_it_accepts_your_own_optimizer():
     x, y = batch()
-    h = ej.overfit_single_batch(
-        modelito(),
+    h = ex.overfit_single_batch(
+        small_model(),
         x,
         y,
         steps=100,
@@ -74,35 +74,35 @@ def test_acepta_un_optimizador_propio():
     assert h[-1] < h[0]
 
 
-def test_los_valores_son_finitos():
+def test_the_values_are_finite():
     x, y = batch()
-    h = ej.overfit_single_batch(modelito(), x, y, steps=100, lr=3e-3)
-    assert all(math.isfinite(v) for v in h), "hay inf o nan en el historial"
+    h = ex.overfit_single_batch(small_model(), x, y, steps=100, lr=3e-3)
+    assert all(math.isfinite(v) for v in h), "there are infs or nans in the history"
 
 
-def test_deja_el_modelo_en_modo_entrenamiento():
+def test_it_leaves_the_model_in_training_mode():
     x, y = batch()
-    modelo = modelito()
-    modelo.eval()
-    ej.overfit_single_batch(modelo, x, y, steps=5, lr=1e-3)
-    assert modelo.training, "hay que llamar a model.train() antes del bucle"
+    model = small_model()
+    model.eval()
+    ex.overfit_single_batch(model, x, y, steps=5, lr=1e-3)
+    assert model.training, "you have to call model.train() before the loop"
 
 
-def test_el_overfit_coincide_con_la_referencia():
+def test_the_overfit_matches_the_reference():
     x, y = batch()
     set_seed(0)
-    mio = ej.overfit_single_batch(modelito(), x, y, steps=50, lr=3e-3)
+    mine = ex.overfit_single_batch(small_model(), x, y, steps=50, lr=3e-3)
     set_seed(0)
-    suyo = ref.overfit_single_batch(modelito(), x, y, steps=50, lr=3e-3)
-    for i, (a, b) in enumerate(zip(mio, suyo)):
-        assert abs(a - b) < 1e-4, f"divergen en el paso {i}: {a:.6f} vs {b:.6f}"
+    theirs = ref.overfit_single_batch(small_model(), x, y, steps=50, lr=3e-3)
+    for i, (a, b) in enumerate(zip(mine, theirs)):
+        assert abs(a - b) < 1e-4, f"they diverge at step {i}: {a:.6f} vs {b:.6f}"
 
 
-# ------------------------------------------------------------ ejercicio 2: format_eta
+# ------------------------------------------------------------ exercise 2: format_eta
 
 
 @pytest.mark.parametrize(
-    "segundos,esperado",
+    "seconds,expected",
     [
         (0, "0s"),
         (1, "1s"),
@@ -118,25 +118,25 @@ def test_el_overfit_coincide_con_la_referencia():
         (90000, "1d 1h"),
     ],
 )
-def test_los_formatos_de_cada_tramo(segundos, esperado):
-    assert ej.format_eta(segundos) == esperado
+def test_the_formats_of_each_band(seconds, expected):
+    assert ex.format_eta(seconds) == expected
 
 
-def test_a_partir_de_una_hora_no_se_muestran_los_segundos():
-    """Cuando faltan dos horas, los segundos son ruido."""
-    assert ej.format_eta(7265).count("s") == 0 or "m" in ej.format_eta(7265)
-    assert ej.format_eta(7265) == "2h 1m"
+def test_from_one_hour_on_the_seconds_are_not_shown():
+    """When there are two hours left, the seconds are noise."""
+    assert ex.format_eta(7265).count("s") == 0 or "m" in ex.format_eta(7265)
+    assert ex.format_eta(7265) == "2h 1m"
 
 
-def test_los_valores_raros_devuelven_interrogacion():
-    for malo in (-1, -1000, float("inf"), float("nan"), float("-inf")):
-        assert ej.format_eta(malo) == "?", f"{malo} deberia dar '?'"
+def test_the_odd_values_return_a_question_mark():
+    for bad in (-1, -1000, float("inf"), float("nan"), float("-inf")):
+        assert ex.format_eta(bad) == "?", f"{bad} should give '?'"
 
 
-def test_admite_floats():
-    assert ej.format_eta(45.7) == "45s"
+def test_it_accepts_floats():
+    assert ex.format_eta(45.7) == "45s"
 
 
-def test_el_formato_coincide_con_la_referencia():
+def test_the_format_matches_the_reference():
     for s in (0, 30, 59, 60, 125, 3599, 3600, 3725, 86400, 123456, -5, float("inf")):
-        assert ej.format_eta(s) == ref.format_eta(s), f"discrepan en {s}"
+        assert ex.format_eta(s) == ref.format_eta(s), f"they disagree at {s}"

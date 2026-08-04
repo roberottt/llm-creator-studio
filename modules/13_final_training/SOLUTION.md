@@ -1,185 +1,132 @@
-# 13 — Solución comentada
+# 13 — Annotated solution
 
-## Ejercicio 1 — `overfit_single_batch`
+## Exercise 1 — `overfit_single_batch`
 
 ```python
 factory = optimizer_factory or (lambda params: torch.optim.AdamW(params, lr=lr))
 opt = factory(model.parameters())
 
 model.train()
-historial = []
+history = []
 for _ in range(steps):
-    _, perdida = model(x, y)
+    _, loss = model(x, y)
     opt.zero_grad(set_to_none=True)
-    perdida.backward()
+    loss.backward()
     opt.step()
-    historial.append(float(perdida.detach()))
+    history.append(float(loss.detach()))
 
-return historial
+return history
 ```
 
-El bucle más simple posible: sin scheduler, sin acumulación, sin AMP. **A propósito**: cuantas
-menos piezas, menos sitios donde pueda esconderse un bug.
+The simplest possible loop: no scheduler, no accumulation, no AMP. **On purpose**: the fewer
+pieces, the fewer places a bug can hide.
 
-**El `model.train()` no es decorativo.** Si el modelo venía en modo `eval`, el dropout estaría
-desactivado y no estarías probando el mismo camino de código que usará el entrenamiento real.
-Hay un test que lo comprueba.
+**The `model.train()` is not decorative.** If the model arrived in `eval` mode, dropout would
+be switched off and you would not be testing the same code path the real training will use.
+There is a test that checks it.
 
-**`float(perdida.detach())`** y no `float(perdida)`: sin el detach, PyTorch lanza un warning
-sobre convertir tensores con gradiente a escalares. Funciona, pero ensucia la salida.
+**`float(loss.detach())`** and not `float(loss)`: without the detach, PyTorch raises a warning
+about converting tensors with a gradient into scalars. It works, but it clutters the output.
 
-### Por qué este ejercicio es el más útil del módulo
+### Why this exercise is the most useful one in the module
 
-En el demo, sobre el modelo de verdad:
+In the demo, on the real model:
 
 ```
-paso   0:  4.1856   ← ln(65) = 4.1744, correcto
-paso  10:  3.4090
-paso 100:  0.4363
-paso 299:  0.0173   ← memorizado
+step   0:  4.1856   ← ln(65) = 4.1744, correct
+step  10:  3.4090
+step 100:  0.4363
+step 299:  0.0173   ← memorized
 ```
 
-Un modelo con 800.000 parámetros memoriza cuatro secuencias de 128 caracteres sin
-despeinarse. **Si no lo consigue, hay un bug**, y lo sabes en 30 segundos.
+A model with 800,000 parameters memorizes four sequences of 128 characters without breaking a
+sweat. **If it cannot, there is a bug**, and you know it in 30 seconds.
 
-Y el aviso que va con ello: si bajara a cero en cinco pasos, sospecha de una fuga de
-información. Revisa que los targets vayan desplazados un token respecto a la entrada — el
-mismo bug que cometí escribiendo los tests del módulo 10.
+And the warning that goes with it: if it dropped to zero in five steps, suspect an information
+leak. Check that the targets are shifted one token relative to the input — the same bug I made
+writing the module 10 tests.
 
-## Ejercicio 2 — `format_eta`
+## Exercise 2 — `format_eta`
 
 ```python
 if not math.isfinite(seconds) or seconds < 0:
     return "?"
 
-segundos = int(seconds)
-if segundos < 60:
-    return f"{segundos}s"
-if segundos < 3600:
-    return f"{segundos // 60}m {segundos % 60}s"
-if segundos < 86400:
-    return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
-return f"{segundos // 86400}d {(segundos % 86400) // 3600}h"
+secs = int(seconds)
+if secs < 60:
+    return f"{secs}s"
+if secs < 3600:
+    return f"{secs // 60}m {secs % 60}s"
+if secs < 86400:
+    return f"{secs // 3600}h {(secs % 3600) // 60}m"
+return f"{secs // 86400}d {(secs % 86400) // 3600}h"
 ```
 
-**A partir de una hora se dejan de mostrar los segundos.** Cuando faltan dos horas, los
-segundos son ruido: `2h 1m` se lee de un vistazo y `2h 1m 5s` no aporta nada.
+**From one hour on, the seconds stop being shown.** When there are two hours left, the seconds
+are noise: `2h 1m` reads at a glance and `2h 1m 5s` adds nothing.
 
-**Los valores no finitos devuelven `"?"`.** Es lo honesto cuando todavía no hay datos
-suficientes para estimar, y evita imprimir cosas como `-1s` o `infd 0h`. El
-`math.isfinite()` cubre `inf`, `-inf` y `nan` de una vez.
+**Non-finite values return `"?"`.** It is the honest thing when there is not yet enough data to
+estimate, and it avoids printing things like `-1s` or `infd 0h`. The `math.isfinite()` covers
+`inf`, `-inf` and `nan` in one go.
 
-Parece un ejercicio cosmético y no lo es: vas a mirar ese número muchas veces durante una
-tirada de horas.
+It looks like a cosmetic exercise and it is not: you are going to look at that number many
+times during a run that lasts hours.
 
-## La tirada de verdad
+## The real run
 
-Con todo implementado:
+With everything implemented:
 
 ```bash
 uv run python -m llmfs train --config tiny_char
 ```
 
-En este hardware (MPS) son unos 70 segundos para 1.500 pasos. En la RTX 2060 debería ir
-parecido o algo más rápido.
+On this hardware (MPS) it is about 70 seconds for 1,500 steps. On the RTX 2060 it should be
+similar or somewhat faster.
 
-### Lo que deberías ver
+### What you should see
 
-**La pérdida del paso 0 frente a `ln(V)`.** El entrenador lo comprueba solo y lo pinta en
-verde o en rojo:
-
-```
-perdida inicial: 4.2325  (ln(65) = 4.1744, desvio +0.0581)
-```
-
-**La curva.** Baja deprisa al principio y se aplana; la de validación sigue a la de
-entrenamiento con una brecha que crece despacio. Eso es sobreajuste incipiente y es normal.
-
-**Y las muestras**, que son la parte que de verdad enseña algo:
+**The step-0 loss against `ln(V)`.** The trainer checks it by itself and prints it in green or
+in red:
 
 ```
-paso 0     kUU$sbpKKMMbbbPcxfffffTjjfNLL --TJ??333OOqIw
-paso 300   MAPCHASTING Yrace not be town, bunders. CAMILLY: Mare striset mist
-paso 600   Which begane of schame a loved, this show as friar, But there appos
-paso 1500  KING RICHARD III: That's such heaven dull sented braw and starm
+initial loss: 4.2325  (ln(65) = 4.1744, deviation +0.0581)
 ```
 
-Ruido puro → palabras reconocibles → estructura de frase → formato de obra de teatro con
-nombres de personaje. **Ese fichero leído de arriba abajo es el modelo aprendiendo a
-escribir**, y es más informativo que la curva de pérdida.
+**The curve.** It drops fast at first and flattens out; the validation one follows the training
+one with a gap that grows slowly. That is incipient overfitting and it is normal.
 
-### Antes de lanzar la tirada larga
+**And the samples**, which are the part that really teaches you something:
 
-Dos cosas, en este orden:
-
-1. **El overfit a un batch.** 30 segundos.
-2. **`--max-steps 100`** para medir el ritmo real y ver el ETA. Si dice 40 horas cuando
-   esperabas 4, algo va mal y más vale saberlo antes de dejarlo toda la noche.
-
-## Sobre reanudar
-
-El checkpoint guarda los pesos, **el estado del optimizador**, el del GradScaler y el número
-de paso. Si reanudaras solo con los pesos, Adam arrancaría con sus momentos a cero y el
-modelo pegaría un bandazo: se ve como un pico en la curva, exactamente en el punto donde
-reanudaste.
-
-Y el detalle de implementación: se escribe en un fichero temporal y se renombra al final. Si
-el proceso muere a mitad de la escritura, el checkpoint anterior sigue intacto. **Un
-checkpoint a medias es peor que no tener checkpoint.**
-
-Pruébalo: interrumpe con Ctrl+C y reanuda con `--resume`. El entrenador guarda antes de
-salir.
-
----
-
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-def overfit_single_batch(
-    model: torch.nn.Module,
-    x: torch.Tensor,
-    y: torch.Tensor,
-    steps: int = 200,
-    lr: float = 1e-3,
-    optimizer_factory: Callable[..., Any] | None = None,
-) -> list[float]:
-    factory = optimizer_factory or (lambda params: torch.optim.AdamW(params, lr=lr))
-    opt = factory(model.parameters())
-
-    model.train()
-    historial: list[float] = []
-    for _ in range(steps):
-        _, perdida = model(x, y)
-        opt.zero_grad(set_to_none=True)
-        perdida.backward()
-        opt.step()
-        historial.append(float(perdida.detach()))
-
-    return historial
-
-
-def format_eta(seconds: float) -> str:
-    if not math.isfinite(seconds) or seconds < 0:
-        return "?"
-
-    segundos = int(seconds)
-    if segundos < 60:
-        return f"{segundos}s"
-    if segundos < 3600:
-        return f"{segundos // 60}m {segundos % 60}s"
-    if segundos < 86400:
-        return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
-    return f"{segundos // 86400}d {(segundos % 86400) // 3600}h"
+```
+step 0     kUU$sbpKKMMbbbPcxfffffTjjfNLL --TJ??333OOqIw
+step 300   MAPCHASTING Yrace not be town, bunders. CAMILLY: Mare striset mist
+step 600   Which begane of schame a loved, this show as friar, But there appos
+step 1500  KING RICHARD III: That's such heaven dull sented braw and starm
 ```
 
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+Pure noise → recognizable words → sentence structure → play formatting with character names.
+**That file read top to bottom is the model learning to write**, and it is more informative
+than the loss curve.
+
+### Before launching the long run
+
+Two things, in this order:
+
+1. **The overfit on a batch.** 30 seconds.
+2. **`--max-steps 100`** to measure the real pace and see the ETA. If it says 40 hours when
+   you expected 4, something is wrong and it is better to know before leaving it all night.
+
+## About resuming
+
+The checkpoint saves the weights, **the optimizer state**, the GradScaler's and the step
+number. If you resumed with the weights only, Adam would start with its moments at zero and
+the model would lurch: it shows up as a spike in the curve, exactly where you resumed.
+
+And the implementation detail: it writes to a temporary file and renames at the end. If the
+process dies halfway through writing, the previous checkpoint is still intact. **A half-written
+checkpoint is worse than no checkpoint.**
+
+Try it: interrupt with Ctrl+C and resume with `--resume`. The trainer saves before exiting.
 
 ---
 

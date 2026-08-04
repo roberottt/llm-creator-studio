@@ -1,41 +1,41 @@
-"""Modulo 13 - La tirada real.
+"""Module 13 - The real run.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa los dos ejercicios -> `llmfs check 13` -> y despues ENTRENA:
+Read `THEORY.md` -> implement the two exercises -> `llmfs check 13` -> and then TRAIN:
 
     llmfs train --config tiny_char
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-    overfit_single_batch  (ej. 1)  la comprobacion de 30 segundos que caza casi todo
-    format_eta            (ej. 2)  cuanto falta, en algo legible
+    overfit_single_batch  (ex. 1)  the 30-second check that catches almost everything
+    format_eta            (ex. 2)  how long is left, in something readable
 
-Y con eso lanzas el entrenamiento de verdad.
+And with that you launch the real training.
 
-EL EJERCICIO 1 ES EL QUE IMPORTA
+EXERCISE 1 IS THE ONE THAT MATTERS
+==================================
+
+A model with millions of parameters memorizes four sequences without breaking a sweat. If you
+give it the SAME batch over and over and the loss does not drop to almost zero, there is a bug.
+
+And you know it in 30 seconds instead of in four hours. It is the best cost/benefit advice in
+all of deep learning, and almost nobody applies it.
+
+VOCABULARY YOU ARE GOING TO NEED
 ================================
 
-Un modelo con millones de parametros memoriza cuatro secuencias sin despeinarse. Si le das
-el MISMO batch una y otra vez y la perdida no baja casi a cero, hay un bug.
+- **overfit**: the model memorizing instead of generalizing. Normally it is bad; here it is
+  wanted on purpose, as a sanity check.
+- **checkpoint**: a snapshot of the training (weights, optimizer state, step number) so you
+  can resume.
+- **ETA**: how long is left to finish, estimated from the measured pace.
+- **step**: one update of the weights. Not to be confused with epoch, which is a complete
+  pass over the data.
 
-Y lo sabes en 30 segundos en vez de en cuatro horas. Es el consejo con mejor relacion
-coste/beneficio de todo el deep learning, y casi nadie lo aplica.
-
-VOCABULARIO QUE VAS A NECESITAR
-===============================
-
-- **overfit**: que el modelo memorice en vez de generalizar. Normalmente es malo; aqui se
-  busca a proposito, como prueba de sanidad.
-- **checkpoint**: una foto del entrenamiento (pesos, estado del optimizador, numero de
-  paso) para poder reanudar.
-- **ETA**: cuanto falta para terminar, estimado a partir del ritmo medido.
-- **paso** (step): una actualizacion de los pesos. No confundir con epoca, que es una
-  pasada completa por los datos.
-
-    llmfs demo 13     hace el overfit y entrena un modelo completo
+    llmfs demo 13     does the overfit and trains a complete model
 """
 
 from __future__ import annotations
@@ -54,120 +54,120 @@ def overfit_single_batch(
     lr: float = 1e-3,
     optimizer_factory: Callable[..., Any] | None = None,
 ) -> list[float]:
-    """Entrena UN SOLO batch hasta memorizarlo. El test que caza casi cualquier bug.
+    """Trains ONE SINGLE batch until it memorizes it. The test that catches almost any bug.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    El bucle de entrenamiento mas simple que existe. Cuatro pasos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    The simplest training loop there is. Four steps.
 
-        1. El optimizador, usando el que te pasen o AdamW si no:
+        1. The optimizer, using the one they pass you or AdamW if not:
 
                if optimizer_factory is None:
                    opt = torch.optim.AdamW(model.parameters(), lr=lr)
                else:
                    opt = optimizer_factory(model.parameters())
 
-        2. Modo entrenamiento y la lista donde guardar el historial:
+        2. Training mode and the list where you keep the history:
 
                model.train()
-               historial = []
+               history = []
 
-        3. El bucle, `steps` veces, siempre con EL MISMO batch:
+        3. The loop, `steps` times, always with THE SAME batch:
 
                for _ in range(steps):
-                   _, perdida = model(x, y)
+                   _, loss = model(x, y)
                    opt.zero_grad(set_to_none=True)
-                   perdida.backward()
+                   loss.backward()
                    opt.step()
-                   historial.append(float(perdida.detach()))
+                   history.append(float(loss.detach()))
 
-        4. `return historial`
+        4. `return history`
 
-    Sin scheduler, sin acumulacion de gradientes, sin AMP. A proposito: cuantas menos piezas
-    haya, menos sitios donde se pueda esconder un bug. Este bucle es el patron de referencia
-    contra el que compararas el bucle de verdad cuando algo falle.
+    No scheduler, no gradient accumulation, no AMP. On purpose: the fewer pieces there are,
+    the fewer places a bug can hide. This loop is the reference pattern you will compare the
+    real loop against when something fails.
 
-    QUÉ TIENE QUE SALIR
-    -------------------
-    La perdida arranca en `ln(vocab_size)` y baja hasta casi cero. Con el modelo juguete:
+    WHAT SHOULD COME OUT
+    --------------------
+    The loss starts at `ln(vocab_size)` and drops to almost zero. With the toy model:
 
-        paso   0:  4.17
-        paso  50:  1.12
-        paso 100:  0.21
-        paso 200:  0.02
+        step   0:  4.17
+        step  50:  1.12
+        step 100:  0.21
+        step 200:  0.02
 
-    Si `historial[-1]` no esta muy por debajo de `historial[0]`, PARA y busca el bug. No lances
-    el entrenamiento largo.
+    If `history[-1]` is not far below `history[0]`, STOP and look for the bug. Do not launch
+    the long training run.
 
-    LA IDEA
-    -------
-    Un modelo con millones de parametros tiene capacidad de sobra para memorizar cuatro
-    secuencias. Si le das el MISMO batch una y otra vez, la perdida TIENE que bajar
-    practicamente a cero. No hay nada que generalizar: solo memorizar.
-
-    Si no baja, hay un bug. Y lo sabes en 30 segundos en vez de en cuatro horas.
-
-    QUÉ CAZA
+    THE IDEA
     --------
-        - gradientes que no llegan a alguna parte del modelo (un `detach()` de mas)
-        - el `zero_grad()` olvidado (los gradientes se ACUMULAN por defecto en PyTorch)
-        - un learning rate absurdo, por arriba o por abajo
-        - una capa desconectada del grafo
-        - el optimizador construido sobre los parametros equivocados
+    A model with millions of parameters has more than enough capacity to memorize four
+    sequences. If you give it the SAME batch over and over, the loss HAS to drop practically
+    to zero. There is nothing to generalize: only to memorize.
 
-    QUÉ NO CAZA
-    -----------
-    Nada relacionado con la generalizacion. Un modelo que memoriza un batch perfectamente puede
-    seguir siendo completamente inutil con datos nuevos. Esto comprueba que la MAQUINARIA
-    funciona, no que el modelo sea bueno.
+    If it does not drop, there is a bug. And you know it in 30 seconds instead of in four
+    hours.
 
-    SI BAJA DEMASIADO DEPRISA, TAMBIÉN SOSPECHA
-    -------------------------------------------
-    Si la perdida se planta en cero en 5 pasos, mira si hay una fuga de informacion: comprueba
-    que `y` va desplazado UN token respecto a `x`. Si pasas `model(x, x)` el modelo solo tiene
-    que copiar la entrada y la perdida se desploma. El sintoma es identico al de una mascara
-    causal rota.
+    WHAT IT CATCHES
+    ---------------
+        - gradients that do not reach some part of the model (one `detach()` too many)
+        - the forgotten `zero_grad()` (gradients ACCUMULATE by default in PyTorch)
+        - an absurd learning rate, too high or too low
+        - a layer disconnected from the graph
+        - the optimizer built on the wrong parameters
 
-    EL `set_to_none=True`
-    ---------------------
-    `opt.zero_grad(set_to_none=True)` pone los `.grad` a `None` en vez de a ceros. Ahorra una
-    pasada de escritura sobre todos los gradientes y algo de memoria. Es el defecto desde
-    PyTorch 2.0, se pone explicito porque se lee mejor.
+    WHAT IT DOES NOT CATCH
+    ----------------------
+    Anything to do with generalization. A model that memorizes a batch perfectly can still be
+    completely useless on new data. This checks that the MACHINERY works, not that the model
+    is good.
 
-    ÉSTA ES LA PRIMERA COMPROBACIÓN QUE HAY QUE HACER, siempre, antes de lanzar cualquier
-    entrenamiento largo. Es el consejo con mejor relacion coste/beneficio de todo el deep
-    learning, y casi nadie lo aplica.
+    IF IT DROPS TOO FAST, ALSO BE SUSPICIOUS
+    ----------------------------------------
+    If the loss settles at zero in 5 steps, look for an information leak: check that `y` is
+    shifted ONE token relative to `x`. If you pass `model(x, x)` the model only has to copy
+    the input and the loss collapses. The symptom is identical to that of a broken causal
+    mask.
+
+    THE `set_to_none=True`
+    ----------------------
+    `opt.zero_grad(set_to_none=True)` sets the `.grad`s to `None` instead of to zeros. It
+    saves a write pass over every gradient and some memory. It is the default since PyTorch
+    2.0; it is written explicitly because it reads better.
+
+    THIS IS THE FIRST CHECK YOU HAVE TO DO, always, before launching any long training run.
+    It is the best cost/benefit advice in all of deep learning, and almost nobody applies it.
 
     Args:
-        model: el modelo, con forward `(idx, targets) -> (logits, loss)`.
-        x, y: el batch a memorizar. `y` desplazado un token respecto a `x`.
-        steps: cuantos pasos dar.
-        lr: learning rate (solo se usa si no pasas `optimizer_factory`).
-        optimizer_factory: `fn(params) -> optimizador`, para poder probar el tuyo del modulo 11.
+        model: the model, with forward `(idx, targets) -> (logits, loss)`.
+        x, y: the batch to memorize. `y` shifted one token relative to `x`.
+        steps: how many steps to take.
+        lr: learning rate (only used if you do not pass `optimizer_factory`).
+        optimizer_factory: `fn(params) -> optimizer`, so you can try yours from module 11.
 
     Returns:
-        El historial de perdidas, una por paso.
+        The loss history, one per step.
     """
-    raise NotImplementedError("TODO: modulo 13, ejercicio 1 - overfit_single_batch")
+    raise NotImplementedError("TODO: module 13, exercise 1 - overfit_single_batch")
 
 
 def format_eta(seconds: float) -> str:
-    """Formatea una duracion en algo legible de un vistazo.
+    """Formats a duration into something readable at a glance.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Una cadena de `if`, de menor a mayor.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A chain of `if`s, from smallest to largest.
 
-        1. Los casos raros, PRIMERO:
+        1. The odd cases, FIRST:
 
                if not math.isfinite(seconds) or seconds < 0:
                    return "?"
 
-        2. A entero, que los segundos con decimales no aportan nada:
+        2. To an integer, since fractional seconds add nothing:
 
                seconds = int(seconds)
 
-        3. Los cuatro tramos:
+        3. The four bands:
 
                if seconds < 60:
                    return f"{seconds}s"
@@ -177,8 +177,8 @@ def format_eta(seconds: float) -> str:
                    return f"{seconds // 3600}h {(seconds % 3600) // 60}m"
                return f"{seconds // 86400}d {(seconds % 86400) // 3600}h"
 
-    QUÉ TIENE QUE SALIR
-    -------------------
+    WHAT SHOULD COME OUT
+    --------------------
             45   ->  "45s"
            125   ->  "2m 5s"
           3725   ->  "1h 2m"
@@ -186,33 +186,34 @@ def format_eta(seconds: float) -> str:
             -1   ->  "?"
         float("inf")  ->  "?"
 
-    Comprueba el 3725 a mano: 3725 // 3600 = 1, y (3725 % 3600) // 60 = 125 // 60 = 2. Sale
-    "1h 2m". Y fijate en que los 5 segundos sobrantes se pierden, que es justo lo que se quiere.
+    Check the 3725 by hand: 3725 // 3600 = 1, and (3725 % 3600) // 60 = 125 // 60 = 2. That
+    gives "1h 2m". And notice that the 5 leftover seconds are lost, which is exactly what you
+    want.
 
-    POR QUÉ SE DEJAN DE MOSTRAR LOS SEGUNDOS A PARTIR DE UNA HORA
-    -------------------------------------------------------------
-    Cuando faltan dos horas, los segundos son ruido: cambian todo el rato, no aportan
-    informacion y hacen que el numero baile en pantalla. La precision util de una estimacion
-    siempre es proporcional a su magnitud.
+    WHY THE SECONDS STOP BEING SHOWN FROM ONE HOUR ON
+    -------------------------------------------------
+    When there are two hours left, the seconds are noise: they change constantly, they add no
+    information and they make the number dance on screen. The useful precision of an estimate
+    is always proportional to its magnitude.
 
-    POR QUÉ "?" Y NO UN 0
-    ---------------------
-    Devolver "?" es lo honesto cuando todavia no hay datos suficientes para estimar (en los
-    primeros pasos la velocidad media no significa nada). Y evita imprimir cosas como "-1s" o
-    "infd 0h", que ademas de feas hacen dudar de si el entrenamiento va bien.
+    WHY "?" AND NOT A 0
+    -------------------
+    Returning "?" is the honest thing when there is not yet enough data to estimate (in the
+    first few steps the average speed means nothing). And it avoids printing things like "-1s"
+    or "infd 0h", which besides being ugly make you doubt whether the training is going well.
 
-    `math.isfinite(x)` es False para `inf`, `-inf` y `nan`. Los tres salen de dividir por cero
-    o de un cero entre cero al calcular el ritmo.
+    `math.isfinite(x)` is False for `inf`, `-inf` and `nan`. All three come out of dividing by
+    zero, or a zero over zero, when computing the pace.
 
-    ESTO PARECE COSMÉTICO Y NO LO ES
-    --------------------------------
-    Vas a mirar este numero muchas veces durante una tirada de horas. "1h 2m" se lee al
-    instante; "3725s" hay que dividirlo mentalmente cada vez.
+    THIS LOOKS COSMETIC AND IT IS NOT
+    ---------------------------------
+    You are going to look at this number many times during a run that lasts hours. "1h 2m"
+    reads instantly; "3725s" you have to divide mentally every time.
 
     Args:
-        seconds: la duracion en segundos.
+        seconds: the duration in seconds.
 
     Returns:
-        La cadena formateada, o "?" si la entrada no es utilizable.
+        The formatted string, or "?" if the input is not usable.
     """
-    raise NotImplementedError("TODO: modulo 13, ejercicio 2 - format_eta")
+    raise NotImplementedError("TODO: module 13, exercise 2 - format_eta")
