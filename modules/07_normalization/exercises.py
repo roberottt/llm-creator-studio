@@ -1,39 +1,39 @@
-"""Modulo 07 - Normalizacion y conexiones residuales.
+"""Module 07 - Normalization and residual connections.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 07` -> `llmfs hint 07 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 07` -> `llmfs hint 07 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Las dos piezas que hacen que una red profunda entrene en vez de devolver NaN:
+The two pieces that make a deep network train instead of returning NaN:
 
-    layer_norm         (ej. 1)  centrar en 0 y escalar a varianza 1
-    RMSNorm            (ej. 2)  lo mismo pero sin la media (lo que usa Llama)
-    prenorm_residual   (ej. 3)  UNA LINEA, y es la mas importante del modulo
+    layer_norm         (ex. 1)  center at 0 and scale to variance 1
+    RMSNorm            (ex. 2)  the same but without the mean (what Llama uses)
+    prenorm_residual   (ex. 3)  ONE LINE, and it is the most important in the module
 
-El tercero apenas tiene codigo. Lo que importa es entender POR QUE los parentesis van donde
-van.
+The third one has barely any code. What matters is understanding WHY the parentheses go
+where they go.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **normalizar**: reescalar unos numeros para que tengan una media y una dispersion
-  conocidas. Aqui, media 0 y varianza 1.
-- **varianza**: cuanto se dispersan los valores respecto a su media.
-- **conexion residual**: sumar la entrada de un bloque a su salida (`x + f(x)`). Es lo que
-  permite entrenar redes profundas.
-- **corriente residual** (residual stream): esa suma acumulada que atraviesa toda la red.
-  Cada capa le anyade su contribucion.
-- **gradiente que se desvanece**: cuando el gradiente se hace tan pequenyo al atravesar
-  capas que las primeras dejan de recibir senyal y no aprenden.
-- **pre-norm / post-norm**: si la normalizacion va dentro de la rama (`x + f(norm(x))`) o
-  envolviendo la suma (`norm(x + f(x))`).
+- **normalize**: rescale some numbers so they have a known mean and spread. Here, mean 0 and
+  variance 1.
+- **variance**: how much the values spread around their mean.
+- **residual connection**: adding a block's input to its output (`x + f(x)`). It is what
+  makes training deep networks possible.
+- **residual stream**: that accumulated sum flowing through the whole network. Each layer
+  adds its contribution to it.
+- **vanishing gradient**: when the gradient becomes so small as it crosses layers that the
+  first ones stop receiving signal and do not learn.
+- **pre-norm / post-norm**: whether the normalization goes inside the branch
+  (`x + f(norm(x))`) or wrapped around the sum (`norm(x + f(x))`).
 
-    llmfs demo 07     mide cuanto gradiente llega a la primera capa en cada configuracion
+    llmfs demo 07     measures how much gradient reaches the first layer in each setup
 """
 
 from __future__ import annotations
@@ -50,22 +50,22 @@ def layer_norm(
     bias: torch.Tensor | None = None,
     eps: float = 1e-5,
 ) -> torch.Tensor:
-    """Normaliza cada token a media 0 y varianza 1, y luego aplica escala y desplazamiento.
+    """Normalizes each token to mean 0 and variance 1, then applies scale and shift.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cinco lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Five lines.
 
-        1. La media y la varianza, sobre la ULTIMA dimension:
+        1. The mean and the variance, over the LAST dimension:
 
                mean = x.mean(dim=-1, keepdim=True)
                var = x.var(dim=-1, keepdim=True, unbiased=False)
 
-        2. Normaliza:
+        2. Normalize:
 
                normalized = (x - mean) / torch.sqrt(var + eps)
 
-        3. Aplica los parametros SI existen:
+        3. Apply the parameters IF they exist:
 
                if weight is not None:
                    normalized = normalized * weight
@@ -74,127 +74,129 @@ def layer_norm(
 
         4. `return normalized`
 
-    EJEMPLO PARA COMPROBAR
-    ----------------------
+    EXAMPLE TO CHECK AGAINST
+    ------------------------
         x = [2.0, 8.0, 4.0, 6.0]
 
-        media    = (2+8+4+6)/4 = 5.0
-        varianza = ((2-5)² + (8-5)² + (4-5)² + (6-5)²)/4 = 20/4 = 5.0
+        mean     = (2+8+4+6)/4 = 5.0
+        variance = ((2-5)² + (8-5)² + (4-5)² + (6-5)²)/4 = 20/4 = 5.0
         sqrt(5)  = 2.236
 
         y = [(2-5)/2.236, (8-5)/2.236, (4-5)/2.236, (6-5)/2.236]
           = [-1.342, 1.342, -0.447, 0.447]
 
-    LA TRAMPA: `unbiased=False`
+    THE TRAP: `unbiased=False`
+    --------------------------
+    `torch.var` divides by (n-1) by default (the sample variance, with Bessel's correction).
+    LayerNorm uses the POPULATION one, which divides by n.
+
+    Without the `unbiased=False`, your result will look a lot like `F.layer_norm` but will
+    not match it. With d=320 the difference is 0.3% and you might not see it; with d=4 it is
+    33%. The test compares your result against both versions and tells you which one you
+    resemble.
+
+    THE `keepdim=True` IS NOT OPTIONAL EITHER
+    -----------------------------------------
+    Without it, `mean(dim=-1)` over `(4, 8, 32)` returns `(4, 8)` instead of `(4, 8, 1)`,
+    and the subtraction `x - mean` tries to broadcast the dimensions wrongly. Sometimes it
+    raises and sometimes — when the shapes happen to line up — it silently produces garbage.
+
+    THE eps GOES INSIDE THE SQUARE ROOT
+    -----------------------------------
+    `sqrt(var + eps)`, not `sqrt(var) + eps`. It is what `F.layer_norm` does, and with a
+    small variance the difference matters. It is there so you do not divide by zero when
+    every component is equal.
+
+    WHY OVER THE LAST DIMENSION
     ---------------------------
-    `torch.var` divide por (n-1) por defecto (la varianza muestral, con la correccion de
-    Bessel). LayerNorm usa la POBLACIONAL, que divide por n.
+    Those are each token's features. Each token is normalized on its own, independently of
+    the others and of the batch.
 
-    Sin el `unbiased=False`, tu resultado se parecera mucho a `F.layer_norm` pero no
-    coincidira. Con d=320 la diferencia es del 0,3% y podrias no verla; con d=4 es del 33%. El
-    test compara tu resultado contra las dos versiones y te dice a cual te pareces.
-
-    EL `keepdim=True` TAMPOCO ES OPCIONAL
-    -------------------------------------
-    Sin el, `mean(dim=-1)` sobre `(4, 8, 32)` devuelve `(4, 8)` en vez de `(4, 8, 1)`, y la
-    resta `x - mean` intenta emitir mal las dimensiones. A veces lanza error y a veces —cuando
-    las formas casualmente encajan— produce basura en silencio.
-
-    EL eps VA DENTRO DE LA RAÍZ
-    ---------------------------
-    `sqrt(var + eps)`, no `sqrt(var) + eps`. Es lo que hace `F.layer_norm`, y con varianza
-    pequenya la diferencia importa. Sirve para no dividir por cero cuando todas las componentes
-    son iguales.
-
-    POR QUÉ SOBRE LA ÚLTIMA DIMENSIÓN
-    ---------------------------------
-    Son las features de cada token. Cada token se normaliza por su cuenta, independientemente
-    de los demas y del batch.
-
-    Eso es lo que distingue LayerNorm de BatchNorm, y la razon de que funcione igual con batch
-    de 1 que de 1000 y de que no necesite estadisticas guardadas para inferencia.
+    That is what distinguishes LayerNorm from BatchNorm, and the reason it works the same
+    with a batch of 1 as with 1000 and does not need stored statistics for inference.
 
     Args:
-        x: `(..., d)`. Se normaliza la ultima dimension.
-        weight: `(d,)` o None.
-        bias: `(d,)` o None.
-        eps: para no dividir por cero.
+        x: `(..., d)`. The last dimension is normalized.
+        weight: `(d,)` or None.
+        bias: `(d,)` or None.
+        eps: so you do not divide by zero.
 
     Returns:
-        Del mismo tamanyo que `x`.
+        The same shape as `x`.
     """
-    raise NotImplementedError("TODO: modulo 07, ejercicio 1 - layer_norm")
+    raise NotImplementedError("TODO: module 07, exercise 1 - layer_norm")
 
 
 class RMSNorm(nn.Module):
-    """LayerNorm sin la media y sin el sesgo. Lo que usan Llama, Mistral y nuestro modelo.
+    """LayerNorm without the mean and without the bias. What Llama, Mistral and our model use.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    **En `__init__`** (dos lineas ademas del `super()`):
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    **In `__init__`** (two lines besides the `super()`):
 
         self.eps = eps
         self.weight = nn.Parameter(torch.ones(dim))
 
-    **Un ayudante** (o inlinealo, como prefieras):
+    **A helper** (or inline it, as you prefer):
 
         def _norm(self, x):
             return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
 
-    **En `forward`** (una linea):
+    **In `forward`** (one line):
 
         return self._norm(x.float()).type_as(x) * self.weight
 
-    EJEMPLO PARA COMPROBAR
-    ----------------------
+    EXAMPLE TO CHECK AGAINST
+    ------------------------
         x = [2.0, 8.0, 4.0, 6.0]
 
         RMS = sqrt((4+64+16+36)/4) = sqrt(30) = 5.477
         y   = [2/5.477, 8/5.477, 4/5.477, 6/5.477]
             = [0.365, 1.461, 0.730, 1.096]
 
-    `torch.ones` Y NO `torch.randn`
-    -------------------------------
-    Al inicializar, la capa tiene que ser la normalizacion pura. Si `weight` empezara
-    aleatorio, estarias escalando cada dimension por un factor arbitrario antes de haber
-    aprendido nada, y la perdida del paso 0 no cuadraria con `ln(V)`.
+    `torch.ones` AND NOT `torch.randn`
+    ----------------------------------
+    At initialization the layer has to be pure normalization. If `weight` started random, you
+    would be scaling each dimension by an arbitrary factor before having learned anything,
+    and the step-0 loss would not match `ln(V)`.
 
-    EL `.float()` NO ES PARANOIA
-    ----------------------------
-    Con activaciones en fp16, elevar al cuadrado desborda antes de lo que uno espera:
-    `300**2 = 90.000` y fp16 se acaba en 65.504.
+    THE `.float()` IS NOT PARANOIA
+    ------------------------------
+    With activations in fp16, squaring overflows sooner than you would expect:
+    `300**2 = 90,000` and fp16 runs out at 65,504.
 
-    El resultado seria `inf`, luego la media seria `inf`, y `rsqrt(inf)` seria 0: la capa
-    devolveria CEROS. Hay un test que reproduce ese caso exacto.
+    The result would be `inf`, then the mean would be `inf`, and `rsqrt(inf)` would be 0: the
+    layer would return ZEROS. There is a test that reproduces exactly that case.
 
-    UN DETALLE QUE SORPRENDE
-    ------------------------
-    Aunque hagas `.type_as(x)` para volver a fp16, la salida acaba siendo **fp32**, porque
-    despues multiplicas por `self.weight`, que es un parametro fp32, y PyTorch promociona.
+    A SURPRISING DETAIL
+    -------------------
+    Even if you call `.type_as(x)` to go back to fp16, the output ends up being **fp32**,
+    because afterwards you multiply by `self.weight`, which is an fp32 parameter, and PyTorch
+    promotes.
 
-    No es un bug: es lo que hace la implementacion de Llama y es lo deseable. Bajo autocast los
-    pesos se mantienen en fp32 y las operaciones siguientes convierten lo que necesiten. Hay un
-    test que lo documenta.
+    It is not a bug: it is what Llama's implementation does and it is what you want. Under
+    autocast the weights stay in fp32 and the following operations convert what they need.
+    There is a test that documents it.
 
-    `torch.rsqrt(z)` calcula `1/sqrt(z)` de una vez: es un kernel menos que dividir y algo mas
-    estable.
+    `torch.rsqrt(z)` computes `1/sqrt(z)` in one go: one kernel fewer than dividing and
+    slightly more stable.
 
-    QUÉ CAMBIA RESPECTO A LAYERNORM
-    -------------------------------
-    No se resta la media y no hay beta. Solo se reescala por la raiz del cuadrado medio (root
-    mean square, de ahi el nombre).
+    WHAT CHANGES COMPARED WITH LAYERNORM
+    ------------------------------------
+    The mean is not subtracted and there is no beta. It only rescales by the root mean
+    square (hence the name).
 
-    Zhang y Sennrich (2019) observaron que casi todo el beneficio de LayerNorm viene de
-    REESCALAR, no de RECENTRAR. Quitandolo se ahorra una pasada por los datos y un tensor
-    intermedio, sin perdida de calidad medible.
+    Zhang and Sennrich (2019) observed that almost all of LayerNorm's benefit comes from
+    RESCALING, not from RECENTERING. Dropping it saves a pass over the data and an
+    intermediate tensor, with no measurable loss of quality.
     """
 
     def __init__(self, dim: int, eps: float = 1e-6) -> None:
         super().__init__()
-        raise NotImplementedError("TODO: modulo 07, ejercicio 2 - RMSNorm.__init__")
+        raise NotImplementedError("TODO: module 07, exercise 2 - RMSNorm.__init__")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError("TODO: modulo 07, ejercicio 2 - RMSNorm.forward")
+        raise NotImplementedError("TODO: module 07, exercise 2 - RMSNorm.forward")
 
 
 def prenorm_residual(
@@ -202,57 +204,58 @@ def prenorm_residual(
     fn: Callable[[torch.Tensor], torch.Tensor],
     norm: Callable[[torch.Tensor], torch.Tensor],
 ) -> torch.Tensor:
-    """Pre-norm. Es UNA LINEA y es el ejercicio mas importante del modulo.
+    """Pre-norm. It is ONE LINE and it is the most important exercise in the module.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
+    WHAT YOU HAVE TO WRITE
+    ----------------------
         return x + fn(norm(x))
 
-    Eso es todo.
+    That is all.
 
-    LO QUE TIENES QUE ENTENDER
-    --------------------------
-    Hay dos formas de colocar la normalizacion, y solo cambian los parentesis de sitio:
+    WHAT YOU HAVE TO UNDERSTAND
+    ---------------------------
+    There are two ways to place the normalization, and only the parentheses move:
 
-        post-norm (el paper de 2017):   norm(x + fn(x))
-        pre-norm  (todo lo moderno):    x + fn(norm(x))
+        post-norm (the 2017 paper):     norm(x + fn(x))
+        pre-norm  (everything modern):  x + fn(norm(x))
 
-    Lo que cambia es POR DONDE PASA EL GRADIENTE.
+    What changes is WHERE THE GRADIENT GOES.
 
-    En **pre-norm**, el camino de `x` a la salida incluye un `+x` sin nada por medio. Al
-    derivar:
+    In **pre-norm**, the path from `x` to the output includes a `+x` with nothing in between.
+    Differentiating:
 
-        d(salida)/dx = 1 + d(fn(norm(x)))/dx
+        d(output)/dx = 1 + d(fn(norm(x)))/dx
 
-    Ese **1** es una autopista: aunque el segundo termino sea diminuto, el gradiente llega
-    intacto a las capas de abajo, capa tras capa.
+    That **1** is a highway: even if the second term is tiny, the gradient reaches the layers
+    below intact, layer after layer.
 
-    En **post-norm**, la normalizacion esta ENCIMA de la suma, asi que el gradiente la
-    atraviesa en cada capa y se va reescalando. Con 6 capas se nota poco; con 40 hace falta un
-    warmup cuidadoso para que el entrenamiento no explote.
+    In **post-norm**, the normalization sits ON TOP of the sum, so the gradient goes through
+    it at every layer and gets rescaled. With 6 layers you barely notice; with 40 you need a
+    careful warmup so training does not explode.
 
-    SI TE SALE MAL
-    --------------
-    Si escribes `norm(x + fn(x))` has hecho post-norm, y hay un test que lo detecta.
+    IF IT COMES OUT WRONG
+    ---------------------
+    If you write `norm(x + fn(x))` you have written post-norm, and there is a test that
+    detects it.
 
-    CÓMO SE COMPRUEBA QUE ESTÁ BIEN
-    -------------------------------
-    Hay un test que anula por completo el gradiente de la rama (`fn` devuelve un tensor
-    detached por cero) y verifica que el gradiente en la entrada sigue siendo EXACTAMENTE 1.
-    Ese 1 es toda la razon de ser del residual.
+    HOW IT GETS CHECKED
+    -------------------
+    There is a test that completely nulls the branch's gradient (`fn` returns a detached
+    tensor times zero) and verifies that the gradient at the input is still EXACTLY 1. That 1
+    is the whole reason the residual exists.
 
-    CONSECUENCIA PARA EL MÓDULO 10
-    ------------------------------
-    Como la corriente residual nunca se normaliza por el camino, llega a la salida con una
-    escala que crece con la profundidad. Por eso los modelos pre-norm llevan SIEMPRE una
-    normalizacion final antes de la capa de logits. Se llamara `norm_f`.
+    A CONSEQUENCE FOR MODULE 10
+    ---------------------------
+    Since the residual stream is never normalized along the way, it reaches the output at a
+    scale that grows with depth. That is why pre-norm models ALWAYS carry a final
+    normalization before the logits layer. It will be called `norm_f`.
 
     Args:
-        x: la entrada.
-        fn: el bloque (atencion o FFN).
-        norm: la capa de normalizacion.
+        x: the input.
+        fn: the block (attention or FFN).
+        norm: the normalization layer.
 
     Returns:
-        Del mismo tamanyo que `x`.
+        The same shape as `x`.
     """
-    raise NotImplementedError("TODO: modulo 07, ejercicio 3 - prenorm_residual")
+    raise NotImplementedError("TODO: module 07, exercise 3 - prenorm_residual")

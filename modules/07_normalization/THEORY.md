@@ -1,190 +1,191 @@
-# 07 — Normalización y conexiones residuales
+# 07 — Normalization and residual connections
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque sin esto, una red profunda no entrena. Punto.**
+**Because without this, a deep network does not train. Full stop.**
 
-Dos piezas que no calculan nada interesante y que son la diferencia entre un modelo que
-aprende y uno que devuelve `NaN` a los tres pasos. Son la fontanería del Transformer: nadie
-las menciona en los titulares y sin ellas no hay nada.
+Two pieces that compute nothing interesting and that are the difference between a model that
+learns and one that returns `NaN` after three steps. They are the Transformer's plumbing:
+nobody mentions them in the headlines and without them there is nothing.
 
-El problema que resuelven es concreto y lo vas a ver medido: los números que atraviesan una
-red profunda tienden a explotar o a desvanecerse, y con 40 capas el gradiente llega a cero
-**exacto**. La demo lo mide.
+The problem they solve is concrete and you are going to see it measured: the numbers flowing
+through a deep network tend to explode or vanish, and with 40 layers the gradient reaches
+**exactly** zero. The demo measures it.
 
-Además, aquí está una de las decisiones de diseño donde más se aprende comparando: dónde
-poner la normalización cambia si tu red necesita warmup o no.
+On top of that, this is one of the design decisions where you learn most by comparing: where
+you put the normalization changes whether your network needs warmup or not.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué los números se descontrolan al apilar capas, con la cuenta que lo explica
-- Qué hace exactamente LayerNorm, y **qué le sobra** (eso es RMSNorm)
-- Por qué `x + f(x)` es una de las ideas más importantes del deep learning
-- Pre-norm contra post-norm, medido: cuánto gradiente llega a la primera capa en cada caso
+- Why the numbers get out of control when you stack layers, with the arithmetic that
+  explains it
+- What LayerNorm does exactly, and **what is surplus to it** (that is RMSNorm)
+- Why `x + f(x)` is one of the most important ideas in deep learning
+- Pre-norm against post-norm, measured: how much gradient reaches the first layer in each
+  case
 
-### Cuánto cuesta
+### What it costs
 
-1,5 horas. Tres ejercicios cortos, y el tercero es literalmente una línea.
+1.5 hours. Three short exercises, and the third is literally one line.
 
 ---
 
-## El problema: los números se descontrolan
+## The problem: the numbers get out of control
 
-Una red profunda es una composición de funciones. Cada capa multiplica por una matriz, y
-esas multiplicaciones se acumulan.
+A deep network is a composition of functions. Each layer multiplies by a matrix, and those
+multiplications accumulate.
 
-Imagina que cada capa multiplica la magnitud de sus entradas por 1,2. Parece inofensivo:
+Imagine each layer multiplies the magnitude of its inputs by 1.2. It looks harmless:
 
 ```
-capa 1:  ×1,2  ->  1,2
-capa 2:  ×1,2  ->  1,44
-capa 3:  ×1,2  ->  1,73
+layer 1:  ×1.2  ->  1.2
+layer 2:  ×1.2  ->  1.44
+layer 3:  ×1.2  ->  1.73
 ...
-capa 40: ×1,2  ->  1470
+layer 40: ×1.2  ->  1470
 ```
 
-Y si el factor fuera 0,8 en lugar de 1,2, después de 40 capas quedaría 0,00013. En un caso
-los números explotan, en el otro se desvanecen. **Y lo mismo le pasa al gradiente hacia
-atrás**, que es lo que de verdad hace daño: si el gradiente se desvanece, las capas de abajo
-no reciben señal y no aprenden nada.
+And if the factor were 0.8 instead of 1.2, after 40 layers you would have 0.00013. In one
+case the numbers explode, in the other they vanish. **And the same happens to the gradient
+going backwards**, which is what really hurts: if the gradient vanishes, the layers below
+receive no signal and learn nothing.
 
-Con fp16, que solo llega hasta 65504 por arriba y hasta $6\times10^{-5}$ por abajo, esto
-deja de ser una molestia y se convierte en `inf` y en ceros.
+With fp16, which only goes up to 65504 at the top and down to $6\times10^{-5}$ at the
+bottom, this stops being an annoyance and becomes `inf` and zeros.
 
-## La solución 1: normalizar
+## Solution 1: normalize
 
-La idea es brutal en su simplicidad: **después de cada bloque, vuelve a poner los números en
-una escala conocida.** No importa lo que haya hecho la capa; al salir, renormalizas.
+The idea is brutal in its simplicity: **after each block, put the numbers back on a known
+scale.** It does not matter what the layer did; on the way out, you renormalize.
 
-### LayerNorm, con números
+### LayerNorm, with numbers
 
-Toma el vector de un token, digamos de 4 dimensiones:
+Take one token's vector, say 4-dimensional:
 
 ```
 x = [2.0, 8.0, 4.0, 6.0]
 ```
 
-Calcula su media y su varianza:
+Compute its mean and its variance:
 
 ```
-media    = (2+8+4+6)/4 = 5.0
-varianza = ((2-5)² + (8-5)² + (4-5)² + (6-5)²)/4 = (9+9+1+1)/4 = 5.0
-desviación = √5 = 2.236
+mean     = (2+8+4+6)/4 = 5.0
+variance = ((2-5)² + (8-5)² + (4-5)² + (6-5)²)/4 = (9+9+1+1)/4 = 5.0
+std dev  = √5 = 2.236
 ```
 
-Resta la media y divide por la desviación:
+Subtract the mean and divide by the standard deviation:
 
 ```
 x_norm = [(2-5)/2.236, (8-5)/2.236, (4-5)/2.236, (6-5)/2.236]
        = [-1.342, 1.342, -0.447, 0.447]
 ```
 
-Ahora media 0 y varianza 1, venga de donde venga la entrada.
+Now it has mean 0 and variance 1, wherever the input came from.
 
-Pero forzar siempre media 0 y varianza 1 le quita libertad al modelo, así que se le devuelve
-con dos parámetros aprendidos, $\gamma$ (escala) y $\beta$ (desplazamiento):
+But always forcing mean 0 and variance 1 takes freedom away from the model, so it is given
+back with two learned parameters, $\gamma$ (scale) and $\beta$ (shift):
 
 $$y = \frac{x - \mu}{\sqrt{\sigma^2 + \epsilon}} \cdot \gamma + \beta$$
 
-El $\epsilon$ (típicamente $10^{-5}$) evita dividir por cero cuando todas las componentes
-son iguales.
+The $\epsilon$ (typically $10^{-5}$) avoids dividing by zero when every component is equal.
 
-**Importante: la media y la varianza se calculan sobre las dimensiones de cada token, por
-separado.** Nada que ver con BatchNorm, que normaliza a lo largo del batch. LayerNorm trata
-cada token independientemente, y por eso funciona igual con batch de 1 que de 1000 y no
-necesita guardar estadísticas para la inferencia.
+**Important: the mean and the variance are computed over each token's dimensions,
+separately.** Nothing to do with BatchNorm, which normalizes along the batch. LayerNorm
+treats each token independently, which is why it works the same with a batch of 1 as with
+1000 and does not need to store statistics for inference.
 
-### RMSNorm: quitar la mitad
+### RMSNorm: dropping half of it
 
-En 2019, Zhang y Sennrich probaron algo: ¿y si no restamos la media?
+In 2019, Zhang and Sennrich tried something: what if we do not subtract the mean?
 
 $$y = \frac{x}{\sqrt{\frac{1}{d}\sum_i x_i^2 + \epsilon}} \cdot \gamma$$
 
-Solo se reescala por la raíz del cuadrado medio (*root mean square*). Sin restar media, sin
-$\beta$. Con el mismo vector:
+It only rescales by the root mean square. No mean subtraction, no $\beta$. With the same
+vector:
 
 ```
 RMS = √((4+64+16+36)/4) = √30 = 5.477
 x_norm = [0.365, 1.461, 0.730, 1.096]
 ```
 
-Resultado: **entre un 7% y un 64% más rápido según el caso, y sin pérdida de calidad
-medible**. Se ahorra una pasada por los datos y un tensor intermedio. Por eso lo usan Llama,
-Mistral y prácticamente todo lo moderno, y por eso es lo que usa nuestro modelo.
+Result: **between 7% and 64% faster depending on the case, with no measurable loss of
+quality**. It saves a pass over the data and an intermediate tensor. That is why Llama,
+Mistral and practically everything modern use it, and why our model uses it.
 
-Un detalle de implementación que importa: **el cálculo se hace en float32 aunque la entrada
-venga en float16**. Elevar al cuadrado activaciones grandes puede desbordar el rango de fp16
-y dar `inf`.
+An implementation detail that matters: **the computation is done in float32 even if the
+input arrives in float16**. Squaring large activations can overflow the fp16 range and give
+`inf`.
 
-## La solución 2: conexiones residuales
+## Solution 2: residual connections
 
-La segunda pieza, y la más importante de las dos.
+The second piece, and the more important of the two.
 
-En vez de que cada bloque *sustituya* la representación, se le pide que la *modifique*:
+Instead of each block *replacing* the representation, it is asked to *modify* it:
 
-$$x_{\text{salida}} = x + f(x)$$
+$$x_{\text{output}} = x + f(x)$$
 
-El bloque calcula una corrección, no un reemplazo. A esa suma acumulada que atraviesa toda
-la red se le llama **corriente residual** (*residual stream*).
+The block computes a correction, not a replacement. That accumulated sum flowing through the
+whole network is called the **residual stream**.
 
-**Por qué esto lo cambia todo:** derivando esa expresión respecto a $x$,
+**Why this changes everything:** differentiating that expression with respect to $x$,
 
-$$\frac{\partial x_{\text{salida}}}{\partial x} = 1 + \frac{\partial f(x)}{\partial x}$$
+$$\frac{\partial x_{\text{output}}}{\partial x} = 1 + \frac{\partial f(x)}{\partial x}$$
 
-Ese **1** es una autopista. Aunque $\partial f/\partial x$ sea diminuto, el gradiente que
-llega a las capas de abajo nunca baja de 1 por ese camino. Sin residuales, los factores se
-multiplican y se desvanecen; con residuales, hay siempre una ruta directa.
+That **1** is a highway. Even if $\partial f/\partial x$ is tiny, the gradient reaching the
+layers below never drops below 1 along that path. Without residuals, the factors multiply
+and vanish; with residuals, there is always a direct route.
 
-## Pre-norm contra post-norm
+## Pre-norm against post-norm
 
-Ahora la pregunta que decide si tu red entrena: **¿dónde va la normalización?**
+Now the question that decides whether your network trains: **where does the normalization
+go?**
 
 ```
-post-norm (el paper de 2017):   x = norm(x + f(x))
-pre-norm  (todo lo moderno):    x = x + f(norm(x))
+post-norm (the 2017 paper):     x = norm(x + f(x))
+pre-norm  (everything modern):  x = x + f(norm(x))
 ```
 
-Parece cosmético. No lo es.
+It looks cosmetic. It is not.
 
-En **post-norm**, la normalización está *encima* del camino residual. El gradiente la
-atraviesa en cada capa y se va reescalando: la autopista tiene un peaje en cada salida. Con
-6 capas se nota poco; con 40, hace falta un warmup cuidadoso del learning rate para que el
-entrenamiento no explote en los primeros pasos.
+In **post-norm**, the normalization sits *on top of* the residual path. The gradient goes
+through it at every layer and gets rescaled: the highway has a toll at every exit. With 6
+layers you barely notice; with 40, you need a careful learning-rate warmup so training does
+not explode in the first steps.
 
-En **pre-norm**, la normalización está *dentro* de la rama. El camino $x \to x$ queda
-completamente libre y el gradiente llega intacto hasta la primera capa. Se puede entrenar
-sin warmup y con learning rates más altos.
+In **pre-norm**, the normalization sits *inside* the branch. The path $x \to x$ is
+completely clear and the gradient reaches the first layer intact. You can train without
+warmup and with higher learning rates.
 
-El precio de pre-norm: la corriente residual crece con la profundidad, porque cada capa le
-suma su contribución sin que nadie la vuelva a normalizar. Por eso los modelos pre-norm
-llevan **siempre** una normalización final antes de la capa de salida. Si se te olvida, los
-logits salen con una escala arbitraria.
+The price of pre-norm: the residual stream grows with depth, because each layer adds its
+contribution with nobody normalizing it again. That is why pre-norm models **always** carry
+a final normalization before the output layer. If you forget it, the logits come out at an
+arbitrary scale.
 
-La demo del módulo mide esto empíricamente: entrena la misma red con las dos variantes y
-compara la norma del gradiente que llega a la primera capa.
+The module's demo measures this empirically: it trains the same network with both variants
+and compares the norm of the gradient reaching the first layer.
 
-## Dónde está el debate
+## Where the debate is
 
-Aquí hay más de lo que parece.
+There is more here than it looks.
 
-**Por qué funciona la normalización sigue sin estar claro.** La explicación original de
-BatchNorm (2015) fue el *internal covariate shift*: que normalizar estabiliza la
-distribución de las entradas de cada capa. Santurkar et al. (2018) lo pusieron a prueba
-inyectando ruido *después* de normalizar —destruyendo deliberadamente esa estabilidad— y la
-red seguía entrenando igual de bien. La explicación original está hoy largamente
-descartada, y la sustituta —que suaviza el paisaje de la función de pérdida— es más una
-observación empírica que una teoría.
+**Why normalization works is still unclear.** BatchNorm's original explanation (2015) was
+*internal covariate shift*: that normalizing stabilizes the distribution of each layer's
+inputs. Santurkar et al. (2018) put it to the test by injecting noise *after* normalizing —
+deliberately destroying that stability — and the network kept training just as well. The
+original explanation is today largely discarded, and its replacement — that it smooths the
+loss landscape — is more an empirical observation than a theory.
 
-**Pre-norm no es gratis.** Está bastante aceptado que pre-norm entrena más fácil, pero hay
-evidencia de que post-norm, cuando converge, alcanza mejor calidad final. Hay arquitecturas
-recientes que usan variantes híbridas por esto mismo. Nosotros usamos pre-norm porque es lo
-robusto y lo que hace todo el mundo, no porque esté demostrado que sea superior.
+**Pre-norm is not free.** It is fairly accepted that pre-norm trains more easily, but there
+is evidence that post-norm, when it converges, reaches better final quality. There are
+recent architectures using hybrid variants for exactly this reason. We use pre-norm because
+it is the robust option and what everyone does, not because it is proven superior.
 
 ---
 
-**Para ampliar:** Ba et al. 2016, [Layer Normalization](https://arxiv.org/abs/1607.06450) ·
-Zhang & Sennrich 2019, [RMSNorm](https://arxiv.org/abs/1910.07467) · Xiong et al. 2020,
+**Further reading:** Ba et al. 2016, [Layer Normalization](https://arxiv.org/abs/1607.06450)
+· Zhang & Sennrich 2019, [RMSNorm](https://arxiv.org/abs/1910.07467) · Xiong et al. 2020,
 [On Layer Normalization in the Transformer Architecture](https://arxiv.org/abs/2002.04745)
-(el análisis pre/post-norm) · He et al. 2015,
-[Deep Residual Learning](https://arxiv.org/abs/1512.03385). Términos sueltos, en
+(the pre/post-norm analysis) · He et al. 2015,
+[Deep Residual Learning](https://arxiv.org/abs/1512.03385). Stray terms are in
 [GLOSSARY.md](../../GLOSSARY.md).

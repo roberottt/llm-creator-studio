@@ -1,12 +1,12 @@
-"""Demo del modulo 07: por que pre-norm y no post-norm, medido.
+"""Demo for module 07: why pre-norm and not post-norm, measured.
 
     llmfs demo 07
 
-Tres experimentos:
-  1. Sin residuales ni normalizacion, el gradiente se desvanece con la profundidad.
-     Con residuales, no. Se mide la norma del gradiente que llega a la entrada.
-  2. Pre-norm frente a post-norm, con redes de 4 a 64 capas.
-  3. LayerNorm frente a RMSNorm: cuanto cuesta cada una y cuanto se parecen.
+Three experiments:
+  1. Without residuals or normalization, the gradient vanishes with depth. With residuals,
+     it does not. The norm of the gradient reaching the input is measured.
+  2. Pre-norm against post-norm, with networks of 4 to 64 layers.
+  3. LayerNorm against RMSNorm: what each costs and how similar they are.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import time
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import torch
@@ -36,198 +36,197 @@ RMSNorm = resolve("07_normalization", "RMSNorm")
 prenorm_residual = resolve("07_normalization", "prenorm_residual")
 
 D = 64
-PROFUNDIDADES = [4, 8, 16, 32, 64]
+DEPTHS = [4, 8, 16, 32, 64]
 
 
-def bloque(d: int, escala: float = 1.0) -> nn.Module:
-    """Un bloque cualquiera. Lo unico que importa es que encoja un poco su salida."""
-    capa = nn.Linear(d, d)
+def block(d: int, scale: float = 1.0) -> nn.Module:
+    """Any old block. All that matters is that it shrinks its output a little."""
+    layer = nn.Linear(d, d)
     with torch.no_grad():
-        capa.weight.mul_(escala)
-        capa.bias.zero_()
-    return capa
+        layer.weight.mul_(scale)
+        layer.bias.zero_()
+    return layer
 
 
-def gradiente_en_la_entrada(modo: str, n_capas: int, semilla: int = 0) -> float:
-    """Norma del gradiente que llega a la entrada tras atravesar `n_capas` bloques."""
-    set_seed(semilla)
+def gradient_at_the_input(mode: str, n_layers: int, seed: int = 0) -> float:
+    """Norm of the gradient reaching the input after crossing `n_layers` blocks."""
+    set_seed(seed)
     x = torch.randn(4, 16, D, requires_grad=True)
-    capas = [bloque(D, escala=0.5) for _ in range(n_capas)]
-    normas = [RMSNorm(D) for _ in range(n_capas)]
+    layers = [block(D, scale=0.5) for _ in range(n_layers)]
+    norms = [RMSNorm(D) for _ in range(n_layers)]
 
     h = x
-    for capa, norm in zip(capas, normas):
-        if modo == "nada":
-            h = capa(h)
-        elif modo == "solo norma":
-            h = capa(norm(h))
-        elif modo == "pre-norm":
-            h = prenorm_residual(h, capa, norm)
-        elif modo == "post-norm":
-            h = postnorm_residual(h, capa, norm)
+    for layer, norm in zip(layers, norms):
+        if mode == "nothing":
+            h = layer(h)
+        elif mode == "norm only":
+            h = layer(norm(h))
+        elif mode == "pre-norm":
+            h = prenorm_residual(h, layer, norm)
+        elif mode == "post-norm":
+            h = postnorm_residual(h, layer, norm)
     h.sum().backward()
     return float(x.grad.norm())
 
 
-def experimento_residuales() -> dict[str, list[float]]:
-    console.rule("[bold]1 y 2. Que le llega al gradiente segun la arquitectura[/bold]")
+def residuals_experiment() -> dict[str, list[float]]:
+    console.rule("[bold]1 and 2. What reaches the gradient, by architecture[/bold]")
     console.print(
-        "Se apilan N bloques identicos y se mide la NORMA DEL GRADIENTE que llega a la\n"
-        "entrada. Si se acerca a cero, las primeras capas no reciben senyal y no aprenden.\n"
+        "N identical blocks get stacked and the NORM OF THE GRADIENT reaching the input is\n"
+        "measured. If it approaches zero, the first layers receive no signal and do not\n"
+        "learn.\n"
     )
 
-    resultados: dict[str, list[float]] = {}
-    tabla = Table(header_style="bold")
-    tabla.add_column("capas", justify="right")
-    modos = ("nada", "solo norma", "post-norm", "pre-norm")
-    for modo in modos:
-        tabla.add_column(modo, justify="right")
+    results: dict[str, list[float]] = {}
+    table = Table(header_style="bold")
+    table.add_column("layers", justify="right")
+    modes = ("nothing", "norm only", "post-norm", "pre-norm")
+    for mode in modes:
+        table.add_column(mode, justify="right")
 
-    for modo in modos:
-        resultados[modo] = [gradiente_en_la_entrada(modo, n) for n in PROFUNDIDADES]
+    for mode in modes:
+        results[mode] = [gradient_at_the_input(mode, n) for n in DEPTHS]
 
-    for i, n in enumerate(PROFUNDIDADES):
-        tabla.add_row(str(n), *[f"{resultados[m][i]:.3e}" for m in resultados])
-    console.print(tabla)
+    for i, n in enumerate(DEPTHS):
+        table.add_row(str(n), *[f"{results[m][i]:.3e}" for m in results])
+    console.print(table)
 
-    n = PROFUNDIDADES[-1]
+    n = DEPTHS[-1]
     console.print(
-        f"\n[bold]Con {n} capas, leido de izquierda a derecha:[/bold]\n\n"
-        f"  [bold]nada[/bold] ({resultados['nada'][-1]:.2e}): capas lineales que encogen su "
-        "salida, una detras de otra.\n"
-        "  El gradiente se multiplica por un factor menor que 1 en cada capa y se desvanece\n"
-        "  exponencialmente. Las primeras capas no reciben ninguna senyal.\n\n"
-        f"  [bold]solo norma[/bold] ({resultados['solo norma'][-1]:.2e}): la misma red con "
-        "RMSNorm delante de cada capa.\n"
-        "  Aqui la comparacion ni siquiera se puede expresar como un cociente, porque el\n"
-        "  caso anterior ha llegado a CERO exacto por underflow de la coma flotante.\n"
-        "  [bold]La normalizacion sola ya rescata buena parte del problema[/bold],\n"
-        "  porque devuelve la escala a 1 en cada paso y corta la cadena de factores.\n\n"
-        f"  [bold]post-norm[/bold] ({resultados['post-norm'][-1]:.2e}) y "
-        f"[bold]pre-norm[/bold] ({resultados['pre-norm'][-1]:.2e}): con residuales.\n"
-        "  Pre-norm es el unico que CRECE con la profundidad en vez de decrecer, porque el\n"
-        "  camino x -> x esta completamente libre y cada capa suma su contribucion.\n\n"
-        "[dim]Conclusion honesta: normalizacion y residuales atacan el mismo problema por\n"
-        "caminos distintos, y no son alternativas sino complementos. Lo que distingue a\n"
-        "pre-norm no es evitar el desvanecimiento (eso ya lo hace la norma) sino dejar el\n"
-        "camino residual sin ningun peaje.[/dim]"
+        f"\n[bold]With {n} layers, read left to right:[/bold]\n\n"
+        f"  [bold]nothing[/bold] ({results['nothing'][-1]:.2e}): linear layers that shrink "
+        "their output, one after another.\n"
+        "  The gradient is multiplied by a factor below 1 at every layer and vanishes\n"
+        "  exponentially. The first layers receive no signal at all.\n\n"
+        f"  [bold]norm only[/bold] ({results['norm only'][-1]:.2e}): the same network with "
+        "RMSNorm in front of each layer.\n"
+        "  Here the comparison cannot even be expressed as a ratio, because the previous\n"
+        "  case reached exactly ZERO through floating-point underflow.\n"
+        "  [bold]Normalization alone already rescues much of the problem[/bold],\n"
+        "  because it returns the scale to 1 at every step and cuts the chain of factors.\n\n"
+        f"  [bold]post-norm[/bold] ({results['post-norm'][-1]:.2e}) and "
+        f"[bold]pre-norm[/bold] ({results['pre-norm'][-1]:.2e}): with residuals.\n"
+        "  Pre-norm is the only one that GROWS with depth instead of shrinking, because the\n"
+        "  path x -> x is completely clear and each layer adds its contribution.\n\n"
+        "[dim]An honest conclusion: normalization and residuals attack the same problem by\n"
+        "different routes, and they are not alternatives but complements. What sets\n"
+        "pre-norm apart is not avoiding the vanishing (the norm already does that) but\n"
+        "leaving the residual path with no toll at all.[/dim]"
     )
-    return resultados
+    return results
 
 
-def experimento_normas(cfg) -> None:
-    console.rule("[bold]3. LayerNorm frente a RMSNorm[/bold]")
+def norms_experiment(cfg) -> None:
+    console.rule("[bold]3. LayerNorm against RMSNorm[/bold]")
 
     torch.manual_seed(0)
     x = torch.randn(8, 512, 320, device=cfg.device)
     rms = RMSNorm(320).to(cfg.device)
 
-    def cronometra(fn, veces: int = 50) -> float:
+    def time_it(fn, times: int = 50) -> float:
         for _ in range(5):
             fn()
         cfg.synchronize()
         t0 = time.perf_counter()
-        for _ in range(veces):
+        for _ in range(times):
             fn()
         cfg.synchronize()
-        return (time.perf_counter() - t0) / veces * 1000
+        return (time.perf_counter() - t0) / times * 1000
 
-    t_ln = cronometra(lambda: F.layer_norm(x, (320,)))
-    t_rms = cronometra(lambda: rms(x))
-    t_mio = cronometra(lambda: layer_norm(x))
+    t_ln = time_it(lambda: F.layer_norm(x, (320,)))
+    t_rms = time_it(lambda: rms(x))
+    t_mine = time_it(lambda: layer_norm(x))
 
-    tabla = Table(header_style="bold")
-    tabla.add_column("implementacion")
-    tabla.add_column("ms por llamada", justify="right")
-    tabla.add_column("parametros para d=320", justify="right")
-    tabla.add_row("F.layer_norm (PyTorch)", f"{t_ln:.3f}", "640 (escala + sesgo)")
-    tabla.add_row("tu layer_norm", f"{t_mio:.3f}", "640")
-    tabla.add_row("RMSNorm", f"{t_rms:.3f}", "320 (solo escala)")
-    console.print(tabla)
+    table = Table(header_style="bold")
+    table.add_column("implementation")
+    table.add_column("ms per call", justify="right")
+    table.add_column("parameters for d=320", justify="right")
+    table.add_row("F.layer_norm (PyTorch)", f"{t_ln:.3f}", "640 (scale + bias)")
+    table.add_row("your layer_norm", f"{t_mine:.3f}", "640")
+    table.add_row("RMSNorm", f"{t_rms:.3f}", "320 (scale only)")
+    console.print(table)
 
     console.print(
-        "[dim]Los tiempos de aqui no dicen gran cosa: son operaciones limitadas por memoria\n"
-        "y a esta escala domina el coste de lanzar el kernel. La ganancia real de RMSNorm\n"
-        "que reportan Zhang y Sennrich (entre 7% y 64%) se mide sobre el entrenamiento\n"
-        "entero, no sobre la capa aislada. Lo que si es un hecho aqui es la mitad de\n"
-        "parametros.[/dim]\n"
+        "[dim]The timings here do not say much: these are memory-bound operations and at\n"
+        "this scale the kernel launch cost dominates. The real RMSNorm gain Zhang and\n"
+        "Sennrich report (between 7% and 64%) is measured over the whole training run, not\n"
+        "over the isolated layer. What is a fact here is half the parameters.[/dim]\n"
     )
 
-    # En que se diferencian de verdad. La correlacion NO sirve aqui: es invariante a
-    # transformaciones afines, asi que da ~1 aunque una de las dos deje un desplazamiento
-    # que la otra quita. Lo que hay que mirar es la MEDIA de la salida.
-    console.print("Que hace cada una con datos ya centrados y con datos desplazados:\n")
-    tabla2 = Table(header_style="bold")
-    tabla2.add_column("entrada")
-    tabla2.add_column("media tras LayerNorm", justify="right")
-    tabla2.add_column("media tras RMSNorm", justify="right")
-    tabla2.add_column("diferencia maxima", justify="right")
+    # Where they really differ. Correlation is NO use here: it is invariant to affine
+    # transformations, so it gives ~1 even if one of them leaves an offset the other
+    # removes. What to look at is the MEAN of the output.
+    console.print("What each does with already-centered data and with shifted data:\n")
+    table2 = Table(header_style="bold")
+    table2.add_column("input")
+    table2.add_column("mean after LayerNorm", justify="right")
+    table2.add_column("mean after RMSNorm", justify="right")
+    table2.add_column("maximum difference", justify="right")
 
     torch.manual_seed(0)
-    for etiqueta, entrada in [
-        ("media 0", torch.randn(4, 16, 320)),
-        ("media +5", torch.randn(4, 16, 320) + 5.0),
-        ("media +50", torch.randn(4, 16, 320) + 50.0),
+    for label, inputs in [
+        ("mean 0", torch.randn(4, 16, 320)),
+        ("mean +5", torch.randn(4, 16, 320) + 5.0),
+        ("mean +50", torch.randn(4, 16, 320) + 50.0),
     ]:
-        con_ln = layer_norm(entrada).detach()
-        con_rms = RMSNorm(320)(entrada).detach()
-        tabla2.add_row(
-            etiqueta,
-            f"{float(con_ln.mean()):+.4f}",
-            f"{float(con_rms.mean()):+.4f}",
-            f"{float((con_ln - con_rms).abs().max()):.3f}",
+        with_ln = layer_norm(inputs).detach()
+        with_rms = RMSNorm(320)(inputs).detach()
+        table2.add_row(
+            label,
+            f"{float(with_ln.mean()):+.4f}",
+            f"{float(with_rms.mean()):+.4f}",
+            f"{float((with_ln - with_rms).abs().max()):.3f}",
         )
-    console.print(tabla2)
+    console.print(table2)
     console.print(
-        "[dim]Con los datos ya centrados las dos hacen practicamente lo mismo, y por eso se\n"
-        "puede prescindir de restar la media: dentro de una red, las activaciones suelen\n"
-        "estar centradas.\n\n"
-        "Con un desplazamiento grande si divergen: LayerNorm lo elimina y RMSNorm lo\n"
-        "conserva. Que en la practica eso no perjudique es un resultado EMPIRICO, no un\n"
-        "teorema. Zhang y Sennrich lo comprobaron entrenando, no demostrandolo.[/dim]"
+        "[dim]With already-centered data the two do practically the same thing, which is why\n"
+        "you can do without subtracting the mean: inside a network, activations are usually\n"
+        "centered.\n\n"
+        "With a large offset they do diverge: LayerNorm removes it and RMSNorm keeps it.\n"
+        "That this does not hurt in practice is an EMPIRICAL result, not a theorem. Zhang\n"
+        "and Sennrich checked it by training, not by proving it.[/dim]"
     )
 
 
 def main() -> None:
     cfg = get_device()
-    resultados = experimento_residuales()
-    experimento_normas(cfg)
+    results = residuals_experiment()
+    norms_experiment(cfg)
 
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    for modo, valores in resultados.items():
-        izq.plot(PROFUNDIDADES, valores, marker="o", label=modo)
-    izq.set_yscale("log")
-    izq.set_xlabel("numero de capas apiladas")
-    izq.set_ylabel("norma del gradiente en la entrada")
-    izq.set_title("El gradiente sobrevive gracias al residual")
-    izq.grid(alpha=0.3)
-    izq.legend()
+    for mode, values in results.items():
+        left.plot(DEPTHS, values, marker="o", label=mode)
+    left.set_yscale("log")
+    left.set_xlabel("number of stacked layers")
+    left.set_ylabel("gradient norm at the input")
+    left.set_title("The gradient survives thanks to the residual")
+    left.grid(alpha=0.3)
+    left.legend()
 
-    x = torch.linspace(-4, 4, 200).unsqueeze(0).repeat(1, 1)
-    entrada = torch.tensor([[2.0, 8.0, 4.0, 6.0]])
-    etiquetas = ["x original", "LayerNorm", "RMSNorm"]
-    valores = [
-        entrada[0].tolist(),
-        layer_norm(entrada)[0].tolist(),
-        RMSNorm(4)(entrada)[0].detach().tolist(),
+    inputs = torch.tensor([[2.0, 8.0, 4.0, 6.0]])
+    labels = ["original x", "LayerNorm", "RMSNorm"]
+    values = [
+        inputs[0].tolist(),
+        layer_norm(inputs)[0].tolist(),
+        RMSNorm(4)(inputs)[0].detach().tolist(),
     ]
-    ancho = 0.25
-    posiciones = torch.arange(4).float()
-    for i, (etiqueta, v) in enumerate(zip(etiquetas, valores)):
-        der.bar(posiciones + i * ancho, v, ancho, label=etiqueta)
-    der.axhline(0, color="black", lw=0.8)
-    der.set_xticks(posiciones + ancho)
-    der.set_xticklabels([f"dim {i}" for i in range(4)])
-    der.set_title("El ejemplo de THEORY.md, dimension a dimension")
-    der.grid(alpha=0.3, axis="y")
-    der.legend(fontsize=8)
+    width = 0.25
+    positions = torch.arange(4).float()
+    for i, (label, v) in enumerate(zip(labels, values)):
+        right.bar(positions + i * width, v, width, label=label)
+    right.axhline(0, color="black", lw=0.8)
+    right.set_xticks(positions + width)
+    right.set_xticklabels([f"dim {i}" for i in range(4)])
+    right.set_title("The THEORY.md example, dimension by dimension")
+    right.grid(alpha=0.3, axis="y")
+    right.legend(fontsize=8)
 
     fig.tight_layout()
-    destino = figures_dir() / "07_normalization.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "07_normalization.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target}[/green]")
 
 
 if __name__ == "__main__":
