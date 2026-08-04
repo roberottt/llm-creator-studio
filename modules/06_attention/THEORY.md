@@ -1,200 +1,202 @@
 # 06 — Self-attention
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Si sólo pudieras entender un módulo del curso, sería éste.**
+**If you could only understand one module in the course, it would be this one.**
 
-Todo lo anterior —tokenizar, embeddings, el MLP de Bengio— existía ya en 2003 y daba
-modelos mediocres. Lo que cambió en 2017 y acabó produciendo ChatGPT es exactamente lo que
-vas a programar aquí, y cabe en cuatro líneas de código.
+Everything before it — tokenizing, embeddings, Bengio's MLP — already existed in 2003 and
+gave mediocre models. What changed in 2017 and eventually produced ChatGPT is exactly what
+you are going to program here, and it fits in four lines of code.
 
-La idea es sencilla de enunciar: **dejar que cada palabra mire a las anteriores y decida a
-cuáles hacer caso**. Lo difícil es creer que con eso baste. Al terminar el módulo lo habrás
-visto funcionar en un modelo que entrenas tú, con un mapa de calor que muestra literalmente
-a qué mira cada letra.
+The idea is simple to state: **let each word look at the previous ones and decide which to
+pay attention to**. What is hard is believing that this is enough. By the end of the module
+you will have seen it working in a model you trained yourself, with a heatmap that literally
+shows what each letter is looking at.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué un modelo puede "recordar" algo que leyó 300 palabras antes
-- Qué son Q, K y V, y **por qué hacen falta tres cosas y no una**
-- Por qué se divide por `√d_k`, y qué se rompe exactamente si lo quitas (con números)
-- Qué es la máscara causal y por qué es **el bug más caro del curso** si la pones mal
-- Habrás visto un heatmap de atención de un modelo entrenado por ti
+- Why a model can "remember" something it read 300 words earlier
+- What Q, K and V are, and **why three things are needed and not one**
+- Why we divide by `√d_k`, and what exactly breaks if you remove it (with numbers)
+- What the causal mask is and why it is **the most expensive bug in the course** if you get
+  it wrong
+- You will have seen an attention heatmap from a model you trained
 
-### Cuánto cuesta
+### What it costs
 
-4 horas, empatado con el 03 como el más largo. Es el que más merece la pena.
+4 hours, tied with module 03 as the longest. It is the one most worth it.
 
 ---
 
-## ¿Qué problema resuelve la atención?
+## What problem does attention solve?
 
-Frase: *"el gato que vi ayer dormía"*.
+Sentence: *"the cat I saw yesterday was sleeping"*.
 
-Para acertar `dormía` hay que saber que el sujeto es `gato`, cuatro palabras atrás. El MLP
-del módulo 05 no puede: mira una ventana fija y trata todas las posiciones igual, sin forma
-de decir "de estos tokens, el que me importa ahora es el primero".
+To get `sleeping` right you have to know that the subject is `cat`, five words back. Module
+05's MLP cannot: it looks at a fixed window and treats every position the same, with no way
+to say "of these tokens, the one that matters to me now is the first one".
 
-La atención deja que **cada palabra mire a las anteriores y decida a cuáles hacer caso**.
-No con una regla fija, sino calculándolo a partir del contenido.
+Attention lets **each word look at the previous ones and decide which to pay attention to**.
+Not with a fixed rule, but by computing it from the content.
 
-## Con números de verdad
+## With real numbers
 
-Vamos a hacerlo a mano con 3 palabras y vectores de 2 dimensiones. Digamos que después de
-los embeddings tenemos:
-
-```
-gato   = [1.0, 0.2]
-ayer   = [0.1, 0.9]
-dormía = [0.8, 0.3]
-```
-
-`dormía` quiere saber a quién mirar. Lo hace con un **producto escalar**: mide cuánto se
-parecen dos vectores. Cuanto más alineados, mayor el número.
+Let us do it by hand with 3 words and 2-dimensional vectors. Say that after the embeddings
+we have:
 
 ```
-gato · dormía = 1.0×0.8 + 0.2×0.3 = 0.86      -> mucho
-ayer · dormía = 0.1×0.8 + 0.9×0.3 = 0.35      -> poco
-dormía · dormía = 0.8×0.8 + 0.3×0.3 = 0.73    -> a sí misma
+cat      = [1.0, 0.2]
+yesterday= [0.1, 0.9]
+sleeping = [0.8, 0.3]
 ```
 
-Esos números se llaman **puntuaciones** (*scores*). Ahora hay que convertirlos en pesos que
-sumen 1, y para eso se usa softmax (exponenciar y normalizar, como el módulo 00 pero
-admitiendo negativos):
+`sleeping` wants to know who to look at. It does so with a **dot product**: it measures how
+similar two vectors are. The more aligned, the larger the number.
+
+```
+cat · sleeping       = 1.0×0.8 + 0.2×0.3 = 0.86      -> a lot
+yesterday · sleeping = 0.1×0.8 + 0.9×0.3 = 0.35      -> a little
+sleeping · sleeping  = 0.8×0.8 + 0.3×0.3 = 0.73      -> to itself
+```
+
+Those numbers are called **scores**. Now they have to be turned into weights that sum to 1,
+and for that we use softmax (exponentiate and normalize, like module 00 but allowing
+negatives):
 
 ```
 softmax([0.86, 0.35, 0.73]) = [0.40, 0.24, 0.36]
 ```
 
-Y con esos pesos se mezclan los vectores:
+And those weights are used to mix the vectors:
 
 ```
-salida = 0.40×gato + 0.24×ayer + 0.36×dormía
+output = 0.40×cat + 0.24×yesterday + 0.36×sleeping
 ```
 
-Eso es la atención. **Una media ponderada donde los pesos los decide el propio contenido.**
-La representación de `dormía` ahora lleva dentro un 40% de `gato`, que es exactamente la
-información que necesitaba.
+That is attention. **A weighted average where the weights are decided by the content
+itself.** `sleeping`'s representation now carries 40% of `cat` inside it, which is exactly
+the information it needed.
 
-## Q, K, V: por qué tres proyecciones y no una
+## Q, K, V: why three projections and not one
 
-En el ejemplo he usado el mismo vector para todo, y eso es demasiado rígido. Un token
-necesita hacer tres cosas distintas:
+In the example I used the same vector for everything, and that is too rigid. A token needs
+to do three different things:
 
-- **preguntar** algo ("busco un sujeto singular")
-- **anunciarse** ante los demás ("soy un sustantivo singular")
-- **aportar** contenido si resulta elegido ("el concepto de gato")
+- **ask** something ("I am looking for a singular subject")
+- **advertise itself** to the others ("I am a singular noun")
+- **contribute** content if it gets chosen ("the concept of a cat")
 
-Son tres papeles diferentes, así que se aprenden tres proyecciones lineales distintas del
-mismo vector de entrada:
+They are three different roles, so three different linear projections of the same input
+vector are learned:
 
 $$Q = XW_Q, \qquad K = XW_K, \qquad V = XW_V$$
 
-**Query** (pregunta), **Key** (etiqueta) y **Value** (contenido). La similitud se calcula
-entre queries y keys; lo que se mezcla son los values. Así el modelo puede aprender que
-`gato` *responde bien* a una pregunta sobre sujetos sin que eso condicione *qué información
-aporta* cuando lo eligen.
+**Query** (question), **Key** (label) and **Value** (content). Similarity is computed
+between queries and keys; what gets mixed are the values. That way the model can learn that
+`cat` *answers well* to a question about subjects without that constraining *what
+information it contributes* when it is chosen.
 
-## La fórmula
+## The formula
 
 $$\text{Attention}(Q,K,V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}} + M\right)V$$
 
-Es exactamente lo que acabamos de hacer:
+It is exactly what we just did:
 
-- $QK^\top$ son todos los productos escalares de golpe: una matriz $T \times T$ donde la
-  casilla $(i,j)$ dice cuánto le interesa a $i$ el token $j$.
-- $\sqrt{d_k}$ es el escalado (ahora lo vemos).
-- $M$ es la máscara causal.
-- softmax convierte cada fila en pesos que suman 1.
-- multiplicar por $V$ hace la mezcla.
+- $QK^\top$ is every dot product at once: a $T \times T$ matrix where cell $(i,j)$ says how
+  interested $i$ is in token $j$.
+- $\sqrt{d_k}$ is the scaling (we will get to it).
+- $M$ is the causal mask.
+- softmax turns each row into weights that sum to 1.
+- multiplying by $V$ does the mixing.
 
-## El escalado por √d_k: qué pasa si lo quitas
+## The scaling by √d_k: what happens if you remove it
 
-Este divisor parece un detalle arbitrario y no lo es.
+This divisor looks like an arbitrary detail and it is not.
 
-Un producto escalar de dos vectores de dimensión $d_k$ con componentes independientes de
-media 0 y varianza 1 tiene **varianza $d_k$**. Con $d_k = 40$ (nuestro caso), las
-puntuaciones se mueven en un rango de $\pm 6$ aproximadamente. Con $d_k = 512$, en $\pm 22$.
+A dot product of two $d_k$-dimensional vectors with independent components of mean 0 and
+variance 1 has **variance $d_k$**. With $d_k = 40$ (our case), the scores move in a range of
+roughly $\pm 6$. With $d_k = 512$, in $\pm 22$.
 
-¿Y qué? Que softmax es exponencial. Si una puntuación destaca 20 unidades sobre el resto,
-$e^{20}$ frente a $e^{0}$ son 485 millones a uno: el softmax devuelve prácticamente
-`[0, 0, ..., 1, ..., 0]`. La atención se vuelve una selección dura de un único token.
+So what? Softmax is exponential. If one score stands 20 units above the rest, $e^{20}$
+against $e^{0}$ is 485 million to one: the softmax returns practically
+`[0, 0, ..., 1, ..., 0]`. Attention becomes a hard selection of a single token.
 
-Y el problema de verdad no es el forward, es el **gradiente**. La derivada del softmax es
-$p(1-p)$; con $p$ pegado a 0 o a 1, la derivada es prácticamente cero. La capa deja de
-aprender. Dividir por $\sqrt{d_k}$ devuelve las puntuaciones a varianza 1, el softmax se
-queda en una zona blanda, y el gradiente fluye.
+And the real problem is not the forward pass, it is the **gradient**. The softmax's
+derivative is $p(1-p)$; with $p$ pinned to 0 or 1, the derivative is practically zero. The
+layer stops learning. Dividing by $\sqrt{d_k}$ returns the scores to variance 1, the softmax
+stays in a soft region, and the gradient flows.
 
-La demo del módulo te lo enseña midiendo la entropía de la distribución con y sin escalado.
+The module's demo shows you this by measuring the entropy of the distribution with and
+without the scaling.
 
-## La máscara causal
+## The causal mask
 
-Al entrenar le pasamos toda la secuencia de golpe y le pedimos que prediga cada token a
-partir de los anteriores. Sin más, la posición 3 podría mirar a la 4 — o sea, ver la
-respuesta.
+During training we pass the whole sequence in at once and ask it to predict each token from
+the previous ones. With nothing else, position 3 could look at position 4 — that is, see the
+answer.
 
-La máscara pone $-\infty$ en las puntuaciones prohibidas *antes* del softmax. Como
-$e^{-\infty} = 0$, esas posiciones reciben peso exactamente cero:
+The mask puts $-\infty$ in the forbidden scores *before* the softmax. Since
+$e^{-\infty} = 0$, those positions receive exactly zero weight:
 
 ```
-[[ ✓  ·  ·  · ]      el token 0 solo se ve a sí mismo
- [ ✓  ✓  ·  · ]      el 1 ve al 0 y a sí mismo
+[[ ✓  ·  ·  · ]      token 0 only sees itself
+ [ ✓  ✓  ·  · ]      token 1 sees token 0 and itself
  [ ✓  ✓  ✓  · ]
  [ ✓  ✓  ✓  ✓ ]]
 ```
 
-Se pone antes del softmax y no después por una razón concreta: si borraras los pesos
-después, las filas ya no sumarían 1. Poniendo $-\infty$ antes, el softmax normaliza solo
-sobre lo permitido.
+It goes before the softmax and not after for a specific reason: if you zeroed the weights
+afterwards, the rows would no longer sum to 1. By putting $-\infty$ first, the softmax
+normalizes only over what is allowed.
 
-**Este es el bug más caro del curso.** Si la máscara está mal, la pérdida baja
-espectacularmente, todo parece ir de maravilla, y el modelo entrenado no sirve para nada
-porque en generación ese futuro no existe. Por eso el módulo 05 insiste en comparar la
-pérdida del paso 0 contra $\ln(V)$: si sale *más baja*, mira la máscara.
+**This is the most expensive bug in the course.** If the mask is wrong, the loss drops
+spectacularly, everything seems to be going wonderfully, and the trained model is useless
+because at generation time that future does not exist. That is why module 05 insists on
+comparing the step-0 loss against $\ln(V)$: if it comes out *lower*, look at the mask.
 
-## Multi-head: varias en paralelo
+## Multi-head: several in parallel
 
-Una sola atención tiene que resolver todas las relaciones de la frase con un único patrón.
-La solución es hacer varias en paralelo, cada una con sus propias $W_Q, W_K, W_V$, y
-concatenar los resultados.
+A single attention has to resolve every relationship in the sentence with one pattern. The
+fix is to do several in parallel, each with its own $W_Q, W_K, W_V$, and concatenate the
+results.
 
-Con $d_{\text{model}} = 320$ y 8 cabezas, cada una trabaja en $40$ dimensiones
-($320/8$). **No cuesta más**: en vez de una atención de 320 dimensiones haces ocho de 40, y
-el total de parámetros es idéntico.
+With $d_{\text{model}} = 320$ and 8 heads, each works in $40$ dimensions ($320/8$). **It
+costs no more**: instead of one 320-dimensional attention you do eight of 40, and the total
+parameter count is identical.
 
-Lo interesante es que las cabezas se especializan solas. En modelos entrenados se han
-identificado cabezas que miran al token anterior, cabezas que emparejan comillas de
-apertura y cierre, y las llamadas *induction heads*, que detectan el patrón "…A B … A" y
-predicen B. Nadie las programó.
+The interesting part is that the heads specialize on their own. In trained models people
+have identified heads that look at the previous token, heads that pair opening and closing
+quotes, and the so-called *induction heads*, which detect the pattern "…A B … A" and predict
+B. Nobody programmed them.
 
-El truco de implementación: no se hacen 8 proyecciones separadas. Se hace una de
-$320 \to 320$ y se parte el resultado en 8 trozos de 40. Es matemáticamente equivalente y
-mucho más rápido, porque es un matmul grande en lugar de ocho pequeños.
+The implementation trick: you do not make 8 separate projections. You make one $320 \to 320$
+projection and split the result into 8 chunks of 40. It is mathematically equivalent and
+much faster, because it is one big matmul instead of eight small ones.
 
-## Dónde está el debate
+## Where the debate is
 
-Se sabe *qué* calcula la atención. Por qué funciona tan bien es harina de otro costal.
+We know *what* attention computes. Why it works so well is another matter.
 
-La explicación intuitiva —"cada token recupera información relevante"— es una historia
-razonable y no está demostrada. Hay resultados que la complican: modelos con patrones de
-atención **fijos y aleatorios** funcionan sorprendentemente bien en algunas tareas, lo que
-sugiere que parte del mérito está en la arquitectura general (residuales, normalización,
-profundidad) y no solo en el mecanismo de atención.
+The intuitive explanation — "each token retrieves relevant information" — is a reasonable
+story and it is not proven. There are results that complicate it: models with **fixed,
+random** attention patterns work surprisingly well on some tasks, which suggests that part
+of the credit belongs to the general architecture (residuals, normalization, depth) and not
+only to the attention mechanism.
 
-La línea de trabajo más seria en esta dirección es la de interpretabilidad mecanicista, que
-trata de leer los circuitos que se forman dentro. Ha conseguido explicar componentes
-concretos —las *induction heads* son el caso de éxito— pero está muy lejos de dar cuenta de
-un modelo entero.
+The most serious line of work in this direction is mechanistic interpretability, which tries
+to read the circuits that form inside. It has managed to explain specific components — the
+*induction heads* are the success story — but it is a long way from accounting for a whole
+model.
 
-Y hay una limitación estructural que sigue sin resolverse: el coste crece con el **cuadrado**
-de la longitud del contexto. Se han propuesto decenas de alternativas subcuadráticas
-(Linformer, Performer, Mamba y familia). Ninguna ha desplazado a la atención estándar en
-modelos de propósito general, y no está claro si es porque la atención completa es
-necesaria o porque tiene veinte años de ventaja en optimización de kernels.
+And there is a structural limitation still unsolved: the cost grows with the **square** of
+the context length. Dozens of subquadratic alternatives have been proposed (Linformer,
+Performer, Mamba and family). None has displaced standard attention in general-purpose
+models, and it is not clear whether that is because full attention is necessary or because
+it has a twenty-year head start in kernel optimization.
 
 ---
 
-**Para ampliar:** Vaswani et al. 2017,
+**Further reading:** Vaswani et al. 2017,
 [Attention Is All You Need](https://arxiv.org/abs/1706.03762) · Elhage et al. 2021,
 [A Mathematical Framework for Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html)
-(las *induction heads*). Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+(the *induction heads*). Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

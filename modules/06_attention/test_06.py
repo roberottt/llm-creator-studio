@@ -1,6 +1,7 @@
-"""Tests del modulo 06. Ejecutalos con `llmfs check 06`.
+"""Tests for module 06. Run them with `llmfs check 06`.
 
-La verdad la ponen dos oraculos: `llmfs.reference` y `torch.nn.MultiheadAttention`.
+The ground truth comes from two oracles: `llmfs.reference` and
+`torch.nn.MultiheadAttention`.
 """
 
 from __future__ import annotations
@@ -14,15 +15,15 @@ import torch.nn as nn
 import llmfs.reference as ref
 from llmfs.testing import assert_close, copy_parameters, load_exercises
 
-ej = load_exercises(__file__)
+ex = load_exercises(__file__)
 
 
-# ------------------------------------------------------------- ejercicio 1: causal_mask
+# ------------------------------------------------------------- exercise 1: causal_mask
 
 
-def test_la_mascara_es_triangular_inferior():
-    m = ej.causal_mask(4)
-    esperado = torch.tensor(
+def test_the_mask_is_lower_triangular():
+    m = ex.causal_mask(4)
+    expected = torch.tensor(
         [
             [True, False, False, False],
             [True, True, False, False],
@@ -30,254 +31,254 @@ def test_la_mascara_es_triangular_inferior():
             [True, True, True, True],
         ]
     )
-    assert torch.equal(m, esperado)
+    assert torch.equal(m, expected)
 
 
-def test_la_mascara_es_booleana():
-    assert ej.causal_mask(5).dtype == torch.bool
+def test_the_mask_is_boolean():
+    assert ex.causal_mask(5).dtype == torch.bool
 
 
-def test_la_diagonal_esta_incluida():
-    """Un token si puede mirarse a si mismo."""
-    m = ej.causal_mask(6)
+def test_the_diagonal_is_included():
+    """A token can look at itself."""
+    m = ex.causal_mask(6)
     assert bool(m.diagonal().all())
 
 
-def test_ninguna_posicion_mira_al_futuro():
-    m = ej.causal_mask(8)
-    assert not bool(m.triu(diagonal=1).any()), "hay posiciones que ven hacia adelante"
+def test_no_position_looks_into_the_future():
+    m = ex.causal_mask(8)
+    assert not bool(m.triu(diagonal=1).any()), "there are positions looking forwards"
 
 
-def test_la_mascara_coincide_con_la_referencia():
+def test_the_mask_matches_the_reference():
     for n in (1, 2, 7, 64):
-        assert torch.equal(ej.causal_mask(n), ref.causal_mask(n))
+        assert torch.equal(ex.causal_mask(n), ref.causal_mask(n))
 
 
-def test_la_mascara_respeta_el_dispositivo():
+def test_the_mask_respects_the_device():
     from llmfs.device import get_device
 
     cfg = get_device()
-    assert ej.causal_mask(4, device=cfg.device).device.type == cfg.kind
+    assert ex.causal_mask(4, device=cfg.device).device.type == cfg.kind
 
 
-# --------------------------------------------------- ejercicio 2: single_head_attention
+# --------------------------------------------------- exercise 2: single_head_attention
 
 
-def datos(batch=2, t=5, d=8, seed=0):
+def data(batch=2, t=5, d=8, seed=0):
     torch.manual_seed(seed)
     return torch.randn(batch, t, d), torch.randn(batch, t, d), torch.randn(batch, t, d)
 
 
-def test_las_formas_de_salida_son_correctas():
-    q, k, v = datos()
-    salida, pesos = ej.single_head_attention(q, k, v)
-    assert salida.shape == (2, 5, 8)
-    assert pesos.shape == (2, 5, 5)
+def test_the_output_shapes_are_right():
+    q, k, v = data()
+    out, weights = ex.single_head_attention(q, k, v)
+    assert out.shape == (2, 5, 8)
+    assert weights.shape == (2, 5, 5)
 
 
-def test_cada_fila_de_pesos_suma_uno():
-    q, k, v = datos()
-    _, pesos = ej.single_head_attention(q, k, v, ref.causal_mask(5))
-    assert torch.allclose(pesos.sum(dim=-1), torch.ones(2, 5), atol=1e-6), (
-        "cada fila debe sumar 1. Si no, probablemente has usado dim=-2 en el softmax"
+def test_each_row_of_weights_sums_to_one():
+    q, k, v = data()
+    _, weights = ex.single_head_attention(q, k, v, ref.causal_mask(5))
+    assert torch.allclose(weights.sum(dim=-1), torch.ones(2, 5), atol=1e-6), (
+        "each row must sum to 1. If not, you probably used dim=-2 in the softmax"
     )
 
 
-def test_la_mascara_pone_a_cero_el_futuro():
-    q, k, v = datos()
-    _, pesos = ej.single_head_attention(q, k, v, ref.causal_mask(5))
-    assert torch.allclose(pesos[0].triu(1), torch.zeros(5, 5), atol=1e-9), (
-        "hay peso en posiciones futuras: la mascara no se esta aplicando"
+def test_the_mask_zeroes_out_the_future():
+    q, k, v = data()
+    _, weights = ex.single_head_attention(q, k, v, ref.causal_mask(5))
+    assert torch.allclose(weights[0].triu(1), torch.zeros(5, 5), atol=1e-9), (
+        "there is weight on future positions: the mask is not being applied"
     )
 
 
-def test_coincide_con_la_referencia():
-    q, k, v = datos()
+def test_single_head_matches_the_reference():
+    q, k, v = data()
     mask = ref.causal_mask(5)
-    salida_mia, pesos_mios = ej.single_head_attention(q, k, v, mask)
-    salida_ref, pesos_ref = ref.single_head_attention(q, k, v, mask)
-    assert_close(salida_mia, salida_ref, what="la salida")
-    assert_close(pesos_mios, pesos_ref, what="los pesos")
+    my_out, my_weights = ex.single_head_attention(q, k, v, mask)
+    ref_out, ref_weights = ref.single_head_attention(q, k, v, mask)
+    assert_close(my_out, ref_out, what="the output")
+    assert_close(my_weights, ref_weights, what="the weights")
 
 
-def test_sin_mascara_tambien_funciona():
-    q, k, v = datos()
-    salida, pesos = ej.single_head_attention(q, k, v)
-    assert torch.allclose(pesos.sum(dim=-1), torch.ones(2, 5), atol=1e-6)
-    assert torch.isfinite(salida).all()
+def test_it_also_works_without_a_mask():
+    q, k, v = data()
+    out, weights = ex.single_head_attention(q, k, v)
+    assert torch.allclose(weights.sum(dim=-1), torch.ones(2, 5), atol=1e-6)
+    assert torch.isfinite(out).all()
 
 
-def test_el_escalado_por_raiz_de_dk_esta_aplicado():
-    """Se comprueba comparando contra el calculo explicito con y sin escalar."""
+def test_the_scaling_by_sqrt_dk_is_applied():
+    """Checked by comparing against the explicit computation with and without scaling."""
     torch.manual_seed(1)
     q, k, v = torch.randn(1, 4, 64), torch.randn(1, 4, 64), torch.randn(1, 4, 64)
-    _, pesos = ej.single_head_attention(q, k, v)
+    _, weights = ex.single_head_attention(q, k, v)
 
-    con_escala = torch.softmax(q @ k.transpose(-2, -1) / math.sqrt(64), dim=-1)
-    sin_escala = torch.softmax(q @ k.transpose(-2, -1), dim=-1)
+    scaled = torch.softmax(q @ k.transpose(-2, -1) / math.sqrt(64), dim=-1)
+    unscaled = torch.softmax(q @ k.transpose(-2, -1), dim=-1)
 
-    err_con = (pesos - con_escala).abs().max()
-    err_sin = (pesos - sin_escala).abs().max()
-    assert err_con < err_sin, (
-        f"tus pesos se parecen mas a la version SIN escalar (err {err_sin:.2e}) que a la "
-        f"escalada (err {err_con:.2e}). Falta dividir por sqrt(d_k)."
+    err_scaled = (weights - scaled).abs().max()
+    err_unscaled = (weights - unscaled).abs().max()
+    assert err_scaled < err_unscaled, (
+        f"your weights look more like the UNSCALED version (err {err_unscaled:.2e}) than "
+        f"the scaled one (err {err_scaled:.2e}). The division by sqrt(d_k) is missing."
     )
-    assert err_con < 1e-6
+    assert err_scaled < 1e-6
 
 
-def test_el_escalado_evita_que_el_softmax_se_sature():
-    """El punto del ejercicio: con d_k grande y sin escalar, la atencion colapsa."""
+def test_the_scaling_keeps_the_softmax_from_saturating():
+    """The point of the exercise: with a large d_k and no scaling, attention collapses."""
     torch.manual_seed(2)
     q, k, v = torch.randn(1, 16, 256), torch.randn(1, 16, 256), torch.randn(1, 16, 256)
-    _, pesos = ej.single_head_attention(q, k, v)
+    _, weights = ex.single_head_attention(q, k, v)
 
-    # Entropia media de las distribuciones. Saturado = entropia cercana a 0.
-    entropia = float(-(pesos * torch.log(pesos + 1e-12)).sum(-1).mean())
-    entropia_maxima = math.log(16)
-    assert entropia > 0.3 * entropia_maxima, (
-        f"la entropia media es {entropia:.3f} de un maximo de {entropia_maxima:.3f}: "
-        "el softmax esta saturado, lo que pasa cuando no se divide por sqrt(d_k)"
+    # Mean entropy of the distributions. Saturated = entropy close to 0.
+    entropy = float(-(weights * torch.log(weights + 1e-12)).sum(-1).mean())
+    max_entropy = math.log(16)
+    assert entropy > 0.3 * max_entropy, (
+        f"the mean entropy is {entropy:.3f} out of a maximum of {max_entropy:.3f}: "
+        "the softmax is saturated, which happens when you do not divide by sqrt(d_k)"
     )
 
 
-def test_funciona_con_q_y_k_de_longitudes_distintas():
-    """No es el caso del curso, pero la formula es general."""
+def test_it_works_with_q_and_k_of_different_lengths():
+    """Not the course's case, but the formula is general."""
     torch.manual_seed(3)
     q = torch.randn(2, 3, 8)
     k = torch.randn(2, 7, 8)
     v = torch.randn(2, 7, 16)
-    salida, pesos = ej.single_head_attention(q, k, v)
-    assert salida.shape == (2, 3, 16) and pesos.shape == (2, 3, 7)
+    out, weights = ex.single_head_attention(q, k, v)
+    assert out.shape == (2, 3, 16) and weights.shape == (2, 3, 7)
 
 
-def test_con_un_solo_token_la_atencion_es_la_identidad():
-    """Con T=1 solo puede mirarse a si mismo, asi que la salida es v."""
+def test_with_a_single_token_attention_is_the_identity():
+    """With T=1 it can only look at itself, so the output is v."""
     q, k, v = torch.randn(1, 1, 8), torch.randn(1, 1, 8), torch.randn(1, 1, 8)
-    salida, pesos = ej.single_head_attention(q, k, v, ref.causal_mask(1))
-    assert_close(salida, v, what="la salida con un solo token")
-    assert_close(pesos, torch.ones(1, 1, 1), what="el peso unico")
+    out, weights = ex.single_head_attention(q, k, v, ref.causal_mask(1))
+    assert_close(out, v, what="the output with a single token")
+    assert_close(weights, torch.ones(1, 1, 1), what="the single weight")
 
 
-# --------------------------------------------------- ejercicio 3: MultiHeadAttention
+# --------------------------------------------------- exercise 3: MultiHeadAttention
 
 
-def test_mha_tiene_la_arquitectura_esperada():
-    mio = ej.MultiHeadAttention(32, 4)
-    copy_parameters(ref.MultiHeadAttention(32, 4), mio)
+def test_mha_has_the_expected_architecture():
+    mine = ex.MultiHeadAttention(32, 4)
+    copy_parameters(ref.MultiHeadAttention(32, 4), mine)
 
 
-def test_mha_devuelve_la_forma_correcta():
-    mha = ej.MultiHeadAttention(32, 4)
-    salida = mha(torch.randn(2, 7, 32))
-    assert salida.shape == (2, 7, 32)
+def test_mha_returns_the_right_shape():
+    mha = ex.MultiHeadAttention(32, 4)
+    out = mha(torch.randn(2, 7, 32))
+    assert out.shape == (2, 7, 32)
 
 
-def test_mha_valida_que_d_model_sea_divisible():
+def test_mha_validates_that_d_model_is_divisible():
     with pytest.raises(ValueError):
-        ej.MultiHeadAttention(d_model=32, n_heads=5)
+        ex.MultiHeadAttention(d_model=32, n_heads=5)
 
 
-def test_mha_coincide_con_la_referencia():
+def test_mha_matches_the_reference():
     torch.manual_seed(0)
-    mio, suyo = ej.MultiHeadAttention(32, 4), ref.MultiHeadAttention(32, 4)
-    copy_parameters(suyo, mio)
-    mio.eval()
-    suyo.eval()
+    mine, theirs = ex.MultiHeadAttention(32, 4), ref.MultiHeadAttention(32, 4)
+    copy_parameters(theirs, mine)
+    mine.eval()
+    theirs.eval()
     x = torch.randn(2, 7, 32)
-    assert_close(mio(x), suyo(x), what="la salida de multi-head")
+    assert_close(mine(x), theirs(x), what="the multi-head output")
 
 
-def test_mha_coincide_con_nn_multiheadattention():
-    """El oraculo externo: la implementacion de PyTorch.
+def test_mha_matches_nn_multiheadattention():
+    """The external oracle: PyTorch's implementation.
 
-    `nn.MultiheadAttention` guarda las tres proyecciones concatenadas en un unico
-    `in_proj_weight` de (3*d, d), asi que hay que trasladar los pesos a mano.
-    Y su `attn_mask` usa el convenio CONTRARIO: True significa PROHIBIDO.
+    `nn.MultiheadAttention` stores the three projections concatenated in a single
+    `in_proj_weight` of (3*d, d), so the weights have to be transferred by hand.
+    And its `attn_mask` uses the OPPOSITE convention: True means FORBIDDEN.
     """
     torch.manual_seed(0)
     d_model, n_heads, seq = 32, 4, 6
 
-    mio = ej.MultiHeadAttention(d_model, n_heads, bias=True)
-    suyo = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=True)
+    mine = ex.MultiHeadAttention(d_model, n_heads, bias=True)
+    theirs = nn.MultiheadAttention(d_model, n_heads, batch_first=True, bias=True)
 
     with torch.no_grad():
-        suyo.in_proj_weight.copy_(
-            torch.cat([mio.q_proj.weight, mio.k_proj.weight, mio.v_proj.weight])
+        theirs.in_proj_weight.copy_(
+            torch.cat([mine.q_proj.weight, mine.k_proj.weight, mine.v_proj.weight])
         )
-        suyo.in_proj_bias.copy_(
-            torch.cat([mio.q_proj.bias, mio.k_proj.bias, mio.v_proj.bias])
+        theirs.in_proj_bias.copy_(
+            torch.cat([mine.q_proj.bias, mine.k_proj.bias, mine.v_proj.bias])
         )
-        suyo.out_proj.weight.copy_(mio.out_proj.weight)
-        suyo.out_proj.bias.copy_(mio.out_proj.bias)
+        theirs.out_proj.weight.copy_(mine.out_proj.weight)
+        theirs.out_proj.bias.copy_(mine.out_proj.bias)
 
-    mio.eval()
-    suyo.eval()
+    mine.eval()
+    theirs.eval()
     x = torch.randn(2, seq, d_model)
     mask = ref.causal_mask(seq)
 
-    salida_mia = mio(x, mask=mask)
-    salida_suya, _ = suyo(x, x, x, attn_mask=~mask, need_weights=False)
-    assert_close(salida_mia, salida_suya, atol=1e-5, what="la salida frente a PyTorch")
+    my_out = mine(x, mask=mask)
+    their_out, _ = theirs(x, x, x, attn_mask=~mask, need_weights=False)
+    assert_close(my_out, their_out, atol=1e-5, what="the output against PyTorch")
 
 
-def test_mha_devuelve_pesos_si_se_los_pides():
-    mha = ej.MultiHeadAttention(32, 4)
-    salida, pesos = mha(torch.randn(2, 7, 32), return_weights=True)
-    assert salida.shape == (2, 7, 32)
-    assert pesos.shape == (2, 4, 7, 7), "los pesos son (B, n_heads, T, T), uno por cabeza"
+def test_mha_returns_weights_if_you_ask_for_them():
+    mha = ex.MultiHeadAttention(32, 4)
+    out, weights = mha(torch.randn(2, 7, 32), return_weights=True)
+    assert out.shape == (2, 7, 32)
+    assert weights.shape == (2, 4, 7, 7), "the weights are (B, n_heads, T, T), one per head"
 
 
-def test_mha_aplica_la_mascara_causal_por_defecto():
-    mha = ej.MultiHeadAttention(32, 4)
+def test_mha_applies_the_causal_mask_by_default():
+    mha = ex.MultiHeadAttention(32, 4)
     mha.eval()
-    _, pesos = mha(torch.randn(1, 6, 32), return_weights=True)
-    assert torch.allclose(pesos[0, 0].triu(1), torch.zeros(6, 6), atol=1e-9)
+    _, weights = mha(torch.randn(1, 6, 32), return_weights=True)
+    assert torch.allclose(weights[0, 0].triu(1), torch.zeros(6, 6), atol=1e-9)
 
 
-def test_mha_no_mezcla_informacion_entre_cabezas():
-    """Cada cabeza tiene que operar en su propio subespacio de head_dim dimensiones."""
+def test_mha_does_not_mix_information_between_heads():
+    """Each head has to operate in its own head_dim-dimensional subspace."""
     torch.manual_seed(0)
-    mha = ej.MultiHeadAttention(32, 4)
+    mha = ex.MultiHeadAttention(32, 4)
     mha.eval()
-    _, pesos = mha(torch.randn(1, 5, 32), return_weights=True)
-    # Si las cabezas fueran identicas, seria senyal de que la particion esta mal.
-    assert not torch.allclose(pesos[0, 0], pesos[0, 1], atol=1e-4), (
-        "todas las cabezas dan el mismo patron: revisa el view/transpose de la particion"
+    _, weights = mha(torch.randn(1, 5, 32), return_weights=True)
+    # If the heads were identical, that would be a sign the split is wrong.
+    assert not torch.allclose(weights[0, 0], weights[0, 1], atol=1e-4), (
+        "every head gives the same pattern: check the view/transpose of the split"
     )
 
 
-def test_mha_tiene_los_parametros_esperados():
-    """4 * d_model^2 sin sesgos, que es lo que asume el conteo del modelo final."""
-    mha = ej.MultiHeadAttention(320, 8, bias=False)
+def test_mha_has_the_expected_parameters():
+    """4 * d_model^2 without biases, which is what the final model's count assumes."""
+    mha = ex.MultiHeadAttention(320, 8, bias=False)
     assert sum(p.numel() for p in mha.parameters()) == 4 * 320 * 320
 
 
-def test_mha_acepta_rope_y_cambia_el_resultado():
-    """Con cos/sin, q y k se rotan y la salida tiene que ser distinta."""
+def test_mha_accepts_rope_and_changes_the_result():
+    """With cos/sin, q and k get rotated and the output has to be different."""
     torch.manual_seed(0)
-    mha = ej.MultiHeadAttention(32, 4)
+    mha = ex.MultiHeadAttention(32, 4)
     mha.eval()
     x = torch.randn(2, 6, 32)
     cos, sin = ref.rope_frequencies(8, 16)
 
-    sin_rope = mha(x)
-    con_rope = mha(x, cos=cos, sin=sin)
-    assert not torch.allclose(sin_rope, con_rope, atol=1e-5), "RoPE no se esta aplicando"
+    without_rope = mha(x)
+    with_rope = mha(x, cos=cos, sin=sin)
+    assert not torch.allclose(without_rope, with_rope, atol=1e-5), "RoPE is not being applied"
 
-    esperado = ref.MultiHeadAttention(32, 4)
-    copy_parameters(mha, esperado)
-    esperado.eval()
-    assert_close(con_rope, esperado(x, cos=cos, sin=sin), what="la salida con RoPE")
+    expected = ref.MultiHeadAttention(32, 4)
+    copy_parameters(mha, expected)
+    expected.eval()
+    assert_close(with_rope, expected(x, cos=cos, sin=sin), what="the output with RoPE")
 
 
-def test_mha_con_sdpa_da_el_mismo_resultado():
-    """El kernel fusionado del modulo 12 no puede cambiar la salida, solo la velocidad."""
+def test_mha_with_sdpa_gives_the_same_result():
+    """Module 12's fused kernel cannot change the output, only the speed."""
     torch.manual_seed(0)
-    mha = ej.MultiHeadAttention(32, 4)
+    mha = ex.MultiHeadAttention(32, 4)
     mha.eval()
     x = torch.randn(2, 7, 32)
 
-    explicito = mha(x)
+    explicit = mha(x)
     mha.use_sdpa = True
-    fusionado = mha(x)
-    assert_close(fusionado, explicito, atol=1e-5, what="la salida con SDPA")
+    fused = mha(x)
+    assert_close(fused, explicit, atol=1e-5, what="the output with SDPA")
