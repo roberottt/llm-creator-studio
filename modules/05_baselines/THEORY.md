@@ -1,170 +1,171 @@
-# 05 — Baselines: cómo se mide "cómo de mal lo hace"
+# 05 — Baselines: how "how badly it does" gets measured
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque necesitas saber contra qué compites.**
+**Because you need to know what you are competing against.**
 
-Vas a entrenar un modelo de 8,9 millones de parámetros. Cuando termine te dará un número
-—la pérdida— y tendrás que decidir si eso es bueno. Sin una referencia, ese número no
-significa nada.
+You are going to train an 8.9-million-parameter model. When it finishes it will give you a
+number — the loss — and you will have to decide whether that is good. Without a reference,
+that number means nothing.
 
-Aquí construyes tres modelos previos al Transformer, cada vez menos malo, y sobre todo
-estableces **el suelo**: cuánto saca un modelo que no sabe absolutamente nada. Ese número,
-`ln(V)`, lo vas a usar durante todo el resto del curso como detector de bugs, y es la
-comprobación más barata y más informativa que existe.
+Here you build three pre-Transformer models, each a little less bad, and above all you
+establish **the floor**: what a model that knows absolutely nothing scores. That number,
+`ln(V)`, you are going to use for the rest of the course as a bug detector, and it is the
+cheapest and most informative check there is.
 
-También es donde aprendes a medir. Cross-entropy y perplejidad no son fórmulas arbitrarias:
-tienen una interpretación exacta que conviene entender antes de mirar una curva de
-entrenamiento.
+It is also where you learn to measure. Cross-entropy and perplexity are not arbitrary
+formulas: they have an exact interpretation that is worth understanding before you look at a
+training curve.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Cómo se mide "se ha equivocado" en un número, y **por qué con un logaritmo**
-- Qué es la perplejidad y cómo leerla de un vistazo
-- El número `ln(V)` que te va a decir, en el paso 0 de cualquier entrenamiento, si hay un bug
-- Que contar y aprender por gradiente dan **exactamente lo mismo** cuando el modelo es simple
+- How "it got it wrong" gets measured as a number, and **why with a logarithm**
+- What perplexity is and how to read it at a glance
+- The number `ln(V)` that will tell you, at step 0 of any training run, whether there is a
+  bug
+- That counting and learning by gradient give **exactly the same thing** when the model is
+  simple
 
-### Cuánto cuesta
+### What it costs
 
-2 horas. Y son tus dos primeros modelos en PyTorch.
+2 hours. And they are your first two models in PyTorch.
 
 ---
 
-## El problema: poner un número a "se ha equivocado"
+## The problem: putting a number on "it got it wrong"
 
-Un modelo de lenguaje no da una respuesta, da una distribución de probabilidad sobre todo
-el vocabulario. ¿Cómo puntúas eso?
+A language model does not give an answer, it gives a probability distribution over the whole
+vocabulary. How do you score that?
 
-Imagina un vocabulario de solo 4 palabras: `[gato, perro, casa, azul]`. Ante `"el "`, el
-modelo dice:
-
-```
-gato   0.70
-perro  0.10
-casa   0.10
-azul   0.10
-```
-
-Y la palabra que venía de verdad era `gato`. Lo ha hecho bien. Si hubiera venido `azul`, lo
-habría hecho mal. Pero *cuánto* de mal, en un número.
-
-La respuesta que se usa en todo el campo:
-
-$$\text{pérdida} = -\ln(\text{probabilidad que el modelo dio al token correcto})$$
-
-Con los números de arriba:
+Imagine a vocabulary of only 4 words: `[cat, dog, house, blue]`. Given `"the "`, the model
+says:
 
 ```
-si vino gato:  -ln(0.70) = 0.357     bien
-si vino azul:  -ln(0.10) = 2.303     mal
+cat    0.70
+dog    0.10
+house  0.10
+blue   0.10
 ```
 
-Y en el extremo: si el modelo hubiera dado 0,99 a `gato`, la pérdida sería 0,010. Si hubiera
-dado 0,001, sería 6,908.
+And the word that actually came next was `cat`. It did well. If `blue` had come, it would
+have done badly. But *how* badly, as a number.
 
-## Por qué el logaritmo, y no otra cosa
+The answer used throughout the field:
 
-Tres razones, y las tres importan.
+$$\text{loss} = -\ln(\text{probability the model gave to the correct token})$$
 
-**1. Convierte productos en sumas.** La probabilidad de una frase entera es el producto de
-las probabilidades de cada token: $P(w_1)P(w_2|w_1)P(w_3|w_1w_2)\cdots$. Con 500 tokens de
-probabilidad ~0,1 cada uno, ese producto es $10^{-500}$: cero exacto en coma flotante. En
-logaritmos es una suma de 500 números en torno a $-2{,}3$, perfectamente manejable.
+With the numbers above:
 
-**2. Castiga muy duro estar seguro y equivocarse.** La curva de $-\ln(p)$ se dispara a
-infinito cuando $p \to 0$. Un modelo que dice "estoy segurísimo" y falla recibe una
-penalización enorme; uno que reparte sus apuestas recibe una moderada. Esto empuja a los
-modelos hacia la calibración, no solo hacia acertar.
+```
+if cat came:   -ln(0.70) = 0.357     good
+if blue came:  -ln(0.10) = 2.303     bad
+```
 
-**3. Tiene una interpretación exacta.** $-\log_2(p)$ es el número de *bits* que necesitarías
-para transmitir ese token si codificaras el mensaje usando las probabilidades del modelo. Un
-modelo de lenguaje **es** un compresor: cuanto mejor predice, menos bits necesita. Esta
-equivalencia entre predicción y compresión viene de Shannon (1948) y no es una analogía, es
-una identidad.
+And at the extremes: if the model had given 0.99 to `cat`, the loss would be 0.010. If it
+had given 0.001, it would be 6.908.
 
-Promediando sobre todos los tokens se obtiene la **cross-entropy**, que es la función que
-minimiza cualquier LLM:
+## Why the logarithm, and not something else
 
-$$L = -\frac{1}{N}\sum_{i=1}^{N} \ln P(\text{token}_i \mid \text{contexto}_i)$$
+Three reasons, and all three matter.
 
-## Perplejidad: la misma cosa en unidades legibles
+**1. It turns products into sums.** The probability of a whole sentence is the product of
+each token's probability: $P(w_1)P(w_2|w_1)P(w_3|w_1w_2)\cdots$. With 500 tokens of
+probability ~0.1 each, that product is $10^{-500}$: exactly zero in floating point. In
+logarithms it is a sum of 500 numbers around $-2.3$, perfectly manageable.
 
-Una pérdida de 3,2 no dice mucho a simple vista. La **perplejidad** es simplemente
-$e^L$, y sí se interpreta:
+**2. It punishes being confident and wrong very hard.** The curve of $-\ln(p)$ shoots to
+infinity as $p \to 0$. A model that says "I am absolutely sure" and fails takes an enormous
+penalty; one that spreads its bets takes a moderate one. This pushes models towards
+calibration, not just towards being right.
+
+**3. It has an exact interpretation.** $-\log_2(p)$ is the number of *bits* you would need
+to transmit that token if you encoded the message using the model's probabilities. A
+language model **is** a compressor: the better it predicts, the fewer bits it needs. This
+equivalence between prediction and compression comes from Shannon (1948) and it is not an
+analogy, it is an identity.
+
+Averaging over every token gives the **cross-entropy**, which is the function any LLM
+minimizes:
+
+$$L = -\frac{1}{N}\sum_{i=1}^{N} \ln P(\text{token}_i \mid \text{context}_i)$$
+
+## Perplexity: the same thing in readable units
+
+A loss of 3.2 does not say much at a glance. **Perplexity** is simply $e^L$, and that does
+have an interpretation:
 
 $$\text{PPL} = e^{L}$$
 
-Significa **entre cuántas opciones equiprobables está dudando el modelo, efectivamente**.
-Perplejidad 10 quiere decir que, en promedio, el modelo está tan indeciso como si eligiera
-al azar entre 10 palabras. Perplejidad 1 sería un modelo perfecto.
+It means **how many equally likely options the model is effectively torn between**. A
+perplexity of 10 means that, on average, the model is as undecided as if it were choosing at
+random among 10 words. A perplexity of 1 would be a perfect model.
 
-## El suelo: lo que saca un modelo que no sabe nada
+## The floor: what a model that knows nothing scores
 
-Aquí está el número más útil de todo el entrenamiento. Un modelo que reparte la probabilidad
-por igual entre las $V$ palabras del vocabulario da $P = 1/V$ a todas, así que:
+Here is the most useful number in all of training. A model that spreads probability equally
+across the $V$ words of the vocabulary gives $P = 1/V$ to all of them, so:
 
-$$L_{\text{uniforme}} = -\ln(1/V) = \ln(V)$$
+$$L_{\text{uniform}} = -\ln(1/V) = \ln(V)$$
 
-Con nuestro vocabulario de 4096: $\ln(4096) = 8{,}317$. Perplejidad 4096, que era de
-esperar.
+With our 4096-token vocabulary: $\ln(4096) = 8.317$. Perplexity 4096, which is what you
+would expect.
 
-**Úsalo así:** cuando arranques el entrenamiento en el módulo 11, la pérdida del primer paso
-tiene que valer casi exactamente 8,317. Ni más ni menos.
+**Use it like this:** when you start training in module 11, the loss at the first step has to
+be almost exactly 8.317. No more, no less.
 
-- Si sale **mucho más alta** (12, 20), la inicialización está mal: el modelo empieza con
-  opiniones fuertes y equivocadas en vez de con ignorancia honesta.
-- Si sale **más baja**, hay fuga de información: casi siempre, la máscara causal mal puesta
-  y el modelo viendo la respuesta.
+- If it comes out **much higher** (12, 20), the initialization is wrong: the model starts
+  with strong, mistaken opinions instead of honest ignorance.
+- If it comes out **lower**, there is an information leak: almost always, a badly placed
+  causal mask and the model seeing the answer.
 
-Es la comprobación más barata y más informativa que existe, y aparece ya en el módulo 10.
+It is the cheapest and most informative check there is, and it shows up as early as module
+10.
 
-## Los tres baselines que vas a construir
+## The three baselines you are going to build
 
-**Bigrama por conteo.** Cuentas cuántas veces sigue cada token a cada token, normalizas, y
-ya tienes un modelo. Es el módulo 00 con más rigor.
+**Count-based bigram.** You count how many times each token follows each token, normalize,
+and you have a model. It is module 00 with more rigour.
 
-Aquí aparece un problema serio: si un par nunca apareció en entrenamiento, su probabilidad
-es 0, su logaritmo es $-\infty$, y **la perplejidad de todo el conjunto de validación se va
-a infinito por un solo par no visto**. La solución clásica es el suavizado de Laplace:
-sumar $\alpha$ a todos los conteos antes de normalizar.
+A serious problem appears here: if a pair never appeared in training, its probability is 0,
+its logarithm is $-\infty$, and **the perplexity of the entire validation set goes to
+infinity because of a single unseen pair**. The classic fix is Laplace smoothing: adding
+$\alpha$ to every count before normalizing.
 
 $$P(b \mid a) = \frac{C_{ab} + \alpha}{\sum_{b'} C_{ab'} + \alpha V}$$
 
-Es admitir que "no lo he visto" no es lo mismo que "es imposible".
+It is admitting that "I have not seen it" is not the same as "it is impossible".
 
-**Bigrama neuronal.** El mismo modelo, escrito como red: una `nn.Embedding(V, V)` donde la
-fila $i$ son directamente los logits del token que sigue a $i$. Entrenado con descenso de
-gradiente converge a los conteos normalizados. Sirve para ver que *contar* y *aprender* dan
-lo mismo cuando el modelo es lo bastante simple — y que a partir de ahí, aprender escala y
-contar no.
+**Neural bigram.** The same model, written as a network: an `nn.Embedding(V, V)` where row
+$i$ is directly the logits of the token that follows $i$. Trained with gradient descent it
+converges to the normalized counts. It is useful for seeing that *counting* and *learning*
+give the same thing when the model is simple enough — and that from there on, learning
+scales and counting does not.
 
-**MLP de Bengio (2003).** El abuelo de todo esto. Concatena los embeddings de los $k$ tokens
-anteriores y los pasa por un MLP. Dos ideas suyas siguen vivas veinte años después:
-representar palabras como vectores densos aprendidos, y modelar la probabilidad con una red.
-Su limitación es exactamente lo que la atención viene a resolver: el contexto es de tamaño
-fijo, y como concatena, el número de parámetros crece linealmente con la longitud del
-contexto.
+**Bengio's MLP (2003).** The grandparent of all this. It concatenates the embeddings of the
+previous $k$ tokens and passes them through an MLP. Two of its ideas are still alive twenty
+years later: representing words as learned dense vectors, and modelling probability with a
+network. Its limitation is exactly what attention comes to solve: the context has a fixed
+size, and since it concatenates, the parameter count grows linearly with the context length.
 
-## Dónde está el debate
+## Where the debate is
 
-La perplejidad es una métrica de sustitución, no el objetivo. Mide lo bien que el modelo
-predice el corpus de validación; nadie quiere un modelo que prediga corpus, se quiere uno
-que sea útil.
+Perplexity is a proxy metric, not the goal. It measures how well the model predicts the
+validation corpus; nobody wants a model that predicts corpora, they want one that is useful.
 
-Se sabe que la correlación entre perplejidad y utilidad se rompe en los extremos. Un modelo
-puede bajar la perplejidad memorizando, o especializándose en las peculiaridades de un
-dataset concreto. Y comparar perplejidades entre modelos con **tokenizadores distintos no
-tiene ningún sentido**: si tu vocabulario parte las palabras en trozos más pequeños, cada
-token individual es más fácil de predecir y tu perplejidad sale mejor sin que el modelo sea
-mejor. Por eso en el módulo 15 usaremos *bits por byte*, que sí es comparable.
+The correlation between perplexity and usefulness is known to break at the extremes. A model
+can lower its perplexity by memorizing, or by specializing in the quirks of one particular
+dataset. And comparing perplexities across models with **different tokenizers makes no sense
+at all**: if your vocabulary splits words into smaller pieces, each individual token is
+easier to predict and your perplexity comes out better without the model being better. That
+is why in module 15 we will use *bits per byte*, which is comparable.
 
-Aun así, dentro de un mismo tokenizador y un mismo dataset, la perplejidad de validación
-sigue siendo la señal más fiable que hay para saber si un entrenamiento va bien. Es una
-herramienta buena con un alcance limitado, y conviene tener claro dónde acaba.
+Even so, within the same tokenizer and the same dataset, validation perplexity is still the
+most reliable signal there is for knowing whether a training run is going well. It is a good
+tool with a limited scope, and it is worth being clear about where it ends.
 
 ---
 
-**Para ampliar:** Bengio et al. 2003,
+**Further reading:** Bengio et al. 2003,
 [A Neural Probabilistic Language Model](https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf)
-· Shannon 1948, *A Mathematical Theory of Communication* (la equivalencia entre predicción y
-compresión). Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+· Shannon 1948, *A Mathematical Theory of Communication* (the equivalence between prediction
+and compression). Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

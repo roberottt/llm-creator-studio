@@ -1,13 +1,13 @@
-"""Demo del modulo 05: los tres baselines compitiendo, y donde esta el suelo.
+"""Demo for module 05: the three baselines competing, and where the floor is.
 
     llmfs demo 05
 
-Entrena de verdad (unos segundos) un bigrama por conteo, un bigrama neuronal y un MLP de
-Bengio sobre Shakespeare a nivel caracter, y compara sus perdidas con el baseline uniforme.
+It really trains (a few seconds) a count-based bigram, a neural bigram and a Bengio MLP over
+character-level Shakespeare, and compares their losses against the uniform baseline.
 
-Lo que hay que llevarse: el suelo `ln(V)`, que el bigrama neuronal converge exactamente al
-mismo sitio que el de conteo, y que mirar mas contexto ayuda... con un coste en parametros
-que crece linealmente. Esa es la puerta de entrada al modulo 06.
+What to take away: the floor `ln(V)`, that the neural bigram converges to exactly the same
+place as the count-based one, and that looking at more context helps... at a parameter cost
+that grows linearly. That is the doorway into module 06.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import time
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import torch
@@ -38,231 +38,235 @@ NeuralBigram = resolve("05_baselines", "NeuralBigram")
 BengioMLP = resolve("05_baselines", "BengioMLP")
 
 
-def entrena(modelo, x, y, pasos: int, lr: float, cfg) -> list[float]:
-    opt = torch.optim.AdamW(modelo.parameters(), lr=lr)
-    historial: list[float] = []
-    for _ in range(pasos):
-        _, perdida = modelo(x, y)
+def train(model, x, y, steps: int, lr: float, cfg) -> list[float]:
+    opt = torch.optim.AdamW(model.parameters(), lr=lr)
+    history: list[float] = []
+    for _ in range(steps):
+        _, loss = model(x, y)
         opt.zero_grad(set_to_none=True)
-        perdida.backward()
+        loss.backward()
         opt.step()
-        historial.append(float(perdida.detach()))
-    return historial
+        history.append(float(loss.detach()))
+    return history
 
 
 def main() -> None:
     cfg = get_device()
     set_seed(1337)
 
-    texto, _ = fetch_tinyshakespeare()
-    texto = texto[:200_000]
-    vocab_chars = sorted(set(texto))
+    text, _ = fetch_tinyshakespeare()
+    text = text[:200_000]
+    vocab_chars = sorted(set(text))
     V = len(vocab_chars)
     stoi = {c: i for i, c in enumerate(vocab_chars)}
-    ids = [stoi[c] for c in texto]
+    ids = [stoi[c] for c in text]
 
-    corte = int(len(ids) * 0.9)
-    train_ids, val_ids = ids[:corte], ids[corte:]
+    cut = int(len(ids) * 0.9)
+    train_ids, val_ids = ids[:cut], ids[cut:]
 
-    suelo = uniform_baseline_loss(V)
-    console.rule("[bold]0. El suelo[/bold]")
+    floor = uniform_baseline_loss(V)
+    console.rule("[bold]0. The floor[/bold]")
     console.print(
-        f"Vocabulario: {V} caracteres.\n"
-        f"Un modelo que adivina al azar da una perdida de [bold]ln({V}) = {suelo:.4f}[/bold] "
-        f"nats,\nque es una perplejidad de {math.exp(suelo):.1f} (o sea, dudando entre "
-        f"{V} opciones).\n\n"
-        "[dim]Cualquier modelo que no baje de este numero no ha aprendido nada. Y cuando\n"
-        "entrenes el modelo final, la perdida del paso 0 tiene que valer casi exactamente\n"
-        "esto: mas alta significa init mal, mas baja significa fuga de informacion.[/dim]"
+        f"Vocabulary: {V} characters.\n"
+        f"A model guessing at random gives a loss of [bold]ln({V}) = {floor:.4f}[/bold] "
+        f"nats,\nwhich is a perplexity of {math.exp(floor):.1f} (that is, torn between "
+        f"{V} options).\n\n"
+        "[dim]Any model that does not get below this number has learned nothing. And when\n"
+        "you train the final model, the step-0 loss has to be almost exactly this: higher\n"
+        "means the init is wrong, lower means an information leak.[/dim]"
     )
 
-    resultados: list[tuple[str, float, int, str]] = []
-    resultados.append(("uniforme (azar)", suelo, 0, "-"))
+    results: list[tuple[str, float, int, str]] = []
+    results.append(("uniform (random)", floor, 0, "-"))
 
-    # ------------------------------------------------------------- bigrama por conteo
-    console.rule("[bold]1. Bigrama por conteo[/bold]")
-    inicio = time.perf_counter()
+    # ------------------------------------------------------------- count-based bigram
+    console.rule("[bold]1. Count-based bigram[/bold]")
+    started = time.perf_counter()
     counts = bigram_counts(train_ids, V)
-    perdida_conteo = bigram_nll(counts, val_ids, alpha=1.0)
+    counting_loss = bigram_nll(counts, val_ids, alpha=1.0)
     console.print(
-        f"  matriz {V}x{V} rellenada en {time.perf_counter() - inicio:.2f} s\n"
-        f"  perdida en validacion: [bold]{perdida_conteo:.4f}[/bold] "
-        f"(perplejidad {math.exp(perdida_conteo):.1f})"
+        f"  {V}x{V} matrix filled in {time.perf_counter() - started:.2f} s\n"
+        f"  validation loss: [bold]{counting_loss:.4f}[/bold] "
+        f"(perplexity {math.exp(counting_loss):.1f})"
     )
-    resultados.append(("bigrama (conteo)", perdida_conteo, V * V, "0.0 s"))
+    results.append(("bigram (counting)", counting_loss, V * V, "0.0 s"))
 
-    console.print("\n[bold]Efecto del suavizado:[/bold]")
+    console.print("\n[bold]Effect of the smoothing:[/bold]")
     for alpha in (0.0001, 0.01, 1.0, 100.0, 10000.0):
         p = bigram_nll(counts, val_ids, alpha=alpha)
-        marca = "  <- sin suavizar casi, y aun asi finito porque el corpus es denso" if alpha == 0.0001 else ""
-        console.print(f"    alpha={alpha:<8} -> {p:.4f}{marca}")
+        mark = (
+            "  <- barely smoothed, and still finite because the corpus is dense"
+            if alpha == 0.0001
+            else ""
+        )
+        console.print(f"    alpha={alpha:<8} -> {p:.4f}{mark}")
     console.print(
-        "[dim]Con alpha enorme el modelo se vuelve uniforme y la perdida sube al suelo.\n"
-        "Con alpha diminuto y un par no visto en validacion, se iria a infinito.[/dim]"
+        "[dim]With a huge alpha the model becomes uniform and the loss rises to the floor.\n"
+        "With a tiny alpha and an unseen pair in validation, it would go to infinity.[/dim]"
     )
 
-    # ------------------------------------------------------------- bigrama neuronal
-    console.rule("[bold]2. El mismo bigrama, aprendido por gradiente[/bold]")
+    # ------------------------------------------------------------- neural bigram
+    console.rule("[bold]2. The same bigram, learned by gradient[/bold]")
     x_tr = torch.tensor(train_ids[:-1], device=cfg.device).unsqueeze(0)
     y_tr = torch.tensor(train_ids[1:], device=cfg.device).unsqueeze(0)
 
-    modelo_nb = NeuralBigram(V).to(cfg.device)
-    inicio = time.perf_counter()
-    hist_nb = entrena(modelo_nb, x_tr, y_tr, pasos=400, lr=0.5, cfg=cfg)
-    t_nb = time.perf_counter() - inicio
+    nb_model = NeuralBigram(V).to(cfg.device)
+    started = time.perf_counter()
+    nb_history = train(nb_model, x_tr, y_tr, steps=400, lr=0.5, cfg=cfg)
+    t_nb = time.perf_counter() - started
 
     x_val = torch.tensor(val_ids[:-1], device=cfg.device).unsqueeze(0)
     y_val = torch.tensor(val_ids[1:], device=cfg.device).unsqueeze(0)
     with torch.no_grad():
-        val_nb = float(modelo_nb(x_val, y_val)[1])
+        nb_val = float(nb_model(x_val, y_val)[1])
 
-    exceso = hist_nb[0] - suelo
+    excess = nb_history[0] - floor
     console.print(
-        f"  perdida inicial : {hist_nb[0]:.4f}   [dim](el suelo es {suelo:.4f})[/dim]\n"
-        f"  perdida final   : {hist_nb[-1]:.4f} en entrenamiento\n"
-        f"  en validacion   : [bold]{val_nb:.4f}[/bold]\n"
-        f"  parametros      : {sum(p.numel() for p in modelo_nb.parameters()):,}\n\n"
-        f"[bold]Contando: {perdida_conteo:.4f}. Aprendiendo: {val_nb:.4f}.[/bold]\n"
-        "[dim]Convergen al mismo sitio, porque son el mismo modelo. La diferencia es que\n"
-        "contar no escala mas alla de esto y aprender si.[/dim]"
+        f"  initial loss  : {nb_history[0]:.4f}   [dim](the floor is {floor:.4f})[/dim]\n"
+        f"  final loss    : {nb_history[-1]:.4f} on training\n"
+        f"  on validation : [bold]{nb_val:.4f}[/bold]\n"
+        f"  parameters    : {sum(p.numel() for p in nb_model.parameters()):,}\n\n"
+        f"[bold]Counting: {counting_loss:.4f}. Learning: {nb_val:.4f}.[/bold]\n"
+        "[dim]They converge to the same place, because they are the same model. The\n"
+        "difference is that counting does not scale beyond this and learning does.[/dim]"
     )
 
     console.print(
-        f"\n[bold yellow]Fijate en la perdida inicial: {hist_nb[0]:.4f}, que esta "
-        f"{exceso:.2f} nats POR ENCIMA\ndel suelo {suelo:.4f}.[/bold yellow] Eso no deberia "
-        "pasar, y es un ejemplo perfecto del\nsintoma que describe THEORY.md.\n\n"
-        "La causa: `nn.Embedding` inicializa por defecto con una normal N(0,1). Como esas\n"
-        "filas SON los logits, el modelo arranca con opiniones fuertes y aleatorias en vez\n"
-        "de con ignorancia. Un logit de +2 frente a otro de -2 es una apuesta de 55 a 1\n"
-        "hecha antes de ver un solo dato, y acertar por azar es improbable: de ahi el exceso.\n\n"
-        "Por eso el GPT del modulo 10 inicializa TODO con std=0.02 en vez de 1.0. Con logits\n"
-        "casi identicos, el softmax sale casi uniforme y la perdida del paso 0 cae justo\n"
-        "sobre ln(V). Puedes comprobarlo:\n"
-        "  [cyan]torch.nn.init.normal_(modelo.token_embedding.weight, std=0.02)[/cyan]"
+        f"\n[bold yellow]Note the initial loss: {nb_history[0]:.4f}, which is "
+        f"{excess:.2f} nats ABOVE\nthe floor of {floor:.4f}.[/bold yellow] That should not "
+        "happen, and it is a perfect example of\nthe symptom THEORY.md describes.\n\n"
+        "The cause: `nn.Embedding` initializes by default with a normal N(0,1). Since those\n"
+        "rows ARE the logits, the model starts with strong, random opinions instead of with\n"
+        "ignorance. A logit of +2 against one of -2 is a 55-to-1 bet made before seeing a\n"
+        "single data point, and being right by chance is unlikely: hence the excess.\n\n"
+        "That is why the GPT in module 10 initializes EVERYTHING with std=0.02 instead of\n"
+        "1.0. With almost identical logits, the softmax comes out almost uniform and the\n"
+        "step-0 loss lands right on ln(V). You can check it:\n"
+        "  [cyan]torch.nn.init.normal_(model.token_embedding.weight, std=0.02)[/cyan]"
     )
-    resultados.append(
-        ("bigrama (neuronal)", val_nb, sum(p.numel() for p in modelo_nb.parameters()), f"{t_nb:.1f} s")
+    results.append(
+        ("bigram (neural)", nb_val, sum(p.numel() for p in nb_model.parameters()), f"{t_nb:.1f} s")
     )
 
-    # ------------------------------------------------------------- MLP de Bengio
-    console.rule("[bold]3. MLP de Bengio: mirar mas atras[/bold]")
-    hist_bengio: dict[int, list[float]] = {}
-    val_por_bloque: dict[int, float] = {}
-    for bloque in (2, 4, 8):
-        datos_tr = torch.tensor(train_ids, dtype=torch.long)
-        xb = torch.stack([datos_tr[i : i + bloque] for i in range(0, len(datos_tr) - bloque, 3)])
-        yb = torch.stack([datos_tr[i + bloque] for i in range(0, len(datos_tr) - bloque, 3)])
+    # ------------------------------------------------------------- Bengio's MLP
+    console.rule("[bold]3. Bengio's MLP: looking further back[/bold]")
+    bengio_history: dict[int, list[float]] = {}
+    val_per_block: dict[int, float] = {}
+    for block in (2, 4, 8):
+        tr_data = torch.tensor(train_ids, dtype=torch.long)
+        xb = torch.stack([tr_data[i : i + block] for i in range(0, len(tr_data) - block, 3)])
+        yb = torch.stack([tr_data[i + block] for i in range(0, len(tr_data) - block, 3)])
         xb, yb = xb.to(cfg.device), yb.to(cfg.device)
 
-        datos_val = torch.tensor(val_ids, dtype=torch.long)
-        xv = torch.stack([datos_val[i : i + bloque] for i in range(0, len(datos_val) - bloque, 7)])
-        yv = torch.stack([datos_val[i + bloque] for i in range(0, len(datos_val) - bloque, 7)])
+        val_data = torch.tensor(val_ids, dtype=torch.long)
+        xv = torch.stack([val_data[i : i + block] for i in range(0, len(val_data) - block, 7)])
+        yv = torch.stack([val_data[i + block] for i in range(0, len(val_data) - block, 7)])
         xv, yv = xv.to(cfg.device), yv.to(cfg.device)
 
-        modelo = BengioMLP(V, bloque, d_embed=24, n_hidden=128).to(cfg.device)
-        n_params = sum(p.numel() for p in modelo.parameters())
+        model = BengioMLP(V, block, d_embed=24, n_hidden=128).to(cfg.device)
+        n_params = sum(p.numel() for p in model.parameters())
 
-        inicio = time.perf_counter()
-        historial: list[float] = []
-        opt = torch.optim.AdamW(modelo.parameters(), lr=0.01)
-        for paso in range(400):
+        started = time.perf_counter()
+        history: list[float] = []
+        opt = torch.optim.AdamW(model.parameters(), lr=0.01)
+        for step in range(400):
             sel = torch.randint(0, len(xb), (512,), device=cfg.device)
-            _, perdida = modelo(xb[sel], yb[sel])
+            _, loss = model(xb[sel], yb[sel])
             opt.zero_grad(set_to_none=True)
-            perdida.backward()
+            loss.backward()
             opt.step()
-            historial.append(float(perdida.detach()))
-        transcurrido = time.perf_counter() - inicio
+            history.append(float(loss.detach()))
+        elapsed = time.perf_counter() - started
 
         with torch.no_grad():
-            val = float(modelo(xv, yv)[1])
-        hist_bengio[bloque] = historial
-        val_por_bloque[bloque] = val
+            val = float(model(xv, yv)[1])
+        bengio_history[block] = history
+        val_per_block[block] = val
         console.print(
-            f"  contexto {bloque} caracteres: validacion [bold]{val:.4f}[/bold]  "
-            f"({n_params:,} parametros, {transcurrido:.1f} s)"
+            f"  context {block} characters: validation [bold]{val:.4f}[/bold]  "
+            f"({n_params:,} parameters, {elapsed:.1f} s)"
         )
-        resultados.append((f"Bengio MLP (ctx {bloque})", val, n_params, f"{transcurrido:.1f} s"))
+        results.append((f"Bengio MLP (ctx {block})", val, n_params, f"{elapsed:.1f} s"))
 
-    mejor_bloque = min(val_por_bloque, key=val_por_bloque.get)
-    monotono = list(val_por_bloque.values()) == sorted(val_por_bloque.values(), reverse=True)
+    best_block = min(val_per_block, key=val_per_block.get)
+    monotonic = list(val_per_block.values()) == sorted(val_per_block.values(), reverse=True)
 
     console.print(
-        f"\nTodos baten al bigrama ({perdida_conteo:.4f}), asi que mirar mas de un token "
-        "atras ayuda.\n"
-        f"El mejor de los tres es el de contexto {mejor_bloque} "
-        f"({val_por_bloque[mejor_bloque]:.4f})."
+        f"\nAll of them beat the bigram ({counting_loss:.4f}), so looking more than one token "
+        "back helps.\n"
+        f"The best of the three is the one with context {best_block} "
+        f"({val_per_block[best_block]:.4f})."
     )
-    if not monotono:
+    if not monotonic:
         console.print(
-            "\n[bold yellow]Pero la mejora NO es monotona: el contexto mas largo no gana."
-            "[/bold yellow]\n"
-            "No es un error de la demo, es un resultado honesto y conviene entenderlo. Los\n"
-            "tres modelos han entrenado los MISMOS 400 pasos, y el de contexto 8 tiene mas\n"
-            "del doble de parametros que el de contexto 2. Con el mismo presupuesto de\n"
-            "computo, el modelo grande se queda a medio entrenar.\n\n"
-            "[dim]Leccion transferible: comparar arquitecturas a igualdad de PASOS no es\n"
-            "comparar a igualdad de computo, y casi siempre favorece al modelo pequenyo.\n"
-            "Es el mismo error que las leyes de escala del modulo 12 vienen a corregir.[/dim]"
+            "\n[bold yellow]But the improvement is NOT monotonic: the longest context does "
+            "not win.[/bold yellow]\n"
+            "This is not a bug in the demo, it is an honest result and it is worth\n"
+            "understanding. All three models trained for the SAME 400 steps, and the one\n"
+            "with context 8 has more than twice the parameters of the one with context 2.\n"
+            "With the same compute budget, the large model is left half-trained.\n\n"
+            "[dim]Transferable lesson: comparing architectures at equal STEPS is not\n"
+            "comparing at equal compute, and it almost always favours the small model.\n"
+            "It is the same mistake module 12's scaling laws come to correct.[/dim]"
         )
     console.print(
-        "\n[dim]Y en cualquier caso, mira los parametros: la primera capa es\n"
-        "Linear(block_size * d_embed, n_hidden), asi que crece LINEALMENTE con el contexto.\n"
-        "Con contexto 512 esa capa sola seria enorme. Ademas el modelo trata cada posicion\n"
-        "como una entrada independiente, sin saber que estan relacionadas ni poder decidir\n"
-        "a cual hacer caso. Resolver las dos cosas a la vez es lo que hace la atencion,\n"
-        "en el modulo 06.[/dim]"
+        "\n[dim]And in any case, look at the parameters: the first layer is\n"
+        "Linear(block_size * d_embed, n_hidden), so it grows LINEARLY with the context.\n"
+        "With a context of 512 that layer alone would be enormous. On top of that the model\n"
+        "treats each position as an independent input, with no idea that they are related\n"
+        "and no way to decide which to pay attention to. Solving both at once is what\n"
+        "attention does, in module 06.[/dim]"
     )
 
-    # ------------------------------------------------------------- resumen
-    console.rule("[bold]Resumen[/bold]")
-    tabla = Table(header_style="bold")
-    tabla.add_column("modelo")
-    tabla.add_column("perdida (val)", justify="right")
-    tabla.add_column("perplejidad", justify="right")
-    tabla.add_column("parametros", justify="right")
-    tabla.add_column("tiempo", justify="right")
-    for nombre, perdida, params, tiempo in resultados:
-        tabla.add_row(
-            nombre,
-            f"{perdida:.4f}",
-            f"{math.exp(perdida):.1f}",
+    # ------------------------------------------------------------- summary
+    console.rule("[bold]Summary[/bold]")
+    table = Table(header_style="bold")
+    table.add_column("model")
+    table.add_column("loss (val)", justify="right")
+    table.add_column("perplexity", justify="right")
+    table.add_column("parameters", justify="right")
+    table.add_column("time", justify="right")
+    for name, loss, params, elapsed_str in results:
+        table.add_row(
+            name,
+            f"{loss:.4f}",
+            f"{math.exp(loss):.1f}",
             f"{params:,}" if params else "-",
-            tiempo,
+            elapsed_str,
         )
-    console.print(tabla)
+    console.print(table)
 
-    # ------------------------------------------------------------- grafica
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    # ------------------------------------------------------------- plot
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    izq.plot(hist_nb, label="bigrama neuronal")
-    for bloque, hist in hist_bengio.items():
-        izq.plot(hist, label=f"Bengio MLP (ctx {bloque})")
-    izq.axhline(suelo, color="red", ls="--", lw=1.5, label=f"suelo: ln({V}) = {suelo:.2f}")
-    izq.axhline(perdida_conteo, color="gray", ls=":", lw=1.5, label="bigrama por conteo")
-    izq.set_xlabel("paso de entrenamiento")
-    izq.set_ylabel("perdida (nats)")
-    izq.set_title("Todos los baselines")
-    izq.grid(alpha=0.3)
-    izq.legend(fontsize=8)
+    left.plot(nb_history, label="neural bigram")
+    for block, hist in bengio_history.items():
+        left.plot(hist, label=f"Bengio MLP (ctx {block})")
+    left.axhline(floor, color="red", ls="--", lw=1.5, label=f"floor: ln({V}) = {floor:.2f}")
+    left.axhline(counting_loss, color="gray", ls=":", lw=1.5, label="count-based bigram")
+    left.set_xlabel("training step")
+    left.set_ylabel("loss (nats)")
+    left.set_title("All the baselines")
+    left.grid(alpha=0.3)
+    left.legend(fontsize=8)
 
-    nombres = [r[0] for r in resultados]
-    perdidas = [r[1] for r in resultados]
-    colores = ["tab:red"] + ["tab:gray"] * 2 + ["tab:blue"] * (len(resultados) - 3)
-    der.barh(range(len(nombres)), perdidas, color=colores)
-    der.set_yticks(range(len(nombres)))
-    der.set_yticklabels(nombres, fontsize=8)
-    der.axvline(suelo, color="red", ls="--", lw=1.5)
-    der.set_xlabel("perdida en validacion (nats)")
-    der.set_title("Cuanto baja cada uno del suelo")
-    der.grid(alpha=0.3, axis="x")
-    der.invert_yaxis()
+    names = [r[0] for r in results]
+    losses = [r[1] for r in results]
+    colours = ["tab:red"] + ["tab:gray"] * 2 + ["tab:blue"] * (len(results) - 3)
+    right.barh(range(len(names)), losses, color=colours)
+    right.set_yticks(range(len(names)))
+    right.set_yticklabels(names, fontsize=8)
+    right.axvline(floor, color="red", ls="--", lw=1.5)
+    right.set_xlabel("validation loss (nats)")
+    right.set_title("How far each one gets below the floor")
+    right.grid(alpha=0.3, axis="x")
+    right.invert_yaxis()
 
     fig.tight_layout()
-    destino = figures_dir() / "05_baselines.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "05_baselines.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target}[/green]")
 
 
 if __name__ == "__main__":
