@@ -1,21 +1,21 @@
-# 10 — Solución comentada
+# 10 — Annotated solution
 
-## Ejercicio 1 — `expected_param_count`
+## Exercise 1 — `expected_param_count`
 
 ```python
 d, v, ff = cfg.d_model, cfg.vocab_size, cfg.d_ff
 
-total = v * d                                    # embeddings de token
+total = v * d                                    # token embeddings
 if cfg.pos == "learned":
     total += cfg.context_length * d
 
-atencion = 4 * d * d + (4 * d if cfg.bias else 0)
+attention = 4 * d * d + (4 * d if cfg.bias else 0)
 ffn_matrices = 3 if cfg.activation == "swiglu" else 2
 ffn = ffn_matrices * d * ff
-por_norma = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
+per_norm = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
 
-total += cfg.n_layers * (atencion + ffn + 2 * por_norma)
-total += por_norma                               # la norma final
+total += cfg.n_layers * (attention + ffn + 2 * per_norm)
+total += per_norm                                # the final norm
 
 if not cfg.tie_embeddings:
     total += v * d
@@ -23,61 +23,62 @@ if not cfg.tie_embeddings:
 return total
 ```
 
-Aritmética. Lo que importa es haberla derivado a mano antes de escribirla.
+Arithmetic. What matters is having derived it by hand before writing it.
 
-**RoPE no aporta ni un parámetro.** Sus tablas salen de una fórmula y se guardan como
-*buffers*. Si tu cuenta incluye algo de RoPE, tienes un término de más.
+**RoPE contributes not one parameter.** Its tables come from a formula and are stored as
+*buffers*. If your count includes anything from RoPE, you have one term too many.
 
-**RMSNorm tiene $d$ parámetros, no $2d$.** Solo escala, sin sesgo. Con 6 capas × 2 normas +
-1 final son 13 × 320 = 4.160 parámetros: una miseria, pero si los olvidas el total no cuadra
-y el test lo dice.
+**RMSNorm has $d$ parameters, not $2d$.** Scale only, no bias. With 6 layers × 2 norms + 1
+final that is 13 × 320 = 4,160 parameters: a pittance, but if you forget them the total does
+not add up and the test says so.
 
-## Ejercicio 2 — `count_parameters`
+## Exercise 2 — `count_parameters`
 
 ```python
-desglose = {"embeddings": 0, "attention": 0, "ffn": 0, "norms": 0, "lm_head": 0, "other": 0}
-vistos = set()
+breakdown = {"embeddings": 0, "attention": 0, "ffn": 0, "norms": 0, "lm_head": 0, "other": 0}
+seen = set()
 
 for name, param in model.named_parameters():
-    if id(param) in vistos:
+    if id(param) in seen:
         continue
-    vistos.add(id(param))
+    seen.add(id(param))
     n = param.numel()
 
     if "token_embedding" in name or "pos_embedding" in name:
-        desglose["embeddings"] += n
+        breakdown["embeddings"] += n
     elif "attn." in name:
-        desglose["attention"] += n
+        breakdown["attention"] += n
     elif any(k in name for k in ("gate_proj", "up_proj", "down_proj", "fc_in", "fc_out")):
-        desglose["ffn"] += n
+        breakdown["ffn"] += n
     elif "norm" in name:
-        desglose["norms"] += n
+        breakdown["norms"] += n
     elif "lm_head" in name:
-        desglose["lm_head"] += n
+        breakdown["lm_head"] += n
     else:
-        desglose["other"] += n
+        breakdown["other"] += n
 
-desglose["total"] = sum(desglose.values())
-desglose["non_embedding"] = desglose["total"] - desglose["embeddings"]
-return desglose
+breakdown["total"] = sum(breakdown.values())
+breakdown["non_embedding"] = breakdown["total"] - breakdown["embeddings"]
+return breakdown
 ```
 
-**Una corrección a lo que suele decirse sobre el weight tying.** Al escribir este módulo di
-por hecho que `named_parameters()` devolvía el tensor atado dos veces, y el test lo desmintió:
-**tanto `parameters()` como `named_parameters()` deduplican por identidad por defecto**
-(`remove_duplicate=True`, desde PyTorch 1.13). El total sale bien sin hacer nada.
+**A correction to what is usually said about weight tying.** When writing this module I
+assumed `named_parameters()` returned the tied tensor twice, and the test proved otherwise:
+**both `parameters()` and `named_parameters()` deduplicate by identity by default**
+(`remove_duplicate=True`, since PyTorch 1.13). The total comes out right without doing
+anything.
 
-El `set` de `id()` sigue mereciendo la pena por dos motivos: deja explícito que sabes que hay
-pesos compartidos, y protege el desglose si algún día recorres los parámetros con
-`remove_duplicate=False`. Con `named_parameters(remove_duplicate=False)` sobre el modelo
-final contarías 1.310.720 parámetros de más.
+The `set` of `id()` is still worth it for two reasons: it makes explicit that you know there
+are shared weights, and it protects the breakdown if one day you walk the parameters with
+`remove_duplicate=False`. With `named_parameters(remove_duplicate=False)` over the final
+model you would count 1,310,720 parameters too many.
 
-**El orden de las comprobaciones importa.** Los nombres son del estilo
-`blocks.3.attn.out_proj.weight`, y `"norm"` aparece también en `attn_norm` y `ffn_norm`. Si
-comprobaras `"norm"` antes que `"attn."`, la normalización de la atención acabaría en la
-categoría equivocada. Comprueba de más específico a más general.
+**The order of the checks matters.** The names look like `blocks.3.attn.out_proj.weight`, and
+`"norm"` also appears in `attn_norm` and `ffn_norm`. If you checked `"norm"` before
+`"attn."`, the attention's normalization would end up in the wrong category. Check from more
+specific to more general.
 
-## Ejercicio 3 — `TransformerBlock`
+## Exercise 3 — `TransformerBlock`
 
 ```python
 def __init__(self, cfg):
@@ -94,32 +95,33 @@ def forward(self, x, cos=None, sin=None, mask=None):
     return x
 ```
 
-Dos líneas de forward. **Dos residuales independientes**, no uno solo alrededor de todo el
-bloque: cada sub-bloque decide por su cuenta cuánto aporta a la corriente residual.
+Two lines of forward. **Two independent residuals**, not one around the whole block: each
+sub-block decides on its own how much it contributes to the residual stream.
 
-El test `test_el_bloque_usa_residuales` lo comprueba de la forma más directa: pone a cero
-los pesos de salida de las dos ramas y verifica que la salida es **exactamente** la entrada.
-Si tu bloque no tiene residuales, devolvería cero.
+The test `test_the_block_uses_residuals` checks it in the most direct way: it zeroes the
+output weights of both branches and verifies that the output is **exactly** the input. If
+your block had no residuals, it would return zero.
 
-El FFN no recibe `cos`, `sin` ni `mask`: no mira a otros tokens, así que no los necesita.
+The FFN does not receive `cos`, `sin` or `mask`: it does not look at other tokens, so it does
+not need them.
 
-## Ejercicio 4 — `GPT`
+## Exercise 4 — `GPT`
 
-### El tying
+### The tying
 
 ```python
 if cfg.tie_embeddings:
     self.lm_head.weight = self.token_embedding.weight
 ```
 
-Asignar el atributo hace que las dos capas apunten **al mismo objeto**. El test comprueba
-`is`, no `==`: tienen que ser el mismo tensor, no dos copias con los mismos valores. Si
-hicieras `self.lm_head.weight.data = self.token_embedding.weight.data.clone()` tendrías dos
-tensores con los mismos números que divergirían en cuanto empezara el entrenamiento.
+Assigning the attribute makes both layers point at **the same object**. The test checks `is`,
+not `==`: they have to be the same tensor, not two copies with the same values. If you did
+`self.lm_head.weight.data = self.token_embedding.weight.data.clone()` you would have two
+tensors with the same numbers that would diverge as soon as training started.
 
-Va después de crear `lm_head` y antes de la inicialización.
+It goes after creating `lm_head` and before the initialization.
 
-### Los buffers de RoPE
+### RoPE's buffers
 
 ```python
 cos, sin = rope_frequencies(cfg.head_dim, cfg.context_length, cfg.rope_theta)
@@ -127,548 +129,94 @@ self.register_buffer("rope_cos", cos, persistent=False)
 self.register_buffer("rope_sin", sin, persistent=False)
 ```
 
-Un *buffer* es un tensor que acompaña al modelo —se mueve con `.to(device)`, aparece en
-`.eval()`— pero no es un parámetro y no recibe gradiente.
+A *buffer* is a tensor that travels with the model — it moves with `.to(device)`, it appears
+in `.eval()` — but is not a parameter and receives no gradient.
 
-`persistent=False` hace además que **no se guarde en el checkpoint**. Como se recalculan con
-una fórmula al construir el modelo, guardarlas sería desperdiciar espacio y crear un problema
-si algún día cambias `rope_theta`.
+`persistent=False` also means it is **not stored in the checkpoint**. Since they are
+recomputed from a formula when the model is built, storing them would waste space and create
+a problem if one day you changed `rope_theta`.
 
-### La inicialización, en dos pasadas
+### The initialization, in two passes
 
 ```python
-self.apply(self._init_weights)                    # todo con std=0.02
+self.apply(self._init_weights)                    # everything with std=0.02
 
-scale = 0.02 / math.sqrt(2 * cfg.n_layers)        # y luego se pisa lo que toca
+scale = 0.02 / math.sqrt(2 * cfg.n_layers)        # and then the right ones get overridden
 for name, param in self.named_parameters():
     if name.endswith(("out_proj.weight", "down_proj.weight", "fc_out.weight")):
         nn.init.normal_(param, mean=0.0, std=scale)
 ```
 
-**El orden importa**: primero todo, luego se pisa. Si lo hicieras al revés, el `apply`
-sobrescribiría la inicialización escalada.
+**The order matters**: everything first, then the override. If you did it the other way
+round, the `apply` would overwrite the scaled initialization.
 
-**Por qué.** Cada bloque *suma* su contribución a la corriente residual. Con contribuciones
-independientes de varianza $\sigma^2$, la varianza de la suma crece linealmente con el número
-de sumandos. Con 6 capas × 2 sub-bloques son 12 contribuciones: la salida tendría 12 veces
-más varianza que la entrada. Reducir $\sigma$ por $\sqrt{2 n_{\text{layers}}}$ lo compensa
-exactamente.
+**Why.** Each block *adds* its contribution to the residual stream. With independent
+contributions of variance $\sigma^2$, the variance of the sum grows linearly with the number
+of terms. With 6 layers × 2 sub-blocks that is 12 contributions: the output would have 12
+times the variance of the input. Reducing $\sigma$ by $\sqrt{2 n_{\text{layers}}}$
+compensates for it exactly.
 
-**Y el 0,02 tampoco es magia**: es lo que hace que la pérdida del paso 0 valga $\ln(V)$. Con
-`std=1` (el defecto de PyTorch) el modelo arrancaría opinando fuerte y al azar, y la pérdida
-saldría por encima — exactamente lo que ves en la demo del módulo 05.
+**And the 0.02 is not magic either**: it is what makes the step-0 loss equal $\ln(V)$. With
+`std=1` (PyTorch's default) the model would start opinionated and random, and the loss would
+come out above — exactly what you see in module 05's demo.
 
-### El forward
+### The forward
 
-La única sutileza: **la máscara se calcula una vez**, antes del bucle de bloques, y se pasa a
-todos. Calcularla dentro de cada bloque funcionaría, pero serían 6 tensores idénticos por
+The only subtlety: **the mask is computed once**, before the block loop, and passed to all of
+them. Computing it inside each block would work, but that would be 6 identical tensors per
 forward.
 
-## Un bug que cometí escribiendo estos tests, y que te puede pasar
+## A bug I made writing these tests, and that can happen to you
 
-El test que comprueba la pérdida inicial fallaba dando **4,94 cuando debía dar 5,55**. Más
-baja que $\ln(V)$, que es el síntoma clásico de fuga de información.
+The test checking the initial loss was failing, giving **4.94 when it should give 5.55**.
+Lower than $\ln(V)$, which is the classic symptom of an information leak.
 
-No había ninguna fuga en el modelo. La había en el test: yo pasaba `modelo(idx, idx)`, o sea
-**los targets sin desplazar**. En la posición $t$ el modelo ve el token `idx[t]` y se le pide
-que prediga `idx[t]`: puede leerlo directamente de su propia entrada. Con weight tying es
-todavía más directo, porque los logits son $x W_{\text{emb}}^\top$ y el producto escalar de
-un embedding consigo mismo es grande.
+There was no leak in the model. There was one in the test: I was passing `model(idx, idx)`,
+that is, **unshifted targets**. At position $t$ the model sees token `idx[t]` and is asked to
+predict `idx[t]`: it can read it straight off its own input. With weight tying it is even
+more direct, because the logits are $x W_{\text{emb}}^\top$ and the dot product of an
+embedding with itself is large.
 
-Lo correcto es `x = seq[:, :-1]`, `y = seq[:, 1:]`.
+The correct thing is `x = seq[:, :-1]`, `y = seq[:, 1:]`.
 
-Merece la pena tenerlo presente porque el síntoma —pérdida sospechosamente baja— es idéntico
-tanto si el bug está en el modelo como si está en cómo montas el batch, y lo segundo es más
-frecuente.
+It is worth keeping in mind because the symptom — a suspiciously low loss — is identical
+whether the bug is in the model or in how you assemble the batch, and the second is more
+common.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-**El desglose**, que cierra la Parte II:
+**The breakdown**, which closes Part II:
 
 ```
 embeddings   1,310,720   14.7%
 attention    2,457,600   27.5%
 ffn          5,160,960   57.8%
 norms            4,160    0.0%
-lm_head              0    0.0%   (atada)
+lm_head              0    0.0%   (tied)
 TOTAL        8,933,440
 ```
 
-Fórmula, conteo y objetivo coinciden.
+Formula, count and target all match.
 
-**La comprobación de causalidad** es la más bonita del módulo. Se cambia el token de la
-posición 6 y se mira cuánto se mueven los logits:
-
-```
-posición 0-5:  0.00e+00     cero exacto
-posición 6:    1.46e+00
-posición 7-11: ~2.5e-01
-```
-
-Cero **exacto**, no pequeño. Las predicciones anteriores no pueden ver ese token de ninguna
-manera. Es la verificación más directa que existe de que la máscara causal está bien.
-
-**Y la memoria**, que prepara el módulo 13:
+**The causality check** is the prettiest thing in the module. The token at position 6 is
+changed and you look at how much the logits move:
 
 ```
-pesos + gradientes + AdamW :  143 MB
-logits (fp16 + fp32 + grad): 1007 MB
+position 0-5:  0.00e+00     exactly zero
+position 6:    1.46e+00
+position 7-11: ~2.5e-01
 ```
 
-El tensor de logits (`48 × 512 × 4096`) ocupa **siete veces más** que el modelo, sus
-gradientes y el optimizador juntos. Cuando te quedes sin memoria en la RTX 2060, ese es el
-primer sitio donde mirar, no las activaciones del modelo.
+**Exactly** zero, not small. The earlier predictions cannot see that token at all. It is the
+most direct verification there is that the causal mask is correct.
 
----
+**And the memory**, which sets up module 13:
 
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-from llmfs.reference import make_ffn, make_norm, sinusoidal_embeddings
-
-def expected_param_count(cfg: ModelConfig) -> int:
-    d, v, ff = cfg.d_model, cfg.vocab_size, cfg.d_ff
-
-    total = v * d  # embeddings de token
-    if cfg.pos == "learned":
-        total += cfg.context_length * d
-
-    atencion = 4 * d * d + (4 * d if cfg.bias else 0)
-    ffn_matrices = 3 if cfg.activation == "swiglu" else 2
-    ffn = ffn_matrices * d * ff
-    if cfg.bias:
-        ffn += 2 * ff + d if ffn_matrices == 3 else ff + d
-
-    # RMSNorm tiene solo escala; LayerNorm tiene escala y (opcionalmente) sesgo.
-    por_norma = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
-
-    total += cfg.n_layers * (atencion + ffn + 2 * por_norma)
-    total += por_norma  # la norma final
-
-    if not cfg.tie_embeddings:
-        total += v * d
-
-    return total
-
-
-def count_parameters(model: nn.Module) -> dict[str, int]:
-    desglose = {
-        "embeddings": 0,
-        "attention": 0,
-        "ffn": 0,
-        "norms": 0,
-        "lm_head": 0,
-        "other": 0,
-    }
-    vistos: set[int] = set()
-
-    for name, param in model.named_parameters():
-        if id(param) in vistos:
-            continue  # tying: ya contado
-        vistos.add(id(param))
-        n = param.numel()
-
-        if "token_embedding" in name or "pos_embedding" in name:
-            desglose["embeddings"] += n
-        elif "attn." in name or "attention" in name:
-            desglose["attention"] += n
-        elif any(k in name for k in ("gate_proj", "up_proj", "down_proj", "fc_in", "fc_out")):
-            desglose["ffn"] += n
-        elif "norm" in name:
-            desglose["norms"] += n
-        elif "lm_head" in name:
-            desglose["lm_head"] += n
-        else:
-            desglose["other"] += n
-
-    desglose["total"] = sum(desglose.values())
-    desglose["non_embedding"] = desglose["total"] - desglose["embeddings"]
-    return desglose
-
-
-class TransformerBlock(nn.Module):
-
-    def __init__(self, cfg: ModelConfig) -> None:
-        super().__init__()
-        self.attn_norm = make_norm(cfg)
-        self.attn = MultiHeadAttention(
-            cfg.d_model, cfg.n_heads, dropout=cfg.dropout, bias=cfg.bias
-        )
-        self.ffn_norm = make_norm(cfg)
-        self.ffn = make_ffn(cfg)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        cos: torch.Tensor | None = None,
-        sin: torch.Tensor | None = None,
-        mask: torch.Tensor | None = None,
-        cache: object = None,
-        layer_idx: int = 0,
-        pos_offset: int = 0,
-    ) -> torch.Tensor:
-        x = x + self.attn(
-            self.attn_norm(x),
-            mask=mask,
-            cos=cos,
-            sin=sin,
-            cache=cache,
-            layer_idx=layer_idx,
-            pos_offset=pos_offset,
-        )
-        x = x + self.ffn(self.ffn_norm(x))
-        return x
-
-
-class GPT(nn.Module):
-
-    def __init__(self, cfg: ModelConfig) -> None:
-        super().__init__()
-        self.cfg = cfg
-
-        self.token_embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.pos_embedding: nn.Embedding | None = None
-        if cfg.pos == "learned":
-            self.pos_embedding = nn.Embedding(cfg.context_length, cfg.d_model)
-
-        self.drop = nn.Dropout(cfg.dropout)
-        self.blocks = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
-        self.norm_f = make_norm(cfg)
-        self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
-
-        if cfg.tie_embeddings:
-            self.lm_head.weight = self.token_embedding.weight
-
-        if cfg.pos == "rope":
-            cos, sin = rope_frequencies(cfg.head_dim, cfg.context_length, cfg.rope_theta)
-            # persistent=False: se recalculan al construir, no hace falta guardarlas en el
-            # checkpoint ni que ocupen sitio en el fichero.
-            self.register_buffer("rope_cos", cos, persistent=False)
-            self.register_buffer("rope_sin", sin, persistent=False)
-        elif cfg.pos == "sinusoidal":
-            self.register_buffer(
-                "pos_table", sinusoidal_embeddings(cfg.context_length, cfg.d_model),
-                persistent=False,
-            )
-
-        self.apply(self._init_weights)
-        # La init escalada se aplica DESPUES del apply general, para pisarla.
-        scale = 0.02 / math.sqrt(2 * cfg.n_layers)
-        for name, param in self.named_parameters():
-            if name.endswith(("out_proj.weight", "down_proj.weight", "fc_out.weight")):
-                nn.init.normal_(param, mean=0.0, std=scale)
-
-    def _init_weights(self, module: nn.Module) -> None:
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-
-    def forward(
-        self,
-        idx: torch.Tensor,
-        targets: torch.Tensor | None = None,
-        use_cache: bool = False,
-        cache: object = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        batch, seq_len = idx.shape
-        pos_offset = cache.seq_len if (use_cache and cache is not None) else 0
-
-        if seq_len + pos_offset > self.cfg.context_length:
-            raise ValueError(
-                f"secuencia de {seq_len + pos_offset} tokens, pero el contexto del modelo "
-                f"es {self.cfg.context_length}"
-            )
-
-        x = self.token_embedding(idx)
-        posiciones = torch.arange(pos_offset, pos_offset + seq_len, device=idx.device)
-        if self.pos_embedding is not None:
-            x = x + self.pos_embedding(posiciones)
-        elif self.cfg.pos == "sinusoidal":
-            x = x + self.pos_table[posiciones]
-        x = self.drop(x)
-
-        cos = sin = None
-        if self.cfg.pos == "rope":
-            cos, sin = self.rope_cos, self.rope_sin
-
-        mask = None if (use_cache and cache is not None) else causal_mask(seq_len, device=idx.device)
-        for i, block in enumerate(self.blocks):
-            x = block(
-                x,
-                cos=cos,
-                sin=sin,
-                mask=mask,
-                cache=cache if use_cache else None,
-                layer_idx=i,
-                pos_offset=pos_offset,
-            )
-
-        x = self.norm_f(x)
-        logits = self.lm_head(x)
-
-        if targets is None:
-            return logits, None
-        loss = F.cross_entropy(
-            logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100
-        )
-        return logits, loss
-
-    @torch.no_grad()
-    def generate(
-        self,
-        idx: torch.Tensor,
-        max_new_tokens: int,
-        temperature: float = 1.0,
-        top_k: int | None = None,
-    ) -> torch.Tensor:
-        self.eval()
-        for _ in range(max_new_tokens):
-            recorte = idx[:, -self.cfg.context_length :]
-            logits, _ = self(recorte)
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.shape[-1]))
-                logits = logits.masked_fill(logits < v[:, [-1]], float("-inf"))
-            probs = F.softmax(logits, dim=-1)
-            idx = torch.cat([idx, torch.multinomial(probs, num_samples=1)], dim=1)
-        return idx
+```
+weights + gradients + AdamW :  143 MB
+logits (fp16 + fp32 + grad) : 1007 MB
 ```
 
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
-
----
-
-## The complete code
-
-If you got stuck, here is the whole implementation. **Copy it, paste it and run the
-tests**: seeing them pass with code you understand beats staying blocked.
-
-And then go back to the exercise and write it yourself. Reading a solution you have already
-wrestled with works very well; reading it cold does not work at all.
-
-```python
-from llmfs.reference import make_ffn, make_norm, sinusoidal_embeddings
-
-def expected_param_count(cfg: ModelConfig) -> int:
-    d, v, ff = cfg.d_model, cfg.vocab_size, cfg.d_ff
-
-    total = v * d  # token embeddings
-    if cfg.pos == "learned":
-        total += cfg.context_length * d
-
-    attention = 4 * d * d + (4 * d if cfg.bias else 0)
-    ffn_matrices = 3 if cfg.activation == "swiglu" else 2
-    ffn = ffn_matrices * d * ff
-    if cfg.bias:
-        ffn += 2 * ff + d if ffn_matrices == 3 else ff + d
-
-    # RMSNorm has scale only; LayerNorm has scale and (optionally) bias.
-    per_norm = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
-
-    total += cfg.n_layers * (attention + ffn + 2 * per_norm)
-    total += per_norm  # the final norm
-
-    if not cfg.tie_embeddings:
-        total += v * d
-
-    return total
-
-
-def count_parameters(model: nn.Module) -> dict[str, int]:
-    breakdown = {
-        "embeddings": 0,
-        "attention": 0,
-        "ffn": 0,
-        "norms": 0,
-        "lm_head": 0,
-        "other": 0,
-    }
-    seen: set[int] = set()
-
-    for name, param in model.named_parameters():
-        if id(param) in seen:
-            continue  # tying: already counted
-        seen.add(id(param))
-        n = param.numel()
-
-        if "token_embedding" in name or "pos_embedding" in name:
-            breakdown["embeddings"] += n
-        elif "attn." in name or "attention" in name:
-            breakdown["attention"] += n
-        elif any(k in name for k in ("gate_proj", "up_proj", "down_proj", "fc_in", "fc_out")):
-            breakdown["ffn"] += n
-        elif "norm" in name:
-            breakdown["norms"] += n
-        elif "lm_head" in name:
-            breakdown["lm_head"] += n
-        else:
-            breakdown["other"] += n
-
-    breakdown["total"] = sum(breakdown.values())
-    breakdown["non_embedding"] = breakdown["total"] - breakdown["embeddings"]
-    return breakdown
-
-
-class TransformerBlock(nn.Module):
-
-    def __init__(self, cfg: ModelConfig) -> None:
-        super().__init__()
-        self.attn_norm = make_norm(cfg)
-        self.attn = MultiHeadAttention(
-            cfg.d_model, cfg.n_heads, dropout=cfg.dropout, bias=cfg.bias
-        )
-        self.ffn_norm = make_norm(cfg)
-        self.ffn = make_ffn(cfg)
-
-    def forward(
-        self,
-        x: torch.Tensor,
-        cos: torch.Tensor | None = None,
-        sin: torch.Tensor | None = None,
-        mask: torch.Tensor | None = None,
-        cache: object = None,
-        layer_idx: int = 0,
-        pos_offset: int = 0,
-    ) -> torch.Tensor:
-        x = x + self.attn(
-            self.attn_norm(x),
-            mask=mask,
-            cos=cos,
-            sin=sin,
-            cache=cache,
-            layer_idx=layer_idx,
-            pos_offset=pos_offset,
-        )
-        x = x + self.ffn(self.ffn_norm(x))
-        return x
-
-
-class GPT(nn.Module):
-
-    def __init__(self, cfg: ModelConfig) -> None:
-        super().__init__()
-        self.cfg = cfg
-
-        self.token_embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
-        self.pos_embedding: nn.Embedding | None = None
-        if cfg.pos == "learned":
-            self.pos_embedding = nn.Embedding(cfg.context_length, cfg.d_model)
-
-        self.drop = nn.Dropout(cfg.dropout)
-        self.blocks = nn.ModuleList([TransformerBlock(cfg) for _ in range(cfg.n_layers)])
-        self.norm_f = make_norm(cfg)
-        self.lm_head = nn.Linear(cfg.d_model, cfg.vocab_size, bias=False)
-
-        if cfg.tie_embeddings:
-            self.lm_head.weight = self.token_embedding.weight
-
-        if cfg.pos == "rope":
-            cos, sin = rope_frequencies(cfg.head_dim, cfg.context_length, cfg.rope_theta)
-            # persistent=False: they are recomputed on construction, so there is no need
-            # to store them in the checkpoint or have them take up space in the file.
-            self.register_buffer("rope_cos", cos, persistent=False)
-            self.register_buffer("rope_sin", sin, persistent=False)
-        elif cfg.pos == "sinusoidal":
-            self.register_buffer(
-                "pos_table", sinusoidal_embeddings(cfg.context_length, cfg.d_model),
-                persistent=False,
-            )
-
-        self.apply(self._init_weights)
-        # The scaled init is applied AFTER the general apply, to override it.
-        scale = 0.02 / math.sqrt(2 * cfg.n_layers)
-        for name, param in self.named_parameters():
-            if name.endswith(("out_proj.weight", "down_proj.weight", "fc_out.weight")):
-                nn.init.normal_(param, mean=0.0, std=scale)
-
-    def _init_weights(self, module: nn.Module) -> None:
-        if isinstance(module, nn.Linear):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            nn.init.normal_(module.weight, mean=0.0, std=0.02)
-
-    def forward(
-        self,
-        idx: torch.Tensor,
-        targets: torch.Tensor | None = None,
-        use_cache: bool = False,
-        cache: object = None,
-    ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        batch, seq_len = idx.shape
-        pos_offset = cache.seq_len if (use_cache and cache is not None) else 0
-
-        if seq_len + pos_offset > self.cfg.context_length:
-            raise ValueError(
-                f"sequence of {seq_len + pos_offset} tokens, but the model's context "
-                f"is {self.cfg.context_length}"
-            )
-
-        x = self.token_embedding(idx)
-        positions = torch.arange(pos_offset, pos_offset + seq_len, device=idx.device)
-        if self.pos_embedding is not None:
-            x = x + self.pos_embedding(positions)
-        elif self.cfg.pos == "sinusoidal":
-            x = x + self.pos_table[positions]
-        x = self.drop(x)
-
-        cos = sin = None
-        if self.cfg.pos == "rope":
-            cos, sin = self.rope_cos, self.rope_sin
-
-        mask = None if (use_cache and cache is not None) else causal_mask(seq_len, device=idx.device)
-        for i, block in enumerate(self.blocks):
-            x = block(
-                x,
-                cos=cos,
-                sin=sin,
-                mask=mask,
-                cache=cache if use_cache else None,
-                layer_idx=i,
-                pos_offset=pos_offset,
-            )
-
-        x = self.norm_f(x)
-        logits = self.lm_head(x)
-
-        if targets is None:
-            return logits, None
-        loss = F.cross_entropy(
-            logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100
-        )
-        return logits, loss
-
-    @torch.no_grad()
-    def generate(
-        self,
-        idx: torch.Tensor,
-        max_new_tokens: int,
-        temperature: float = 1.0,
-        top_k: int | None = None,
-    ) -> torch.Tensor:
-        self.eval()
-        for _ in range(max_new_tokens):
-            window = idx[:, -self.cfg.context_length :]
-            logits, _ = self(window)
-            logits = logits[:, -1, :] / max(temperature, 1e-8)
-            if top_k is not None:
-                v, _ = torch.topk(logits, min(top_k, logits.shape[-1]))
-                logits = logits.masked_fill(logits < v[:, [-1]], float("-inf"))
-            probs = F.softmax(logits, dim=-1)
-            idx = torch.cat([idx, torch.multinomial(probs, num_samples=1)], dim=1)
-        return idx
-```
-
-The imports you need are already in the module's `exercises.py`, except for any that appear
-at the top of the block.
+The logits tensor (`48 × 512 × 4096`) takes **seven times more** than the model, its
+gradients and the optimizer combined. When you run out of memory on the RTX 2060, that is the
+first place to look, not the model's activations.

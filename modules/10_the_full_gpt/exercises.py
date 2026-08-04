@@ -1,50 +1,50 @@
-"""Modulo 10 - El GPT completo.
+"""Module 10 - The full GPT.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> haz el ejercicio 1 CON PAPEL antes de escribir codigo -> implementa el
-resto -> `llmfs check 10` -> `llmfs hint 10 -e N` -> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> do exercise 1 ON PAPER before writing code -> implement the rest ->
+`llmfs check 10` -> `llmfs hint 10 -e N` -> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-El modelo que vas a entrenar. Cuatro ejercicios:
+The model you are going to train. Four exercises:
 
-    expected_param_count  (ej. 1)  la formula de cuantos parametros tendra
-    count_parameters      (ej. 2)  contarlos de verdad, desglosados
-    TransformerBlock      (ej. 3)  un bloque: atencion + FFN, con sus residuales
-    GPT                   (ej. 4)  el modelo entero
+    expected_param_count  (ex. 1)  the formula for how many parameters it will have
+    count_parameters      (ex. 2)  count them for real, broken down
+    TransformerBlock      (ex. 3)  one block: attention + FFN, with their residuals
+    GPT                   (ex. 4)  the whole model
 
-Los dos primeros son de contar y tienen que dar el MISMO numero: 8.933.440. Si no cuadran,
-tu formula o tu modelo mienten.
+The first two are counting exercises and they have to give the SAME number: 8,933,440. If
+they do not match, either your formula or your model is lying.
 
-LA ESTRUCTURA
+THE STRUCTURE
 =============
 
-    ids de token
-        |  tabla de embeddings
-    vectores
-        |  bloque x 6
-    vectores
-        |  normalizacion final
-    vectores
-        |  proyeccion a logits
-    puntuaciones sobre los 4096 tokens
+    token ids
+        |  embedding table
+    vectors
+        |  block x 6
+    vectors
+        |  final normalization
+    vectors
+        |  projection to logits
+    scores over the 4096 tokens
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **weight tying**: reutilizar la matriz de embeddings, transpuesta, como capa de salida.
-  Ahorra 1,3 millones de parametros.
-- **buffer**: un tensor que acompanya al modelo (se mueve con `.to(device)`) pero NO es un
-  parametro y no recibe gradiente. Las tablas de RoPE son buffers.
-- **inicializacion**: los valores con los que arrancan los pesos antes de entrenar. No es
-  un detalle: decide si el modelo entrena bien.
-- **logits**: la salida final del modelo, una puntuacion por cada token del vocabulario.
-- **causal**: que un token no puede ver a los que vienen despues.
+- **weight tying**: reusing the embedding matrix, transposed, as the output layer. It saves
+  1.3 million parameters.
+- **buffer**: a tensor that travels with the model (it moves with `.to(device)`) but is NOT
+  a parameter and receives no gradient. RoPE's tables are buffers.
+- **initialization**: the values the weights start at before training. It is not a detail:
+  it decides whether the model trains well.
+- **logits**: the model's final output, one score per token in the vocabulary.
+- **causal**: that a token cannot see the ones that come after it.
 
-    llmfs demo 10     desglosa los parametros y verifica que el modelo es causal
+    llmfs demo 10     breaks down the parameters and verifies the model is causal
 """
 
 from __future__ import annotations
@@ -57,8 +57,8 @@ import torch.nn.functional as F
 
 from llmfs.config import ModelConfig
 
-# Las piezas de los modulos 06-09. Si no las has hecho, el bridge usa la referencia y esto
-# funciona igual: puedes montar el GPT sin haber terminado los modulos anteriores.
+# The pieces from modules 06-09. If you have not done them, the bridge uses the reference and
+# this works all the same: you can assemble the GPT without having finished earlier modules.
 from llmfs.bridge import resolve
 
 MultiHeadAttention = resolve("06_attention", "MultiHeadAttention")
@@ -69,174 +69,176 @@ causal_mask = resolve("06_attention", "causal_mask")
 
 
 def expected_param_count(cfg: ModelConfig) -> int:
-    """El numero de parametros, calculado con la formula en vez de contando.
+    """The parameter count, computed from the formula instead of by counting.
 
-    HAZLO CON PAPEL PRIMERO
-    -----------------------
-    En serio. Coge el desglose del THEORY.md y escribe la formula a mano. Solo despues la
-    traduces a codigo. Si vas directo al codigo acabaras probando numeros hasta que cuadre, y
-    eso no ensenya nada.
+    DO IT ON PAPER FIRST
+    --------------------
+    Seriously. Take THEORY.md's breakdown and write the formula by hand. Only then translate
+    it into code. If you go straight to code you will end up trying numbers until they add
+    up, and that teaches nothing.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Una suma. Ve acumulando en una variable `total` y devuelvela.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A sum. Accumulate into a `total` variable and return it.
 
-        1. Los embeddings de token:
+        1. The token embeddings:
 
                total = cfg.vocab_size * cfg.d_model
 
-        2. Si `cfg.pos == "learned"`, suma tambien `cfg.context_length * cfg.d_model`.
-           (Con RoPE no se suma NADA aqui: ver mas abajo.)
+        2. If `cfg.pos == "learned"`, also add `cfg.context_length * cfg.d_model`.
+           (With RoPE NOTHING gets added here: see below.)
 
-        3. Lo de UNA capa, y multiplicalo por `cfg.n_layers`:
+        3. What ONE layer costs, and multiply it by `cfg.n_layers`:
 
-               atencion = 4 * cfg.d_model**2                 # Wq, Wk, Wv, Wo
+               attention = 4 * cfg.d_model**2                # Wq, Wk, Wv, Wo
                if cfg.bias:
-                   atencion += 4 * cfg.d_model
+                   attention += 4 * cfg.d_model
 
                if cfg.activation == "swiglu":
                    ffn = 3 * cfg.d_model * cfg.d_ff          # gate, up, down
                else:
-                   ffn = 2 * cfg.d_model * cfg.d_ff          # el MLP clasico
+                   ffn = 2 * cfg.d_model * cfg.d_ff          # the classic MLP
 
-               normas = 2 * cfg.d_model                      # dos RMSNorm por bloque
-               # si fuese LayerNorm CON sesgo, serian 2 * (2 * cfg.d_model)
+               norms = 2 * cfg.d_model                       # two RMSNorms per block
+               # if it were LayerNorm WITH bias, it would be 2 * (2 * cfg.d_model)
 
-               total += cfg.n_layers * (atencion + ffn + normas)
+               total += cfg.n_layers * (attention + ffn + norms)
 
-        4. La norma final: `total += cfg.d_model`.
+        4. The final norm: `total += cfg.d_model`.
 
-        5. La capa de salida:
+        5. The output layer:
 
                if not cfg.tie_embeddings:
                    total += cfg.vocab_size * cfg.d_model
 
         6. `return total`
 
-    LA COMPROBACIÓN
-    ---------------
-    Con el config por defecto (el modelo final) tiene que dar EXACTAMENTE 8.933.440:
+    THE CHECK
+    ---------
+    With the default config (the final model) it has to give EXACTLY 8,933,440:
 
-        1.310.720                    <- 4096 * 320, los embeddings
-        + 6 * (409.600               <- 4 * 320²,   la atencion de un bloque
-             + 860.160               <- 3 * 320 * 896, el SwiGLU de un bloque
-             +     640)              <- 2 * 320,   las dos normas de un bloque
-        +       320                  <- la norma final
-        = 8.933.440
+        1,310,720                    <- 4096 * 320, the embeddings
+        + 6 * (409,600               <- 4 * 320²,   one block's attention
+             + 860,160               <- 3 * 320 * 896, one block's SwiGLU
+             +     640)              <- 2 * 320,   one block's two norms
+        +       320                  <- the final norm
+        = 8,933,440
 
-    Si te sale 10.244.160 has olvidado el weight tying (esa es la diferencia exacta:
-    1.310.720). Si te sale de mas por un pelo, probablemente cuentas sesgos que no existen.
+    If you get 10,244,160 you forgot the weight tying (that is the exact difference:
+    1,310,720). If you come out slightly over, you are probably counting biases that do not
+    exist.
 
-    LO QUE NO CUENTA, Y CONVIENE ENTENDER POR QUÉ
-    ---------------------------------------------
-    RoPE no aporta NI UN parametro. Sus tablas de cos/sin salen de una formula cerrada y se
-    guardan como buffers, no como parametros: nadie las entrena. Si tu cuenta incluye algo de
-    RoPE, esta mal.
+    WHAT DOES NOT COUNT, AND WHY IT IS WORTH UNDERSTANDING
+    ------------------------------------------------------
+    RoPE contributes NOT ONE parameter. Its cos/sin tables come from a closed formula and are
+    stored as buffers, not as parameters: nobody trains them. If your count includes anything
+    from RoPE, it is wrong.
 
-    PARA QUÉ SIRVE ESTO DE VERDAD
-    -----------------------------
-    Para disenyar. Cambias `d_model` en el YAML y ves al instante si el modelo te cabe en la
-    GPU, sin esperar a construirlo. Y para verificar: si esta formula y el ejercicio 2 no dan
-    el mismo numero, o tu formula o tu modelo mienten, y hay que averiguar cual.
+    WHAT THIS IS REALLY FOR
+    -----------------------
+    For designing. You change `d_model` in the YAML and see instantly whether the model fits
+    on your GPU, without waiting to build it. And for verifying: if this formula and exercise
+    2 do not give the same number, either your formula or your model is lying, and you have
+    to find out which.
 
     Args:
-        cfg: la configuracion del modelo.
+        cfg: the model configuration.
 
     Returns:
-        El numero total de parametros, como entero.
+        The total parameter count, as an integer.
     """
-    raise NotImplementedError("TODO: modulo 10, ejercicio 1 - expected_param_count")
+    raise NotImplementedError("TODO: module 10, exercise 1 - expected_param_count")
 
 
 def count_parameters(model: nn.Module) -> dict[str, int]:
-    """Cuenta los parametros de verdad, desglosados por componente.
+    """Counts the parameters for real, broken down by component.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un recorrido por `named_parameters()` clasificando por el nombre.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A walk over `named_parameters()` classifying by name.
 
-        1. El dict de salida, a cero:
+        1. The output dict, at zero:
 
                out = {"embeddings": 0, "attention": 0, "ffn": 0,
                       "norms": 0, "lm_head": 0, "other": 0}
 
-        2. El recorrido, saltandote los tensores ya vistos:
+        2. The walk, skipping tensors already seen:
 
-               vistos = set()
+               seen = set()
                for name, param in model.named_parameters():
-                   if id(param) in vistos:
+                   if id(param) in seen:
                        continue
-                   vistos.add(id(param))
+                   seen.add(id(param))
                    n = param.numel()
 
-        3. Dentro del bucle, clasifica mirando SUBCADENAS del nombre. Los nombres son del
-           estilo `blocks.3.attn.q_proj.weight`, asi que basta con `in`:
+        3. Inside the loop, classify by looking at SUBSTRINGS of the name. The names look
+           like `blocks.3.attn.q_proj.weight`, so `in` is enough:
 
-               "token_embedding" o "pos_embedding"          -> out["embeddings"] += n
+               "token_embedding" or "pos_embedding"         -> out["embeddings"] += n
                "attn."                                      -> out["attention"]  += n
                "gate_proj"/"up_proj"/"down_proj"/"fc_"      -> out["ffn"]        += n
                "norm"                                       -> out["norms"]      += n
                "lm_head"                                    -> out["lm_head"]    += n
-               lo que no encaje en nada                     -> out["other"]      += n
+               anything that fits nothing                   -> out["other"]      += n
 
-           Cuidado con el ORDEN de los `if/elif`: `attn.` tiene que comprobarse antes que
-           `norm`, porque `blocks.0.attn_norm.weight` contiene las dos cosas y quieres que
-           cuente como norma. Ordena de mas especifico a mas general y compruebalo.
+           Watch the ORDER of the `if/elif`: `attn.` has to be checked before `norm`, because
+           `blocks.0.attn_norm.weight` contains both and you want it counted as a norm. Order
+           from more specific to more general and check it.
 
-        4. Los dos totales:
+        4. The two totals:
 
-               out["total"] = sum(v for k, v in out.items())    # antes de anyadir estos dos
+               out["total"] = sum(v for k, v in out.items())    # before adding these two
                out["non_embedding"] = out["total"] - out["embeddings"]
                return out
 
-    ANTES DE ESCRIBIR NADA, IMPRIME LOS NOMBRES
-    -------------------------------------------
+    BEFORE WRITING ANYTHING, PRINT THE NAMES
+    ----------------------------------------
         print([n for n, _ in model.named_parameters()])
 
-    Vale mucho la pena: en treinta segundos ves como esta montado el modelo entero y sabes
-    exactamente que subcadenas hay que buscar. No adivines.
+    It is well worth it: in thirty seconds you see how the whole model is wired up and you
+    know exactly which substrings to look for. Do not guess.
 
-    EL WEIGHT TYING Y EL `set` DE ids
+    WEIGHT TYING AND THE `set` OF ids
     ---------------------------------
-    Con `tie_embeddings=True`, `lm_head.weight` y `token_embedding.weight` son EL MISMO tensor,
-    no dos copias. Aparece bajo dos nombres distintos.
+    With `tie_embeddings=True`, `lm_head.weight` and `token_embedding.weight` are THE SAME
+    tensor, not two copies. It appears under two different names.
 
-    Dato que contradice la creencia habitual: tanto `parameters()` como `named_parameters()`
-    DEDUPLICAN por identidad por defecto (`remove_duplicate=True`), asi que el total sale bien
-    aunque no hagas nada.
+    A fact that contradicts the common belief: both `parameters()` and `named_parameters()`
+    DEDUPLICATE by identity by default (`remove_duplicate=True`), so the total comes out
+    right even if you do nothing.
 
-    Aun asi lleva el `set` de `id(param)`. Dos motivos: deja explicito que sabes que hay pesos
-    compartidos, y protege el desglose si algun dia recorres con `remove_duplicate=False`. Es
-    una linea y evita un error de 1.310.720 parametros.
+    Even so, keep the `set` of `id(param)`. Two reasons: it makes explicit that you know
+    there are shared weights, and it protects the breakdown if one day you walk with
+    `remove_duplicate=False`. It is one line and it avoids a 1,310,720-parameter error.
 
-    Y ojo con una trampa de Python: `if param in vistos` NO vale. El operador `in` usa `==`,
-    que en tensores es elemento a elemento y revienta con "Boolean value of Tensor is
-    ambiguous". Por eso se compara por `id()`.
+    And watch out for a Python trap: `if param in seen` does NOT work. The `in` operator uses
+    `==`, which on tensors is elementwise and blows up with "Boolean value of Tensor is
+    ambiguous". That is why we compare by `id()`.
 
-    QUÉ ES `non_embedding` Y POR QUÉ SE DEVUELVE APARTE
-    ---------------------------------------------------
-    Es `total - embeddings`. Ese es el numero que usan las leyes de escala del modulo 12,
-    porque los embeddings escalan de forma distinta al resto del modelo: crecen con el
-    vocabulario, no con la profundidad, y no participan del computo por token igual que las
-    capas.
+    WHAT `non_embedding` IS AND WHY IT IS RETURNED SEPARATELY
+    ---------------------------------------------------------
+    It is `total - embeddings`. That is the number module 12's scaling laws use, because
+    embeddings scale differently from the rest of the model: they grow with the vocabulary,
+    not with depth, and they do not take part in the per-token computation the way the layers
+    do.
 
     Args:
-        model: el modelo ya construido.
+        model: the already built model.
 
     Returns:
-        Un dict con las claves `embeddings`, `attention`, `ffn`, `norms`, `lm_head`, `other`,
-        `total` y `non_embedding`.
+        A dict with the keys `embeddings`, `attention`, `ffn`, `norms`, `lm_head`, `other`,
+        `total` and `non_embedding`.
     """
-    raise NotImplementedError("TODO: modulo 10, ejercicio 2 - count_parameters")
+    raise NotImplementedError("TODO: module 10, exercise 2 - count_parameters")
 
 
 class TransformerBlock(nn.Module):
-    """Un bloque: atencion y FFN, cada uno con su normalizacion y su residual.
+    """One block: attention and FFN, each with its normalization and its residual.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    **En `__init__`** (cuatro lineas ademas del `super()`). Los nombres importan: el test copia
-    pesos por nombre, y el ejercicio 2 clasifica por nombre.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    **In `__init__`** (four lines besides the `super()`). The names matter: the test copies
+    weights by name, and exercise 2 classifies by name.
 
         from llmfs.reference import make_norm, make_ffn
 
@@ -247,57 +249,60 @@ class TransformerBlock(nn.Module):
         self.ffn_norm = make_norm(cfg)
         self.ffn = make_ffn(cfg)
 
-    `make_norm` y `make_ffn` ya estan hechos y miran `cfg.norm` y `cfg.activation` para decidir
-    si construyen RMSNorm o LayerNorm, SwiGLU o el MLP clasico. No los reimplementes.
+    `make_norm` and `make_ffn` are already written and they look at `cfg.norm` and
+    `cfg.activation` to decide whether to build RMSNorm or LayerNorm, SwiGLU or the classic
+    MLP. Do not reimplement them.
 
-    **En `forward`** (dos lineas y un return):
+    **In `forward`** (two lines and a return):
 
         x = x + self.attn(self.attn_norm(x), cos=cos, sin=sin, mask=mask)
         x = x + self.ffn(self.ffn_norm(x))
         return x
 
-    Y ya esta. El bloque entero son dos lineas.
+    And that is it. The whole block is two lines.
 
-    LO QUE ESTÁN DICIENDO ESAS DOS LÍNEAS
-    -------------------------------------
-    Cada una es "pre-norm + residual" (modulo 07): normaliza, calcula algo, y SUMA el resultado
-    a lo que ya habia. La `x` de la izquierda del `+` es la corriente residual, la autopista que
-    recorre el modelo de arriba abajo sin que nada la interrumpa.
+    WHAT THOSE TWO LINES ARE SAYING
+    -------------------------------
+    Each one is "pre-norm + residual" (module 07): normalize, compute something, and ADD the
+    result to what was already there. The `x` to the left of the `+` is the residual stream,
+    the highway that runs through the model top to bottom with nothing interrupting it.
 
-    La atencion MUEVE informacion entre tokens. El FFN la PROCESA token a token. Alternan, y
-    esa alternancia es todo el Transformer.
+    Attention MOVES information between tokens. The FFN PROCESSES it token by token. They
+    alternate, and that alternation is the whole Transformer.
 
-    Los dos residuales son independientes a proposito: cada sub-bloque puede aportar poco o
-    mucho sin condicionar al otro.
+    The two residuals are independent on purpose: each sub-block can contribute a little or a
+    lot without constraining the other.
 
-    CUATRO SITIOS DONDE SE FALLA
-    ----------------------------
-    **Normalizar la corriente en vez de la rama.** Es `x + attn(norm(x))`, no `norm(x + attn(x))`.
-    Lo segundo es post-norm y rompe la propiedad que hace que el gradiente llegue limpio a la
-    capa 1. Entrena, pero peor y con mas warmup.
+    FOUR PLACES WHERE PEOPLE GO WRONG
+    ---------------------------------
+    **Normalizing the stream instead of the branch.** It is `x + attn(norm(x))`, not
+    `norm(x + attn(x))`. The second is post-norm and it breaks the property that makes the
+    gradient reach layer 1 clean. It trains, but worse and with more warmup.
 
-    **Reutilizar la misma norma para los dos sub-bloques.** Son DOS objetos distintos con pesos
-    propios. `self.ffn_norm = self.attn_norm` compila y da resultados plausibles, y esta mal.
+    **Reusing the same norm for both sub-blocks.** They are TWO different objects with their
+    own weights. `self.ffn_norm = self.attn_norm` compiles and gives plausible results, and
+    it is wrong.
 
-    **Olvidar pasarle `cos`, `sin` y `mask` a la atencion.** Sin `cos`/`sin` el modelo pierde
-    toda la informacion posicional y aun asi entrena (mal). Sin `mask`, cada token ve el futuro
-    y la perdida baja de forma sospechosamente buena. Los dos fallos son silenciosos.
+    **Forgetting to pass `cos`, `sin` and `mask` to attention.** Without `cos`/`sin` the model
+    loses all positional information and still trains (badly). Without `mask`, every token
+    sees the future and the loss drops suspiciously well. Both failures are silent.
 
-    **Pasarle `cos`/`sin`/`mask` al FFN.** No los acepta, y es que no los necesita: el FFN no
-    mira a otros tokens, asi que no hay nada que enmascarar ni ninguna posicion que inyectar.
+    **Passing `cos`/`sin`/`mask` to the FFN.** It does not accept them, and it does not need
+    them: the FFN does not look at other tokens, so there is nothing to mask and no position
+    to inject.
 
     forward(self, x, cos=None, sin=None, mask=None):
         Args:
             x: `(B, T, d_model)`.
-            cos, sin: tablas de RoPE, o None.
-            mask: la mascara causal, o None para que la genere la atencion.
+            cos, sin: RoPE tables, or None.
+            mask: the causal mask, or None to let attention build it.
         Returns:
-            `(B, T, d_model)`, exactamente la misma forma que entro.
+            `(B, T, d_model)`, exactly the same shape that went in.
     """
 
     def __init__(self, cfg: ModelConfig) -> None:
         super().__init__()
-        raise NotImplementedError("TODO: modulo 10, ejercicio 3 - TransformerBlock.__init__")
+        raise NotImplementedError("TODO: module 10, exercise 3 - TransformerBlock.__init__")
 
     def forward(
         self,
@@ -306,22 +311,22 @@ class TransformerBlock(nn.Module):
         sin: torch.Tensor | None = None,
         mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
-        raise NotImplementedError("TODO: modulo 10, ejercicio 3 - TransformerBlock.forward")
+        raise NotImplementedError("TODO: module 10, exercise 3 - TransformerBlock.forward")
 
 
 class GPT(nn.Module):
-    """El modelo completo. 8.933.440 parametros cuando termines.
+    """The complete model. 8,933,440 parameters when you finish.
 
-    LA ESTRUCTURA
+    THE STRUCTURE
     -------------
-        ids -> embeddings -> [bloque] x n_layers -> norma final -> logits
+        ids -> embeddings -> [block] x n_layers -> final norm -> logits
 
-    Con RoPE no hay embedding posicional que sumar al principio: la posicion se inyecta dentro
-    de la atencion. Por eso la primera capa es solo la tabla de tokens.
+    With RoPE there is no positional embedding to add at the start: position is injected
+    inside attention. That is why the first layer is only the token table.
 
-    QUÉ TIENES QUE ESCRIBIR EN `__init__`
-    -------------------------------------
-        1. Guarda el config y crea los submodulos. Los nombres importan:
+    WHAT YOU HAVE TO WRITE IN `__init__`
+    ------------------------------------
+        1. Store the config and create the submodules. The names matter:
 
                self.cfg = cfg
                self.token_embedding = nn.Embedding(cfg.vocab_size, cfg.d_model)
@@ -339,7 +344,7 @@ class GPT(nn.Module):
                if cfg.tie_embeddings:
                    self.lm_head.weight = self.token_embedding.weight
 
-        3. LAS TABLAS DE RoPE, como buffer:
+        3. THE RoPE TABLES, as a buffer:
 
                if cfg.pos == "rope":
                    cos, sin = rope_frequencies(
@@ -348,42 +353,42 @@ class GPT(nn.Module):
                    self.register_buffer("rope_cos", cos, persistent=False)
                    self.register_buffer("rope_sin", sin, persistent=False)
 
-        4. LA INICIALIZACION, en dos pasadas. Primero todo:
+        4. THE INITIALIZATION, in two passes. First everything:
 
                self.apply(self._init_weights)
 
-           con `_init_weights` poniendo `nn.init.normal_(m.weight, mean=0.0, std=0.02)` en los
-           `nn.Linear` y `nn.Embedding`, y `nn.init.zeros_` en los sesgos que haya.
+           with `_init_weights` doing `nn.init.normal_(m.weight, mean=0.0, std=0.02)` on the
+           `nn.Linear` and `nn.Embedding`, and `nn.init.zeros_` on any biases.
 
-           Y despues, PISANDO lo anterior solo en las proyecciones que escriben en la corriente
-           residual:
+           And then, OVERRIDING the above only on the projections that write into the
+           residual stream:
 
                scale = 0.02 / math.sqrt(2 * cfg.n_layers)
                for name, param in self.named_parameters():
                    if name.endswith(("out_proj.weight", "down_proj.weight", "fc_out.weight")):
                        nn.init.normal_(param, mean=0.0, std=scale)
 
-        El orden de los pasos 2 y 4 importa: el tying va DESPUES de crear `lm_head` y ANTES de
-        la inicializacion.
+        The order of steps 2 and 4 matters: the tying goes AFTER creating `lm_head` and
+        BEFORE the initialization.
 
-    QUÉ TIENES QUE ESCRIBIR EN `forward(idx, targets=None)`
-    -------------------------------------------------------
-        1. Valida el tamanyo, con los dos numeros en el mensaje:
+    WHAT YOU HAVE TO WRITE IN `forward(idx, targets=None)`
+    ------------------------------------------------------
+        1. Validate the size, with both numbers in the message:
 
                B, T = idx.shape
                if T > self.cfg.context_length:
-                   raise ValueError(f"secuencia de {T} > contexto {self.cfg.context_length}")
+                   raise ValueError(f"sequence of {T} > context {self.cfg.context_length}")
 
         2. x = self.token_embedding(idx)
-        3. si `cfg.pos == "learned"`, sumale
+        3. if `cfg.pos == "learned"`, add
            `self.pos_embedding(torch.arange(T, device=idx.device))`
         4. x = self.drop(x)
-        5. cos, sin = (self.rope_cos, self.rope_sin) si pos=="rope", si no (None, None)
-        6. mask = causal_mask(T, device=idx.device)      <- UNA vez, no dentro del bucle
+        5. cos, sin = (self.rope_cos, self.rope_sin) if pos=="rope", otherwise (None, None)
+        6. mask = causal_mask(T, device=idx.device)      <- ONCE, not inside the loop
         7. for block in self.blocks: x = block(x, cos=cos, sin=sin, mask=mask)
         8. x = self.norm_f(x)
         9. logits = self.lm_head(x)
-       10. la perdida, si hay targets:
+       10. the loss, if there are targets:
 
                loss = None
                if targets is not None:
@@ -394,58 +399,62 @@ class GPT(nn.Module):
                    )
                return logits, loss
 
-    POR QUÉ CADA UNA DE LAS COSAS RARAS
-    -----------------------------------
-    **`self.lm_head.weight = self.token_embedding.weight`** no COPIA nada: hace que las dos
-    capas apunten al mismo tensor en memoria. Ahorra 1.310.720 parametros (el 15% del modelo) y
-    ademas mejora la calidad, porque cada peso recibe gradiente por dos caminos.
+    WHY EACH OF THE ODD THINGS
+    --------------------------
+    **`self.lm_head.weight = self.token_embedding.weight`** does not COPY anything: it makes
+    both layers point at the same tensor in memory. It saves 1,310,720 parameters (15% of the
+    model) and it also improves quality, because each weight receives gradient along two
+    paths.
 
-    **`register_buffer`** guarda un tensor que acompanya al modelo —se mueve con `.to(device)`,
-    sale en el `state_dict`— pero NO es un parametro: no recibe gradiente y el optimizador ni lo
-    ve. `persistent=False` hace ademas que no se guarde en el checkpoint, porque se recalcula
-    solo al construir el modelo y guardarlo seria desperdiciar espacio.
+    **`register_buffer`** stores a tensor that travels with the model — it moves with
+    `.to(device)`, it shows up in the `state_dict` — but is NOT a parameter: it receives no
+    gradient and the optimizer never sees it. `persistent=False` also keeps it out of the
+    checkpoint, because it is recomputed when the model is built and storing it would waste
+    space.
 
-    **La inicializacion escalada.** Cada bloque SUMA su contribucion a la corriente residual,
-    asi que con 6 capas y 2 sub-bloques cada una la varianza de la salida seria 12 veces la de
-    la entrada. Reducir la desviacion de las proyecciones que escriben ahi lo compensa. El 2 del
-    denominador es porque cada bloque escribe dos veces.
+    **The scaled initialization.** Each block ADDS its contribution to the residual stream,
+    so with 6 layers and 2 sub-blocks each the output's variance would be 12 times the
+    input's. Reducing the standard deviation of the projections that write there compensates
+    for it. The 2 in the denominator is because each block writes twice.
 
-    Y el 0.02 tampoco es arbitrario: es lo que hace que la perdida del paso 0 valga ln(V).
-    Con `std=1` (el defecto de `nn.Embedding`) el modelo arrancaria opinando fuerte y al azar, y
-    la perdida saldria por ENCIMA de ln(V). Lo viste en la demo del modulo 05.
+    And the 0.02 is not arbitrary either: it is what makes the step-0 loss equal ln(V). With
+    `std=1` (`nn.Embedding`'s default) the model would start opinionated and random, and the
+    loss would come out ABOVE ln(V). You saw it in module 05's demo.
 
-    **`mask` fuera del bucle.** Es la misma para las 6 capas. Calcularla dentro funciona y
-    desperdicia trabajo en cada paso de entrenamiento.
+    **`mask` outside the loop.** It is the same for all 6 layers. Computing it inside works
+    and wastes work on every training step.
 
-    **`ignore_index=-100`** no hace nada ahora mismo, pero lo necesitaras en el modulo 16 para
-    enmascarar el prompt en el fine-tuning. Dejalo puesto.
+    **`ignore_index=-100`** does nothing right now, but you will need it in module 16 to mask
+    the prompt during fine-tuning. Leave it in.
 
-    CÓMO SABER SI ESTÁ BIEN
-    -----------------------
+    HOW TO KNOW IF IT IS RIGHT
+    --------------------------
         - `count_parameters(GPT(ModelConfig()))["total"] == 8_933_440`
-        - la perdida del primer forward, sin entrenar, ronda `ln(4096) = 8.32`
-        - cambiar el token de la posicion 6 no mueve NI UN logit de las posiciones 0-5
-          (la demo lo comprueba: sale 0.00e+00 exacto)
+        - the loss of the first forward, untrained, is around `ln(4096) = 8.32`
+        - changing the token at position 6 does not move A SINGLE logit at positions 0-5
+          (the demo checks it: it comes out exactly 0.00e+00)
 
-    Si la perdida inicial sale MUY por debajo de 8.32, no celebres: casi siempre significa que
-    el modelo esta viendo el futuro. Mira la mascara, y despues mira como se monta el batch.
+    If the initial loss comes out WAY below 8.32, do not celebrate: it almost always means
+    the model is seeing the future. Look at the mask, and then look at how the batch is
+    assembled.
 
     forward(self, idx, targets=None):
         Args:
-            idx: `(B, T)` int64, los ids de token.
-            targets: `(B, T)` int64 desplazados una posicion, o None.
+            idx: `(B, T)` int64, the token ids.
+            targets: `(B, T)` int64 shifted by one position, or None.
         Returns:
-            `(logits, loss)` con logits `(B, T, vocab_size)`. `loss` es None sin targets.
+            `(logits, loss)` with logits `(B, T, vocab_size)`. `loss` is None without
+            targets.
 
         Raises:
-            ValueError: si `T` supera `cfg.context_length`.
+            ValueError: if `T` exceeds `cfg.context_length`.
     """
 
     def __init__(self, cfg: ModelConfig) -> None:
         super().__init__()
-        raise NotImplementedError("TODO: modulo 10, ejercicio 4 - GPT.__init__")
+        raise NotImplementedError("TODO: module 10, exercise 4 - GPT.__init__")
 
     def forward(
         self, idx: torch.Tensor, targets: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        raise NotImplementedError("TODO: modulo 10, ejercicio 4 - GPT.forward")
+        raise NotImplementedError("TODO: module 10, exercise 4 - GPT.forward")

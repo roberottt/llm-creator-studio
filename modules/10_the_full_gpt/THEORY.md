@@ -1,193 +1,190 @@
-# 10 — El GPT completo
+# 10 — The full GPT
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque aquí se junta todo y sale un número exacto.**
+**Because this is where everything comes together and produces an exact number.**
 
-Tienes la atención, la normalización, el FFN y RoPE. Este módulo los ensambla en el modelo
-que vas a entrenar, y termina con una comprobación que o cuadra o no cuadra:
-**8.933.440 parámetros**. Ni uno más.
+You have attention, normalization, the FFN and RoPE. This module assembles them into the
+model you are going to train, and it ends with a check that either adds up or does not:
+**8,933,440 parameters**. Not one more.
 
-Ese número no es un adorno. Que la fórmula que derivas a mano coincida con el conteo real
-del modelo significa que has entendido dónde está cada peso y por qué. Si no cuadra, algo
-de tu arquitectura no es lo que crees.
+That number is not decoration. That the formula you derive by hand matches the model's real
+count means you have understood where every weight is and why. If it does not add up,
+something in your architecture is not what you think it is.
 
-Y hay tres decisiones de diseño aquí que se saltan casi todos los tutoriales y que son las
-que hacen que el modelo entrene bien: el weight tying, la inicialización escalada por
-profundidad, y la normalización final.
+And there are three design decisions here that almost every tutorial skips and that are what
+make the model train well: weight tying, depth-scaled initialization, and the final
+normalization.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Cómo se monta un Transformer completo, de ids de token a logits
-- Cómo ahorrar el 15% de los parámetros reutilizando una matriz que ya tienes
-- Por qué la inicialización de las capas profundas **no puede ser la misma** que la del resto
-- Verificar que tu modelo es causal de verdad, con una comprobación que da cero exacto
+- How a complete Transformer is assembled, from token ids to logits
+- How to save 15% of the parameters by reusing a matrix you already have
+- Why the initialization of the deep layers **cannot be the same** as everything else's
+- How to verify your model is genuinely causal, with a check that gives exactly zero
 
-### Cuánto cuesta
+### What it costs
 
-3 horas. Cierra la Parte II: al terminarlo tienes el modelo montado y auditado.
+3 hours. It closes Part II: when you finish it you have the model assembled and audited.
 
 ---
 
-## El bloque
+## The block
 
-Un bloque del Transformer es esto, y nada más:
+A Transformer block is this, and nothing more:
 
 ```
-x = x + atención(norm1(x))
+x = x + attention(norm1(x))
 x = x + ffn(norm2(x))
 ```
 
-Dos sub-bloques, cada uno con su normalización pre-norm y su residual. La atención **mueve
-información entre tokens**; el FFN **procesa cada token por separado**. Alternan.
+Two sub-blocks, each with its pre-norm normalization and its residual. Attention **moves
+information between tokens**; the FFN **processes each token separately**. They alternate.
 
-Los dos residuales son independientes a propósito: cada sub-bloque puede aportar poco o
-mucho a la corriente residual sin condicionar al otro.
+The two residuals are independent on purpose: each sub-block can contribute a little or a
+lot to the residual stream without constraining the other.
 
-## El modelo entero
+## The whole model
 
 ```
-ids de token
-    ↓ tabla de embeddings
-vectores
-    ↓ bloque × 6
-vectores
-    ↓ normalización final
-vectores
-    ↓ proyección a logits
-puntuaciones sobre los 4096 tokens
+token ids
+    ↓ embedding table
+vectors
+    ↓ block × 6
+vectors
+    ↓ final normalization
+vectors
+    ↓ projection to logits
+scores over the 4096 tokens
 ```
 
-Con RoPE no hay embedding posicional que sumar al principio: la posición se inyecta dentro
-de la atención, rotando Q y K. Por eso la primera capa es solo la tabla de tokens.
+With RoPE there is no positional embedding to add at the start: position is injected inside
+attention, by rotating Q and K. That is why the first layer is only the token table.
 
-Ahora las tres decisiones que hacen que el modelo sea el que es.
+Now the three decisions that make the model what it is.
 
-## Decisión 1: weight tying
+## Decision 1: weight tying
 
-La tabla de embeddings convierte un id en un vector: es una matriz de $4096 \times 320$. La
-capa de salida convierte un vector en puntuaciones sobre el vocabulario: es una matriz de
-$320 \times 4096$.
+The embedding table turns an id into a vector: it is a $4096 \times 320$ matrix. The output
+layer turns a vector into scores over the vocabulary: it is a $320 \times 4096$ matrix.
 
-**Son la misma matriz, transpuesta.** ¿Por qué no reutilizarla?
+**They are the same matrix, transposed.** Why not reuse it?
 
 ```python
 self.lm_head.weight = self.token_embedding.weight
 ```
 
-Eso no copia: hace que las dos capas apunten **al mismo tensor**. El ahorro:
+That does not copy: it makes both layers point at **the same tensor**. The saving:
 
 ```
-sin tying:  4096 × 320 × 2 = 2.621.440 parámetros
-con tying:  4096 × 320     = 1.310.720 parámetros
-ahorro:                      1.310.720   (el 15% del modelo)
+without tying:  4096 × 320 × 2 = 2,621,440 parameters
+with tying:     4096 × 320     = 1,310,720 parameters
+saving:                          1,310,720   (15% of the model)
 ```
 
-Con un modelo de 9M eso es enorme. Y además suele **mejorar la calidad**, no solo ahorrar:
-cada peso recibe gradiente por dos caminos distintos —una vez como embedding de entrada, otra
-como proyección de salida— así que se entrena con el doble de señal.
+With a 9M model that is enormous. And it usually **improves quality** too, not just saves:
+each weight receives gradient along two different paths — once as an input embedding, once
+as an output projection — so it trains with twice the signal.
 
-La justificación conceptual es que un token debería estar "cerca" en el espacio de
-embeddings de aquellos con los que se puede confundir, y esa noción de cercanía sirve tanto
-para leer como para escribir.
+The conceptual justification is that a token should be "close" in embedding space to those
+it can be confused with, and that notion of closeness serves both reading and writing.
 
-Detalle práctico: `model.parameters()` deduplica por identidad, así que el total sale bien
-solo. Pero si desglosas por componente tienes que llevar cuenta de los `id()` ya vistos o
-contarás la matriz dos veces.
+A practical detail: `model.parameters()` deduplicates by identity, so the total comes out
+right on its own. But if you break it down by component you have to track the `id()`s
+already seen or you will count the matrix twice.
 
-## Decisión 2: inicialización escalada por profundidad
+## Decision 2: depth-scaled initialization
 
-Este es el detalle que más gente se salta y que explica por qué a veces los modelos
-profundos no entrenan bien.
+This is the detail most people skip and it explains why deep models sometimes do not train
+well.
 
-Piensa en la corriente residual. Cada bloque le **suma** su contribución:
+Think about the residual stream. Each block **adds** its contribution to it:
 
 ```
-x₀ → x₁ = x₀ + algo₁ → x₂ = x₁ + algo₂ → ... → x₆
+x₀ → x₁ = x₀ + something₁ → x₂ = x₁ + something₂ → ... → x₆
 ```
 
-Si las contribuciones son independientes y todas tienen varianza $\sigma^2$, la varianza de
-la suma crece **linealmente con el número de sumandos**. Con 6 capas y 2 sub-bloques cada
-una, son 12 contribuciones: la salida tiene 12 veces más varianza que la entrada.
+If the contributions are independent and all have variance $\sigma^2$, the variance of the
+sum grows **linearly with the number of terms**. With 6 layers and 2 sub-blocks each, that is
+12 contributions: the output has 12 times the variance of the input.
 
-La solución de GPT-2, y la que usamos: inicializar con desviación más pequeña **solo las
-proyecciones que escriben en la corriente residual**, que son `out_proj` de la atención y
-`down_proj` del FFN:
+GPT-2's fix, and the one we use: initialize with a smaller standard deviation **only the
+projections that write into the residual stream**, which are attention's `out_proj` and the
+FFN's `down_proj`:
 
-$$\sigma = \frac{0{,}02}{\sqrt{2 \cdot n_{\text{layers}}}}$$
+$$\sigma = \frac{0.02}{\sqrt{2 \cdot n_{\text{layers}}}}$$
 
-El 2 es porque cada bloque escribe dos veces. Con 6 capas: $0{,}02/\sqrt{12} = 0{,}0058$.
+The 2 is because each block writes twice. With 6 layers: $0.02/\sqrt{12} = 0.0058$.
 
-Todo lo demás se inicializa con $\sigma = 0{,}02$ a secas.
+Everything else is initialized with plain $\sigma = 0.02$.
 
-**Y el 0,02 tampoco es arbitrario.** Es lo que hace que la pérdida del paso 0 valga
-$\ln(V)$: con logits casi idénticos, el softmax sale casi uniforme. Si inicializaras con la
-normal estándar de PyTorch ($\sigma = 1$), el modelo arrancaría con opiniones fuertes y
-aleatorias y la pérdida saldría por encima de $\ln(V)$ — exactamente lo que viste en la demo
-del módulo 05.
+**And the 0.02 is not arbitrary either.** It is what makes the step-0 loss equal $\ln(V)$:
+with almost identical logits, the softmax comes out almost uniform. If you initialized with
+PyTorch's standard normal ($\sigma = 1$), the model would start with strong, random opinions
+and the loss would come out above $\ln(V)$ — exactly what you saw in module 05's demo.
 
-## Decisión 3: la normalización final
+## Decision 3: the final normalization
 
-En pre-norm, la corriente residual **nunca se normaliza por el camino**. Llega a la salida
-con una escala que crece con la profundidad. Por eso hay una normalización justo antes de la
-proyección a logits. No es opcional: sin ella, los logits salen con una escala arbitraria y
-el entrenamiento es mucho más frágil.
+In pre-norm, the residual stream **is never normalized along the way**. It reaches the output
+at a scale that grows with depth. That is why there is a normalization right before the
+projection to logits. It is not optional: without it, the logits come out at an arbitrary
+scale and training is far more fragile.
 
-## El conteo exacto
+## The exact count
 
-Y ahora el número. Deriva la fórmula tú antes de mirar:
+And now the number. Derive the formula yourself before looking:
 
-| componente | fórmula | valor |
+| component | formula | value |
 |---|---|---|
-| embeddings de token | $V \cdot d$ | 4096 × 320 = **1.310.720** |
-| atención por capa | $4d^2$ | 4 × 320² = 409.600 |
-| SwiGLU por capa | $3 \cdot d \cdot d_{ff}$ | 3 × 320 × 896 = 860.160 |
-| RMSNorm por capa | $2d$ | 2 × 320 = 640 |
-| **por capa** | | **1.270.400** |
-| × 6 capas | | **7.622.400** |
-| RMSNorm final | $d$ | 320 |
-| lm_head | atada | **0** |
-| **TOTAL** | | **8.933.440** |
+| token embeddings | $V \cdot d$ | 4096 × 320 = **1,310,720** |
+| attention per layer | $4d^2$ | 4 × 320² = 409,600 |
+| SwiGLU per layer | $3 \cdot d \cdot d_{ff}$ | 3 × 320 × 896 = 860,160 |
+| RMSNorm per layer | $2d$ | 2 × 320 = 640 |
+| **per layer** | | **1,270,400** |
+| × 6 layers | | **7,622,400** |
+| final RMSNorm | $d$ | 320 |
+| lm_head | tied | **0** |
+| **TOTAL** | | **8,933,440** |
 
-Tres cosas que conviene notar en esa tabla:
+Three things worth noting in that table:
 
-- La **atención no tiene sesgos**: son cuatro matrices $d \times d$ limpias. Los LLM
-  modernos los han ido eliminando; aportan poco y complican el weight decay del módulo 11.
-- **RMSNorm solo tiene escala** ($d$ parámetros), no escala y sesgo ($2d$) como LayerNorm.
-- **RoPE no aporta ni un parámetro.** Las tablas de cos y sin se calculan con una fórmula y
-  se guardan como *buffers*, no como parámetros. Por eso se registran con
-  `persistent=False`: se recalculan al construir el modelo y no hace falta guardarlas en el
-  checkpoint.
+- **Attention has no biases**: they are four clean $d \times d$ matrices. Modern LLMs have
+  been dropping them; they add little and they complicate module 11's weight decay.
+- **RMSNorm has scale only** ($d$ parameters), not scale and bias ($2d$) like LayerNorm.
+- **RoPE contributes zero parameters.** The cos and sin tables are computed from a formula
+  and stored as *buffers*, not as parameters. That is why they are registered with
+  `persistent=False`: they are recomputed when the model is built and there is no need to
+  store them in the checkpoint.
 
-**Parámetros no-embedding: 7.622.720.** Ese es el número que usa el módulo 12 para las
-leyes de escala, porque los embeddings escalan distinto al resto y Chinchilla los trata
-aparte.
+**Non-embedding parameters: 7,622,720.** That is the number module 12 uses for the scaling
+laws, because embeddings scale differently from the rest and Chinchilla treats them
+separately.
 
-## Dónde está el debate
+## Where the debate is
 
-Merece la pena separar lo que está determinado de lo que es convención.
+It is worth separating what is settled from what is convention.
 
-**Bien fundamentado:** el escalado por $\sqrt{d_k}$ de la atención (hay un argumento de
-varianza claro), la necesidad de residuales, la normalización final en pre-norm.
+**Well founded:** attention's $\sqrt{d_k}$ scaling (there is a clear variance argument), the
+need for residuals, the final normalization in pre-norm.
 
-**Convención con apoyo empírico:** pre-norm sobre post-norm, RMSNorm sobre LayerNorm,
-SwiGLU sobre GELU, el weight tying. Funcionan mejor en los benchmarks; no hay teoría.
+**Convention with empirical support:** pre-norm over post-norm, RMSNorm over LayerNorm,
+SwiGLU over GELU, weight tying. They work better on the benchmarks; there is no theory.
 
-**Prácticamente arbitrario:** el 0,02 de la inicialización (viene de GPT-2 y nadie lo ha
-vuelto a justificar), el factor 4x del FFN, el $\theta = 10000$ de RoPE, la proporción entre
-profundidad y anchura. Se han probado alternativas y las diferencias son pequeñas.
+**Practically arbitrary:** the 0.02 in the initialization (it comes from GPT-2 and nobody has
+re-justified it), the FFN's 4x factor, RoPE's $\theta = 10000$, the ratio between depth and
+width. Alternatives have been tried and the differences are small.
 
-Y una honesta sobre este modelo concreto: **6 capas de 320 dimensiones no es una elección
-óptima derivada de nada**. Es un punto razonable para que quepa en una RTX 2060 y entrene en
-horas. Con los mismos 9M de parámetros podrías hacer 12 capas de 224, o 3 de 512, y
-funcionarían de forma parecida. La relación entre profundidad y anchura está poco explorada
-a esta escala.
+And an honest one about this particular model: **6 layers of 320 dimensions is not an
+optimal choice derived from anything**. It is a reasonable point for fitting in an RTX 2060
+and training in hours. With the same 9M parameters you could do 12 layers of 224, or 3 of
+512, and they would work similarly. The relationship between depth and width is little
+explored at this scale.
 
 ---
 
-**Para ampliar:** Radford et al. 2019,
+**Further reading:** Radford et al. 2019,
 [GPT-2](https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf)
-(de donde salen la init escalada y el 0,02) · Press & Wolf 2017,
+(where the scaled init and the 0.02 come from) · Press & Wolf 2017,
 [Using the Output Embedding to Improve Language Models](https://arxiv.org/abs/1608.05859)
-(weight tying) · [nanoGPT](https://github.com/karpathy/nanoGPT). Términos sueltos, en
+(weight tying) · [nanoGPT](https://github.com/karpathy/nanoGPT). Stray terms are in
 [GLOSSARY.md](../../GLOSSARY.md).

@@ -1,13 +1,13 @@
-"""Demo del modulo 10: el modelo completo, montado y auditado.
+"""Demo for module 10: the complete model, assembled and audited.
 
     llmfs demo 10
 
-Cinco comprobaciones sobre el modelo de 8.933.440 parametros:
-  1. El desglose de parametros, componente a componente.
-  2. La formula frente al conteo real.
-  3. La perdida del paso 0 frente a ln(V): el detector de bugs.
-  4. Que es causal de verdad, comprobado cambiando un token.
-  5. Cuanta memoria ocupa y donde esta el grueso (spoiler: los logits).
+Five checks on the 8,933,440-parameter model:
+  1. The parameter breakdown, component by component.
+  2. The formula against the real count.
+  3. The step-0 loss against ln(V): the bug detector.
+  4. That it is genuinely causal, checked by changing a token.
+  5. How much memory it takes and where the bulk is (spoiler: the logits).
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ import math
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import torch
@@ -36,200 +36,201 @@ GPT = resolve("10_the_full_gpt", "GPT")
 
 
 def main() -> None:
-    cfg_dev = get_device()
+    dev_cfg = get_device()
     set_seed(1337)
 
     run = RunConfig.from_yaml(configs_dir() / "tinystories_9m.yaml")
     cfg = run.model
 
-    console.rule("[bold]El modelo[/bold]")
+    console.rule("[bold]The model[/bold]")
     console.print(run.summary())
 
-    # --------------------------------------------------------------- 1 y 2
-    console.rule("[bold]1. Desglose de parametros[/bold]")
-    modelo = GPT(cfg)
-    conteo = count_parameters(modelo)
-    total = conteo["total"]
+    # --------------------------------------------------------------- 1 and 2
+    console.rule("[bold]1. Parameter breakdown[/bold]")
+    model = GPT(cfg)
+    counts = count_parameters(model)
+    total = counts["total"]
 
-    tabla = Table(header_style="bold")
-    tabla.add_column("componente")
-    tabla.add_column("parametros", justify="right")
-    tabla.add_column("%", justify="right")
-    tabla.add_column("de donde salen")
+    table = Table(header_style="bold")
+    table.add_column("component")
+    table.add_column("parameters", justify="right")
+    table.add_column("%", justify="right")
+    table.add_column("where they come from")
 
-    detalles = {
+    details = {
         "embeddings": f"{cfg.vocab_size} x {cfg.d_model}",
-        "attention": f"{cfg.n_layers} capas x 4 x {cfg.d_model}^2",
-        "ffn": f"{cfg.n_layers} capas x 3 x {cfg.d_model} x {cfg.d_ff}",
+        "attention": f"{cfg.n_layers} layers x 4 x {cfg.d_model}^2",
+        "ffn": f"{cfg.n_layers} layers x 3 x {cfg.d_model} x {cfg.d_ff}",
         "norms": f"{2 * cfg.n_layers + 1} RMSNorm x {cfg.d_model}",
-        "lm_head": "atada a los embeddings" if cfg.tie_embeddings else "sin atar",
+        "lm_head": "tied to the embeddings" if cfg.tie_embeddings else "untied",
         "other": "-",
     }
-    for clave in ("embeddings", "attention", "ffn", "norms", "lm_head", "other"):
-        if conteo[clave] == 0 and clave == "other":
+    for key in ("embeddings", "attention", "ffn", "norms", "lm_head", "other"):
+        if counts[key] == 0 and key == "other":
             continue
-        tabla.add_row(
-            clave, f"{conteo[clave]:,}", f"{100 * conteo[clave] / total:.1f}%", detalles[clave]
+        table.add_row(
+            key, f"{counts[key]:,}", f"{100 * counts[key] / total:.1f}%", details[key]
         )
-    tabla.add_section()
-    tabla.add_row("[bold]TOTAL[/bold]", f"[bold]{total:,}[/bold]", "100%", "")
-    tabla.add_row("no-embedding", f"{conteo['non_embedding']:,}", "", "lo que usa Chinchilla")
-    console.print(tabla)
+    table.add_section()
+    table.add_row("[bold]TOTAL[/bold]", f"[bold]{total:,}[/bold]", "100%", "")
+    table.add_row("non-embedding", f"{counts['non_embedding']:,}", "", "what Chinchilla uses")
+    console.print(table)
 
     formula = expected_param_count(cfg)
-    coincide = formula == total == 8_933_440
+    matches = formula == total == 8_933_440
     console.print(
-        f"\n  formula  : {formula:,}\n"
-        f"  conteo   : {total:,}\n"
-        f"  objetivo : 8,933,440\n"
+        f"\n  formula : {formula:,}\n"
+        f"  count   : {total:,}\n"
+        f"  target  : 8,933,440\n"
         + (
-            "  [bold green]Los tres coinciden.[/bold green]"
-            if coincide
-            else "  [bold red]NO coinciden.[/bold red]"
+            "  [bold green]All three match.[/bold green]"
+            if matches
+            else "  [bold red]They do NOT match.[/bold red]"
         )
     )
 
     if cfg.tie_embeddings:
         console.print(
-            f"\n[dim]Sin weight tying el modelo tendria "
+            f"\n[dim]Without weight tying the model would have "
             f"{expected_param_count(ModelConfig(**{**cfg.__dict__, 'tie_embeddings': False})):,} "
-            f"parametros: un 15% mas, solo por no reutilizar una matriz que ya tienes.[/dim]"
+            f"parameters: 15% more, just for not reusing a matrix you already have.[/dim]"
         )
 
     # --------------------------------------------------------------- 3
-    console.rule("[bold]2. La perdida del paso 0[/bold]")
-    modelo = modelo.to(cfg_dev.device).eval()
-    secuencia = torch.randint(0, cfg.vocab_size, (4, 65), device=cfg_dev.device)
-    x, y = secuencia[:, :-1], secuencia[:, 1:]
+    console.rule("[bold]2. The step-0 loss[/bold]")
+    model = model.to(dev_cfg.device).eval()
+    sequence = torch.randint(0, cfg.vocab_size, (4, 65), device=dev_cfg.device)
+    x, y = sequence[:, :-1], sequence[:, 1:]
     with torch.no_grad():
-        _, perdida = modelo(x, y)
+        _, loss = model(x, y)
 
-    suelo = math.log(cfg.vocab_size)
-    desvio = float(perdida) - suelo
+    floor = math.log(cfg.vocab_size)
+    drift = float(loss) - floor
     console.print(
-        f"  perdida del modelo sin entrenar : [bold]{float(perdida):.4f}[/bold]\n"
-        f"  ln({cfg.vocab_size})                        : {suelo:.4f}\n"
-        f"  desvio                          : {desvio:+.4f}\n"
+        f"  loss of the untrained model : [bold]{float(loss):.4f}[/bold]\n"
+        f"  ln({cfg.vocab_size})                    : {floor:.4f}\n"
+        f"  drift                       : {drift:+.4f}\n"
     )
-    if abs(desvio) < 0.1:
+    if abs(drift) < 0.1:
         console.print(
-            "[green]Correcto.[/green] El modelo arranca sin opiniones, que es lo que debe.\n"
-            "[dim]Este es el numero que tienes que ver en el paso 0 del modulo 11. Si sale\n"
-            "mas alto, la init es demasiado agresiva. Si sale mas bajo, hay fuga de\n"
-            "informacion y lo primero que hay que mirar es la mascara causal.[/dim]"
+            "[green]Correct.[/green] The model starts with no opinions, which is what it "
+            "should do.\n"
+            "[dim]This is the number you have to see at step 0 in module 11. If it comes out\n"
+            "higher, the init is too aggressive. If it comes out lower, there is an\n"
+            "information leak and the first thing to look at is the causal mask.[/dim]"
         )
     else:
-        console.print("[red]Fuera de rango: revisa la inicializacion o la mascara.[/red]")
+        console.print("[red]Out of range: check the initialization or the mask.[/red]")
 
     console.print(
-        "\n[dim]Nota de metodo: los targets van DESPLAZADOS un token (x = seq[:, :-1],\n"
-        "y = seq[:, 1:]). Si pasaras `modelo(idx, idx)`, en la posicion t el modelo veria el\n"
-        "token que tiene que predecir y la perdida saldria por debajo de ln(V). Parece un\n"
-        "bug del modelo y es un bug del que monta el batch.[/dim]"
+        "\n[dim]A note on method: the targets are SHIFTED by one token (x = seq[:, :-1],\n"
+        "y = seq[:, 1:]). If you passed `model(idx, idx)`, at position t the model would see\n"
+        "the token it has to predict and the loss would come out below ln(V). It looks like a\n"
+        "model bug and it is a bug in whoever assembles the batch.[/dim]"
     )
 
     # --------------------------------------------------------------- 4
-    console.rule("[bold]3. Es causal de verdad[/bold]")
-    idx = torch.randint(0, cfg.vocab_size, (1, 12), device=cfg_dev.device)
+    console.rule("[bold]3. It is genuinely causal[/bold]")
+    idx = torch.randint(0, cfg.vocab_size, (1, 12), device=dev_cfg.device)
     with torch.no_grad():
-        original = modelo(idx)[0]
-        modificado = idx.clone()
-        modificado[0, 6] = (modificado[0, 6] + 1) % cfg.vocab_size
-        alterado = modelo(modificado)[0]
+        original = model(idx)[0]
+        modified = idx.clone()
+        modified[0, 6] = (modified[0, 6] + 1) % cfg.vocab_size
+        altered = model(modified)[0]
 
-    diffs = (alterado - original).abs().max(dim=-1).values[0]
-    tabla2 = Table(header_style="bold")
-    tabla2.add_column("posicion", justify="right")
-    tabla2.add_column("cambio maximo en los logits", justify="right")
-    tabla2.add_column("")
+    diffs = (altered - original).abs().max(dim=-1).values[0]
+    table2 = Table(header_style="bold")
+    table2.add_column("position", justify="right")
+    table2.add_column("maximum change in the logits", justify="right")
+    table2.add_column("")
     for pos in range(12):
-        marca = " <- token cambiado" if pos == 6 else ""
-        color = "green" if pos < 6 else "yellow"
-        tabla2.add_row(str(pos), f"[{color}]{float(diffs[pos]):.2e}[/{color}]", marca)
-    console.print(tabla2)
+        mark = " <- changed token" if pos == 6 else ""
+        colour = "green" if pos < 6 else "yellow"
+        table2.add_row(str(pos), f"[{colour}]{float(diffs[pos]):.2e}[/{colour}]", mark)
+    console.print(table2)
     console.print(
-        "[dim]Antes de la posicion 6 el cambio es cero exacto: esas predicciones no pueden\n"
-        "ver el token 6. A partir de ahi si cambian. Eso es la mascara causal funcionando, y\n"
-        "es la comprobacion mas directa que existe de que no hay fuga.[/dim]"
+        "[dim]Before position 6 the change is exactly zero: those predictions cannot see\n"
+        "token 6. From there on they do change. That is the causal mask working, and it is\n"
+        "the most direct check there is that there is no leak.[/dim]"
     )
 
     # --------------------------------------------------------------- 5
-    console.rule("[bold]4. Memoria[/bold]")
-    bytes_por_param = 4
-    peso_modelo = total * bytes_por_param
-    # AdamW guarda dos momentos por parametro, ambos en fp32
-    estados_opt = total * 2 * bytes_por_param
-    gradientes = total * bytes_por_param
+    console.rule("[bold]4. Memory[/bold]")
+    bytes_per_param = 4
+    model_weights = total * bytes_per_param
+    # AdamW stores two moments per parameter, both in fp32
+    optimizer_states = total * 2 * bytes_per_param
+    gradients = total * bytes_per_param
 
     B, T, V = run.train.batch_size, cfg.context_length, cfg.vocab_size
     logits_fp16 = B * T * V * 2
     logits_fp32 = B * T * V * 4
 
-    tabla3 = Table(header_style="bold")
-    tabla3.add_column("que")
-    tabla3.add_column("MB", justify="right")
-    tabla3.add_column("nota")
-    tabla3.add_row("pesos del modelo (fp32)", f"{peso_modelo / 1e6:.1f}", "")
-    tabla3.add_row("gradientes (fp32)", f"{gradientes / 1e6:.1f}", "")
-    tabla3.add_row("estados de AdamW", f"{estados_opt / 1e6:.1f}", "dos momentos por parametro")
-    tabla3.add_section()
-    tabla3.add_row(
-        "logits en fp16", f"{logits_fp16 / 1e6:.1f}", f"batch {B} x ctx {T} x vocab {V}"
+    table3 = Table(header_style="bold")
+    table3.add_column("what")
+    table3.add_column("MB", justify="right")
+    table3.add_column("note")
+    table3.add_row("model weights (fp32)", f"{model_weights / 1e6:.1f}", "")
+    table3.add_row("gradients (fp32)", f"{gradients / 1e6:.1f}", "")
+    table3.add_row("AdamW states", f"{optimizer_states / 1e6:.1f}", "two moments per parameter")
+    table3.add_section()
+    table3.add_row(
+        "logits in fp16", f"{logits_fp16 / 1e6:.1f}", f"batch {B} x ctx {T} x vocab {V}"
     )
-    tabla3.add_row(
-        "+ su version fp32", f"{logits_fp32 / 1e6:.1f}", "cross_entropy promociona"
+    table3.add_row(
+        "+ its fp32 version", f"{logits_fp32 / 1e6:.1f}", "cross_entropy promotes"
     )
-    tabla3.add_row(
-        "+ su gradiente", f"{logits_fp32 / 1e6:.1f}", "", style="bold"
+    table3.add_row(
+        "+ its gradient", f"{logits_fp32 / 1e6:.1f}", "", style="bold"
     )
-    console.print(tabla3)
+    console.print(table3)
     console.print(
-        f"[bold]Los logits solos ocupan mas que el modelo, los gradientes y el optimizador "
-        f"juntos.[/bold]\n"
-        f"({(logits_fp16 + 2 * logits_fp32) / 1e6:.0f} MB frente a "
-        f"{(peso_modelo + gradientes + estados_opt) / 1e6:.0f} MB.)\n\n"
-        "[dim]Cuando en el modulo 13 te quedes sin memoria en la 2060, este es el primer\n"
-        "sitio donde mirar, no las activaciones del modelo. La solucion habitual es calcular\n"
-        "la perdida por trozos en vez de materializar el tensor entero.[/dim]"
+        f"[bold]The logits alone take more than the model, the gradients and the optimizer "
+        f"combined.[/bold]\n"
+        f"({(logits_fp16 + 2 * logits_fp32) / 1e6:.0f} MB against "
+        f"{(model_weights + gradients + optimizer_states) / 1e6:.0f} MB.)\n\n"
+        "[dim]When you run out of memory on the 2060 in module 13, this is the first place\n"
+        "to look, not the model's activations. The usual fix is computing the loss in chunks\n"
+        "instead of materializing the whole tensor.[/dim]"
     )
 
-    # --------------------------------------------------------------- grafica
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    # --------------------------------------------------------------- plot
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    componentes = ["embeddings", "attention", "ffn", "norms"]
-    valores = [conteo[c] for c in componentes]
-    izq.pie(
-        valores,
-        labels=[f"{c}\n{v:,}" for c, v in zip(componentes, valores)],
+    components = ["embeddings", "attention", "ffn", "norms"]
+    values = [counts[c] for c in components]
+    left.pie(
+        values,
+        labels=[f"{c}\n{v:,}" for c, v in zip(components, values)],
         autopct="%1.1f%%",
         startangle=90,
         textprops={"fontsize": 8},
     )
-    izq.set_title(f"Los {total:,} parametros")
+    left.set_title(f"The {total:,} parameters")
 
-    etiquetas = ["pesos", "gradientes", "AdamW", "logits\n(fp16+fp32+grad)"]
-    memorias = [
-        peso_modelo / 1e6,
-        gradientes / 1e6,
-        estados_opt / 1e6,
+    labels = ["weights", "gradients", "AdamW", "logits\n(fp16+fp32+grad)"]
+    memories = [
+        model_weights / 1e6,
+        gradients / 1e6,
+        optimizer_states / 1e6,
         (logits_fp16 + 2 * logits_fp32) / 1e6,
     ]
-    colores = ["tab:blue"] * 3 + ["tab:red"]
-    der.bar(etiquetas, memorias, color=colores)
-    for i, v in enumerate(memorias):
-        der.text(i, v, f"{v:.0f}", ha="center", va="bottom", fontsize=9)
-    der.set_ylabel("MB")
-    der.set_title(f"Memoria con batch {B} x ctx {T}")
-    der.grid(alpha=0.3, axis="y")
+    colours = ["tab:blue"] * 3 + ["tab:red"]
+    right.bar(labels, memories, color=colours)
+    for i, v in enumerate(memories):
+        right.text(i, v, f"{v:.0f}", ha="center", va="bottom", fontsize=9)
+    right.set_ylabel("MB")
+    right.set_title(f"Memory with batch {B} x ctx {T}")
+    right.grid(alpha=0.3, axis="y")
 
     fig.tight_layout()
-    destino = figures_dir() / "10_the_full_gpt.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "10_the_full_gpt.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target}[/green]")
     console.print(
-        "\n[bold]Con esto termina la Parte II.[/bold] Tienes el modelo montado y auditado.\n"
-        "En la Parte III se entrena."
+        "\n[bold]This is where Part II ends.[/bold] You have the model assembled and "
+        "audited.\nIn Part III it gets trained."
     )
 
 
