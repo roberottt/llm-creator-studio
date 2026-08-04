@@ -1,9 +1,9 @@
-"""Demo del modulo 15: evalua tu modelo y genera el informe.
+"""Module 15 demo: evaluates your model and generates the report.
 
     llmfs demo 15
 
-Usa el modelo entrenado en el modulo 13 si existe. Produce `eval_report.md` con las
-metricas y las seis continuaciones de la bateria, listo para leer.
+It uses the model trained in module 13 if it exists. It produces `eval_report.md` with the
+metrics and the six continuations of the battery, ready to read.
 """
 
 from __future__ import annotations
@@ -43,155 +43,163 @@ def main() -> None:
 
     from llmfs.train import load_checkpoint
 
-    modelo = GPT(cfg.model)
-    ruta = cfg.run_dir / "best.pt"
-    entrenado = ruta.exists()
-    if entrenado:
-        load_checkpoint(ruta, modelo, map_location="cpu")
-        console.print(f"[green]Modelo cargado de {ruta}[/green]\n")
+    model = GPT(cfg.model)
+    path = cfg.run_dir / "best.pt"
+    trained = path.exists()
+    if trained:
+        load_checkpoint(path, model, map_location="cpu")
+        console.print(f"[green]Model loaded from {path}[/green]\n")
     else:
         console.print(
-            "[yellow]No hay modelo entrenado. Entrena uno con "
-            "`llmfs train --config tiny_char` y vuelve.[/yellow]\n"
+            "[yellow]There is no trained model. Train one with "
+            "`llmfs train --config tiny_char` and come back.[/yellow]\n"
         )
-    modelo = modelo.to(cfg_dev.device).eval()
+    model = model.to(cfg_dev.device).eval()
     get_batch = make_get_batch(dataset, cfg, cfg_dev.device)
 
-    # ------------------------------------------------------------- 1. metricas
-    console.rule("[bold]1. Perplejidad[/bold]")
-    perdidas = {}
+    # ------------------------------------------------------------- 1. metrics
+    console.rule("[bold]1. Perplexity[/bold]")
+    losses = {}
     with torch.no_grad():
         for split in ("train", "val"):
             total, n = 0.0, 0
             for _ in range(50):
                 x, y = get_batch(split, 32)
-                total += float(modelo(x, y)[1])
+                total += float(model(x, y)[1])
                 n += 1
-            perdidas[split] = total / n
+            losses[split] = total / n
 
-    suelo = math.log(cfg.model.vocab_size)
-    tabla = Table(header_style="bold")
-    tabla.add_column("conjunto")
-    tabla.add_column("perdida", justify="right")
-    tabla.add_column("perplejidad", justify="right")
-    tabla.add_column("")
-    tabla.add_row("azar (el suelo)", f"{suelo:.4f}", f"{perplexity_from_loss(suelo):.1f}",
-                  "[dim]lo que saca un modelo sin entrenar[/dim]")
-    for split, perdida in perdidas.items():
-        tabla.add_row(split, f"{perdida:.4f}", f"{perplexity_from_loss(perdida):.2f}", "")
-    console.print(tabla)
+    floor = math.log(cfg.model.vocab_size)
+    table = Table(header_style="bold")
+    table.add_column("split")
+    table.add_column("loss", justify="right")
+    table.add_column("perplexity", justify="right")
+    table.add_column("")
+    table.add_row(
+        "chance (the floor)",
+        f"{floor:.4f}",
+        f"{perplexity_from_loss(floor):.1f}",
+        "[dim]what an untrained model gets[/dim]",
+    )
+    for split, loss in losses.items():
+        table.add_row(split, f"{loss:.4f}", f"{perplexity_from_loss(loss):.2f}", "")
+    console.print(table)
 
-    brecha = perdidas["val"] - perdidas["train"]
+    gap = losses["val"] - losses["train"]
     console.print(
-        f"\n  brecha train/val: [bold]{brecha:+.4f}[/bold] "
-        + ("[green](poca: no esta memorizando)[/green]" if brecha < 0.3
-           else "[yellow](empieza a sobreajustar)[/yellow]")
-        + f"\n  mejora sobre el azar: de perplejidad {perplexity_from_loss(suelo):.0f} a "
-        f"[bold]{perplexity_from_loss(perdidas['val']):.1f}[/bold]"
+        f"\n  train/val gap: [bold]{gap:+.4f}[/bold] "
+        + (
+            "[green](small: it is not memorizing)[/green]"
+            if gap < 0.3
+            else "[yellow](it is starting to overfit)[/yellow]"
+        )
+        + f"\n  improvement over chance: from perplexity {perplexity_from_loss(floor):.0f} to "
+        f"[bold]{perplexity_from_loss(losses['val']):.1f}[/bold]"
     )
 
-    # ------------------------------------------------------------- 2. bits por byte
-    console.rule("[bold]2. Bits por byte[/bold]")
+    # ------------------------------------------------------------- 2. bits per byte
+    console.rule("[bold]2. Bits per byte[/bold]")
     n_tokens = 50 * 32 * cfg.model.context_length
-    # A nivel de caracter, un token es aproximadamente un byte
-    bpb = bits_per_byte(perdidas["val"] * n_tokens, n_tokens, n_tokens)
+    # At character level, a token is roughly a byte
+    bpb = bits_per_byte(losses["val"] * n_tokens, n_tokens, n_tokens)
 
-    tabla2 = Table(header_style="bold")
-    tabla2.add_column("compresor")
-    tabla2.add_column("bits/byte", justify="right")
-    tabla2.add_row("sin comprimir", "8.00")
-    tabla2.add_row("gzip (texto en ingles)", "~2.50")
-    tabla2.add_row("[bold]tu modelo[/bold]", f"[bold]{bpb:.3f}[/bold]")
-    tabla2.add_row("los mejores LLM", "0.60 - 0.80")
-    console.print(tabla2)
+    table2 = Table(header_style="bold")
+    table2.add_column("compressor")
+    table2.add_column("bits/byte", justify="right")
+    table2.add_row("uncompressed", "8.00")
+    table2.add_row("gzip (English text)", "~2.50")
+    table2.add_row("[bold]your model[/bold]", f"[bold]{bpb:.3f}[/bold]")
+    table2.add_row("the best LLMs", "0.60 - 0.80")
+    console.print(table2)
     console.print(
-        f"\nTu modelo comprimiria el texto a [bold]1/{8/bpb:.1f}[/bold] de su tamanyo.\n"
-        "[dim]No es una analogia: un modelo de lenguaje ES un compresor, y esta\n"
-        "equivalencia entre prediccion y compresion viene de Shannon (1948).\n\n"
-        "A diferencia de la perplejidad, esta metrica SI se puede comparar entre modelos\n"
-        "con tokenizadores distintos, porque normaliza por bytes y no por tokens.[/dim]"
+        f"\nYour model would compress the text to [bold]1/{8 / bpb:.1f}[/bold] of its size.\n"
+        "[dim]It is not an analogy: a language model IS a compressor, and this equivalence\n"
+        "between prediction and compression comes from Shannon (1948).\n\n"
+        "Unlike perplexity, this metric CAN be compared between models with different\n"
+        "tokenizers, because it normalizes by bytes and not by tokens.[/dim]"
     )
 
-    # ------------------------------------------------------------- 3. la bateria
-    console.rule("[bold]3. La bateria cualitativa[/bold]")
+    # ------------------------------------------------------------- 3. the battery
+    console.rule("[bold]3. The qualitative battery[/bold]")
 
-    def generar(prompt: str) -> str:
+    def generate(prompt: str) -> str:
         set_seed(1234)
         ids = torch.tensor([dataset.encode(prompt)], device=cfg_dev.device)
         if ids.shape[1] == 0:
             ids = torch.zeros(1, 1, dtype=torch.long, device=cfg_dev.device)
-        salida = generate_with_cache(modelo, ids, 120, temperature=0.8, top_k=40)
-        return dataset.decode(salida[0].tolist())
+        out = generate_with_cache(model, ids, 120, temperature=0.8, top_k=40)
+        return dataset.decode(out[0].tolist())
 
     console.print(
-        "[dim]Ojo: el modelo esta entrenado sobre Shakespeare a nivel caracter, no sobre\n"
-        "TinyStories. Los prompts en ingles moderno le quedan fuera de distribucion, asi que\n"
-        "las continuaciones seran raras. El ejercicio de LEERLAS es el mismo.[/dim]\n"
+        "[dim]Careful: the model is trained on Shakespeare at character level, not on\n"
+        "TinyStories. Prompts in modern English are out of distribution for it, so the\n"
+        "continuations will be odd. The exercise of READING them is the same.[/dim]\n"
     )
-    bateria = run_prompt_battery(generar)
-    for caso in bateria:
+    battery = run_prompt_battery(generate)
+    for case in battery:
         console.print(
             Panel(
-                caso["completion"].replace("\n", " ")[:200],
-                title=f"{caso['tests']}  |  prompt: {caso['prompt'][:40]}...",
+                case["completion"].replace("\n", " ")[:200],
+                title=f"{case['tests']}  |  prompt: {case['prompt'][:40]}...",
                 border_style="cyan",
             )
         )
 
     console.print(
-        "\n[bold]Lee las seis y juzga tres cosas por separado:[/bold]\n"
-        "  1. GRAMATICA:  ¿las frases estan bien construidas?\n"
-        "  2. COHERENCIA: ¿se contradice? ¿mantiene lo que dijo antes?\n"
-        "  3. CREATIVIDAD: ¿aporta algo o repite plantillas?\n\n"
-        "[dim]El paper de TinyStories separa estas tres capacidades porque aparecen a\n"
-        "escalas distintas: un modelo de 1M ya hace gramatica decente, la coherencia\n"
-        "necesita mas, y la creatividad todavia mas. No es una escalera unica.[/dim]"
+        "\n[bold]Read the six and judge three things separately:[/bold]\n"
+        "  1. GRAMMAR:    are the sentences well built?\n"
+        "  2. COHERENCE:  does it contradict itself? does it keep what it said before?\n"
+        "  3. CREATIVITY: does it contribute anything or does it repeat templates?\n\n"
+        "[dim]The TinyStories paper separates these three capabilities because they appear\n"
+        "at different scales: a 1M model already does decent grammar, coherence needs more,\n"
+        "and creativity more still. It is not a single ladder.[/dim]"
     )
 
-    # ------------------------------------------------------------- el informe
-    metricas = {
-        "perdida (train)": perdidas["train"],
-        "perdida (val)": perdidas["val"],
-        "perplejidad (val)": perplexity_from_loss(perdidas["val"]),
-        "bits por byte": bpb,
-        "suelo del azar": suelo,
-        "vocabulario": cfg.model.vocab_size,
-        "parametros": sum(p.numel() for p in modelo.parameters()),
+    # ------------------------------------------------------------- the report
+    metrics = {
+        "loss (train)": losses["train"],
+        "loss (val)": losses["val"],
+        "perplexity (val)": perplexity_from_loss(losses["val"]),
+        "bits per byte": bpb,
+        "chance floor": floor,
+        "vocabulary": cfg.model.vocab_size,
+        "parameters": sum(p.numel() for p in model.parameters()),
     }
-    destino = write_eval_report(
-        cfg.run_dir / "eval_report.md", metricas, bateria, cfg.summary()
-    )
-    console.print(f"\n[green]informe guardado en {destino}[/green]")
+    target = write_eval_report(cfg.run_dir / "eval_report.md", metrics, battery, cfg.summary())
+    console.print(f"\n[green]report saved to {target}[/green]")
 
-    # ------------------------------------------------------------- grafica
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    # ------------------------------------------------------------- figure
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    nombres = ["azar", "train", "val"]
-    valores = [perplexity_from_loss(suelo), perplexity_from_loss(perdidas["train"]),
-               perplexity_from_loss(perdidas["val"])]
-    colores = ["tab:red", "tab:blue", "tab:green"]
-    izq.bar(nombres, valores, color=colores)
-    for i, v in enumerate(valores):
-        izq.text(i, v, f"{v:.1f}", ha="center", va="bottom")
-    izq.set_yscale("log")
-    izq.set_ylabel("perplejidad (escala log)")
-    izq.set_title("Cuanto duda el modelo")
-    izq.grid(alpha=0.3, axis="y")
+    names = ["chance", "train", "val"]
+    values = [
+        perplexity_from_loss(floor),
+        perplexity_from_loss(losses["train"]),
+        perplexity_from_loss(losses["val"]),
+    ]
+    colors = ["tab:red", "tab:blue", "tab:green"]
+    left.bar(names, values, color=colors)
+    for i, v in enumerate(values):
+        left.text(i, v, f"{v:.1f}", ha="center", va="bottom")
+    left.set_yscale("log")
+    left.set_ylabel("perplexity (log scale)")
+    left.set_title("How much the model hesitates")
+    left.grid(alpha=0.3, axis="y")
 
-    comps = ["sin\ncomprimir", "gzip", "tu\nmodelo", "mejores\nLLM"]
+    comps = ["uncom-\npressed", "gzip", "your\nmodel", "best\nLLMs"]
     bits = [8.0, 2.5, bpb, 0.7]
-    der.bar(comps, bits, color=["gray", "tab:orange", "tab:green", "tab:blue"])
+    right.bar(comps, bits, color=["gray", "tab:orange", "tab:green", "tab:blue"])
     for i, v in enumerate(bits):
-        der.text(i, v, f"{v:.2f}", ha="center", va="bottom")
-    der.set_ylabel("bits por byte")
-    der.set_title("Un modelo de lenguaje es un compresor")
-    der.grid(alpha=0.3, axis="y")
+        right.text(i, v, f"{v:.2f}", ha="center", va="bottom")
+    right.set_ylabel("bits per byte")
+    right.set_title("A language model is a compressor")
+    right.grid(alpha=0.3, axis="y")
 
     fig.tight_layout()
-    ruta_fig = figures_dir() / "15_evaluation.png"
-    fig.savefig(ruta_fig, dpi=120)
+    fig_path = figures_dir() / "15_evaluation.png"
+    fig.savefig(fig_path, dpi=120)
     plt.close(fig)
-    console.print(f"[green]figura guardada en {ruta_fig}[/green]")
+    console.print(f"[green]figure saved to {fig_path}[/green]")
 
 
 if __name__ == "__main__":

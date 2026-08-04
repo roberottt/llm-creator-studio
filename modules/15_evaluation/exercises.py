@@ -1,38 +1,38 @@
-"""Modulo 15 - Evaluacion.
+"""Module 15 - Evaluation.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 15` -> `llmfs hint 15 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 15` -> `llmfs hint 15 -e N`
+-> `SOLUTION.md` has the complete code.
 
-Los tres ejercicios son cortos. El tercero ni siquiera calcula nada: organiza el trabajo
-para que la parte que de verdad importa (leer lo que escribe el modelo) sea comoda.
+The three exercises are short. The third one does not even compute anything: it organizes
+the work so that the part that really matters (reading what the model writes) is comfortable.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Tres formas de responder a "¿es bueno mi modelo?":
+Three ways of answering "is my model any good?":
 
-    perplexity_from_loss  (ej. 1)  la metrica de siempre, y sus limites
-    bits_per_byte         (ej. 2)  la que SI se puede comparar entre modelos
-    run_prompt_battery    (ej. 3)  la que ninguna metrica automatica sustituye
+    perplexity_from_loss  (ex. 1)  the usual metric, and its limits
+    bits_per_byte         (ex. 2)  the one that CAN be compared across models
+    run_prompt_battery    (ex. 3)  the one no automatic metric replaces
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **perplejidad**: `e` elevado a la perdida. "Entre cuantas opciones esta dudando el
-  modelo". Depende del tokenizador, y por eso comparar perplejidades entre modelos
-  distintos suele no significar nada.
-- **bits por byte**: la perdida normalizada por bytes de texto original en vez de por
-  tokens. Si es comparable, y se interpreta como cuanto comprimiria el modelo el texto.
-- **nat / bit**: unidades de informacion. Un nat son 1,4427 bits.
-- **evaluacion cualitativa**: leer lo que escribe el modelo y juzgarlo. Sigue siendo
-  imprescindible.
-- **contaminacion**: cuando el conjunto de test aparece en los datos de entrenamiento. Es
-  uno de los problemas metodologicos mas serios del campo ahora mismo.
+- **perplexity**: `e` raised to the loss. "How many options the model is hesitating
+  between". It depends on the tokenizer, and that is why comparing perplexities between
+  different models usually means nothing.
+- **bits per byte**: the loss normalized by bytes of original text instead of by tokens. It
+  IS comparable, and it is read as how much the model would compress the text.
+- **nat / bit**: units of information. One nat is 1.4427 bits.
+- **qualitative evaluation**: reading what the model writes and judging it. It is still
+  indispensable.
+- **contamination**: when the test set appears in the training data. It is one of the most
+  serious methodological problems in the field right now.
 
-    llmfs demo 15     evalua tu modelo y genera eval_report.md
+    llmfs demo 15     evaluates your model and generates eval_report.md
 """
 
 from __future__ import annotations
@@ -40,205 +40,204 @@ from __future__ import annotations
 import math
 from typing import Callable, Sequence
 
-# Los seis prompts de la bateria del paper TinyStories. Cada uno prueba algo distinto.
+# The six prompts of the TinyStories paper battery. Each one tests something different.
 from llmfs.reference import PROMPTS_TINYSTORIES
 
 
 def perplexity_from_loss(loss: float) -> float:
-    """Perplejidad a partir de la perdida media en nats.
+    """Perplexity from the mean loss in nats.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Dos lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Two lines.
 
-        1. La guarda:
+        1. The guard:
 
                if not math.isfinite(loss):
                    return float("inf")
 
-        2. La formula:
+        2. The formula:
 
                return math.exp(loss)
 
-    QUÉ TIENE QUE SALIR
-    -------------------
-        perdida 8.317  ->  perplejidad 4096.0    sin entrenar: duda entre TODO el vocabulario
-        perdida 1.60   ->  perplejidad    4.95   duda entre unas 5 opciones
-        perdida 0.0    ->  perplejidad    1.0    perfecto, no duda
+    WHAT SHOULD COME OUT
+    --------------------
+        loss 8.317  ->  perplexity 4096.0    untrained: hesitates over the WHOLE vocabulary
+        loss 1.60   ->  perplexity    4.95   hesitates between about 5 options
+        loss 0.0    ->  perplexity    1.0    perfect, no hesitation
 
-    El primero merece una comprobacion: `ln(4096) = 8.317`, asi que `exp(8.317) = 4096`. Un
-    modelo recien inicializado reparte la probabilidad por igual entre los 4096 tokens, y la
-    perplejidad te lo dice literalmente: "estoy dudando entre 4096 opciones".
+    The first one is worth checking: `ln(4096) = 8.317`, so `exp(8.317) = 4096`. A freshly
+    initialized model spreads the probability equally over the 4096 tokens, and the perplexity
+    tells you so literally: "I am hesitating between 4096 options".
 
-    CÓMO SE INTERPRETA
-    ------------------
-    La perdida en nats no se lee bien: 1.60 no dice nada por si solo. La perplejidad si, porque
-    tiene unidades comprensibles: ENTRE CUANTAS OPCIONES EQUIPROBABLES esta dudando el modelo.
+    HOW TO READ IT
+    --------------
+    The loss in nats does not read well: 1.60 says nothing on its own. Perplexity does, because
+    it has understandable units: HOW MANY EQUIPROBABLE OPTIONS the model is hesitating between.
 
-    Una perplejidad de 5 significa "de media, el modelo esta tan indeciso como si tuviera que
-    elegir al azar entre 5 palabras". Es una medida de sorpresa.
+    A perplexity of 5 means "on average, the model is as undecided as if it had to choose at
+    random between 5 words". It is a measure of surprise.
 
-    POR QUÉ LA GUARDA
-    -----------------
-    Sin ella, `math.exp(float("inf"))` lanza `OverflowError` y te quedas sin saber que paso. Y
-    un `inf` o un `nan` en la perdida SI ocurre: es exactamente lo que ves cuando el
-    entrenamiento diverge. Devolver `inf` es la respuesta correcta —la perplejidad de un modelo
-    roto ES infinita— y ademas se imprime sin romper nada.
+    WHY THE GUARD
+    -------------
+    Without it, `math.exp(float("inf"))` raises `OverflowError` and you are left not knowing
+    what happened. And an `inf` or a `nan` in the loss DOES happen: it is exactly what you see
+    when training diverges. Returning `inf` is the correct answer —the perplexity of a broken
+    model IS infinite— and besides it prints without breaking anything.
 
-    `math.isfinite(x)` es False para `inf`, `-inf` y `nan`.
+    `math.isfinite(x)` is False for `inf`, `-inf` and `nan`.
 
-    Es una linea de codigo. Lo que importa es saber interpretarla, y saber que NO se puede
-    comparar entre modelos con tokenizadores distintos, que es el ejercicio siguiente.
+    It is one line of code. What matters is knowing how to read it, and knowing it CANNOT be
+    compared between models with different tokenizers, which is the next exercise.
 
     Args:
-        loss: la perdida MEDIA por token, en nats (lo que devuelve `F.cross_entropy`).
+        loss: the MEAN loss per token, in nats (what `F.cross_entropy` returns).
 
     Returns:
-        La perplejidad. `inf` si la perdida no es finita.
+        The perplexity. `inf` if the loss is not finite.
     """
-    raise NotImplementedError("TODO: modulo 15, ejercicio 1 - perplexity_from_loss")
+    raise NotImplementedError("TODO: module 15, exercise 1 - perplexity_from_loss")
 
 
 def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
-    """Bits por byte: la metrica que SI se puede comparar entre tokenizadores distintos.
+    """Bits per byte: the metric that CAN be compared across different tokenizers.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Dos lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Two lines.
 
-        1. La validacion:
+        1. The validation:
 
                if n_bytes <= 0:
-                   raise ValueError(f"n_bytes tiene que ser positivo: {n_bytes}")
+                   raise ValueError(f"n_bytes has to be positive: {n_bytes}")
 
-        2. La formula:
+        2. The formula:
 
                return (total_loss_nats / math.log(2)) / n_bytes
 
-    EL PROBLEMA CON LA PERPLEJIDAD
-    ------------------------------
-    Depende del tokenizador. Si tu vocabulario parte las palabras en trozos mas pequenyos, cada
-    token individual es mas facil de predecir y tu perplejidad sale MEJOR sin que el modelo sea
-    mejor.
-
-    Caso extremo para verlo claro: un modelo que prediga bit a bit tendria perplejidad cercana a
-    2 (solo hay dos opciones, 0 y 1) y seria completamente inutil. Su perplejidad seria la mejor
-    del mundo.
-
-    Comparar perplejidades entre modelos con tokenizadores distintos no significa nada, y se
-    hace constantemente en blogs y papers.
-
-    LA SOLUCIÓN
-    -----------
-    Normalizar por BYTES del texto original en vez de por tokens. Los bytes no dependen de como
-    trocees: el mismo texto tiene los mismos bytes con cualquier tokenizador.
-
-    El `/ math.log(2)` convierte nats a bits: un nat son `1/ln(2) = 1.4427` bits. Es solo un
-    cambio de unidades, como pasar de metros a pies.
-
-    LA INTERPRETACIÓN, QUE ES BONITA
-    --------------------------------
-    Es literalmente cuantos bits necesitarias para transmitir el texto usando el modelo como
-    compresor. Un modelo de 1,0 bits/byte comprime el texto a la OCTAVA parte (un byte son 8
-    bits).
-
-        gzip sobre texto en ingles     ~2,5 bits/byte
-        un buen modelo pequenyo        ~1,2
-        los mejores LLM                 0,6 - 0,8
-
-    Esta equivalencia entre prediccion y compresion viene de Shannon (1948) y no es una
-    analogia: es una identidad matematica. Un modelo de lenguaje ES un compresor, y un buen
-    compresor ES un modelo de lenguaje. Predecir bien y comprimir bien son la misma cosa.
-
-    OJO CON EL PRIMER ARGUMENTO
+    THE PROBLEM WITH PERPLEXITY
     ---------------------------
-    Es la perdida TOTAL (la suma sobre todos los tokens), NO la media. Si le pasas la media, el
-    resultado sale dividido por el numero de tokens y no significa nada, y ademas no da ningun
-    error: sale un numero plausible pero mil veces mas pequenyo.
+    It depends on the tokenizer. If your vocabulary splits words into smaller pieces, each
+    individual token is easier to predict and your perplexity comes out BETTER without the
+    model being better.
 
-    Para conseguirla: `perdida_media * n_tokens`, o acumula `loss.item() * y.numel()` en el
-    bucle de evaluacion.
+    An extreme case to see it clearly: a model predicting bit by bit would have a perplexity
+    close to 2 (there are only two options, 0 and 1) and would be completely useless. Its
+    perplexity would be the best in the world.
 
-    Y `n_tokens` NO se usa en el calculo. Esta en la firma justo para dejar claro cual es la
-    unidad del primer argumento, y para que puedas verificar de un vistazo que la perdida es
-    total y no media. Es documentacion ejecutable.
+    Comparing perplexities between models with different tokenizers means nothing, and it is
+    done constantly in blogs and papers.
+
+    THE SOLUTION
+    ------------
+    Normalize by BYTES of the original text instead of by tokens. Bytes do not depend on how
+    you chop things up: the same text has the same bytes with any tokenizer.
+
+    The `/ math.log(2)` converts nats into bits: one nat is `1/ln(2) = 1.4427` bits. It is just
+    a change of units, like going from metres to feet.
+
+    THE INTERPRETATION, WHICH IS RATHER NICE
+    ----------------------------------------
+    It is literally how many bits you would need to transmit the text using the model as a
+    compressor. A model at 1.0 bits/byte compresses the text to an EIGHTH (a byte is 8 bits).
+
+        gzip on English text          ~2.5 bits/byte
+        a good small model            ~1.2
+        the best LLMs                  0.6 - 0.8
+
+    This equivalence between prediction and compression comes from Shannon (1948) and it is not
+    an analogy: it is a mathematical identity. A language model IS a compressor, and a good
+    compressor IS a language model. Predicting well and compressing well are the same thing.
+
+    WATCH OUT FOR THE FIRST ARGUMENT
+    --------------------------------
+    It is the TOTAL loss (the sum over all the tokens), NOT the mean. If you pass it the mean,
+    the result comes out divided by the number of tokens and means nothing, and besides it
+    raises no error: you get a plausible number that is a thousand times too small.
+
+    To get it: `mean_loss * n_tokens`, or accumulate `loss.item() * y.numel()` in the
+    evaluation loop.
+
+    And `n_tokens` is NOT used in the computation. It is in the signature precisely to make
+    clear what unit the first argument is in, and so you can verify at a glance that the loss
+    is total and not mean. It is executable documentation.
 
     Args:
-        total_loss_nats: la perdida TOTAL en nats, sumada sobre todos los tokens.
-        n_tokens: cuantos tokens. No se usa; esta para dejar clara la unidad.
-        n_bytes: los bytes del texto original (`len(texto.encode("utf-8"))`).
+        total_loss_nats: the TOTAL loss in nats, summed over all the tokens.
+        n_tokens: how many tokens. Not used; it is there to make the unit clear.
+        n_bytes: the bytes of the original text (`len(text.encode("utf-8"))`).
 
     Returns:
-        Bits por byte.
+        Bits per byte.
 
     Raises:
-        ValueError: si `n_bytes` no es positivo.
+        ValueError: if `n_bytes` is not positive.
     """
-    raise NotImplementedError("TODO: modulo 15, ejercicio 2 - bits_per_byte")
+    raise NotImplementedError("TODO: module 15, exercise 2 - bits_per_byte")
 
 
 def run_prompt_battery(
     generate_fn: Callable[[str], str],
     prompts: Sequence[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
-    """Genera una completion para cada prompt de la bateria cualitativa.
+    """Generates a completion for each prompt of the qualitative battery.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines.
 
-        1. Los prompts por defecto:
+        1. The default prompts:
 
                if prompts is None:
                    prompts = PROMPTS_TINYSTORIES
 
-        2. El recorrido, con las tres claves EXACTAS (hay un test que las comprueba):
+        2. The walk, with the three EXACT keys (there is a test that checks them):
 
                return [
                    {
                        "prompt": prompt,
-                       "tests": etiqueta,
+                       "tests": label,
                        "completion": generate_fn(prompt),
                    }
-                   for prompt, etiqueta in prompts
+                   for prompt, label in prompts
                ]
 
-    `PROMPTS_TINYSTORIES` es una tupla de tuplas `(prompt, etiqueta)`, asi que se desempaqueta
-    directamente en el `for`.
+    `PROMPTS_TINYSTORIES` is a tuple of `(prompt, label)` tuples, so it unpacks directly in the
+    `for`.
 
-    QUÉ ES ESTO
-    -----------
-    La parte de la evaluacion que ninguna metrica automatica sustituye: hacerle al modelo
-    siempre las MISMAS preguntas y LEER lo que responde.
+    WHAT THIS IS
+    ------------
+    The part of evaluation no automatic metric replaces: asking the model always the SAME
+    questions and READING what it answers.
 
-    Los seis prompts de `PROMPTS_TINYSTORIES` vienen del paper de TinyStories y cada uno prueba
-    algo distinto: continuacion narrativa, coherencia causal, seguimiento de un objeto
-    mencionado antes, resolucion y cierre de la historia. No son prompts al azar.
+    The six prompts of `PROMPTS_TINYSTORIES` come from the TinyStories paper and each one tests
+    something different: narrative continuation, causal coherence, tracking an object mentioned
+    earlier, resolving and closing the story. They are not random prompts.
 
-    POR QUÉ SE PASA `generate_fn` EN VEZ DEL MODELO
-    -----------------------------------------------
-    `generate_fn(prompt) -> texto` encapsula el modelo Y el tokenizador. Asi esta funcion no
-    sabe nada de ninguno de los dos, y puedes usarla igual con tu modelo, con uno cargado de un
-    checkpoint, con GPT-4 por API, o con una funcion falsa para probar el test sin entrenar
-    nada.
+    WHY `generate_fn` IS PASSED INSTEAD OF THE MODEL
+    ------------------------------------------------
+    `generate_fn(prompt) -> text` encapsulates the model AND the tokenizer. That way this
+    function knows nothing about either of them, and you can use it just the same with your
+    model, with one loaded from a checkpoint, with GPT-4 over an API, or with a fake function
+    to test it without training anything.
 
-    Es el mismo patron que `get_batch` en el modulo 04 o `optimizer_factory` en el 13: pasar la
-    capacidad como funcion en vez de acoplarse a un objeto concreto.
+    It is the same pattern as `get_batch` in module 04 or `optimizer_factory` in module 13:
+    passing the capability as a function instead of coupling to a concrete object.
 
-    DÓNDE ESTÁ EL VALOR DE ESTE EJERCICIO
-    -------------------------------------
-    No esta en el codigo, que son tres lineas. Esta en que tengas una bateria FIJA que puedas
-    volver a pasar cada vez que cambies algo, y comparar las respuestas lado a lado.
+    WHERE THE VALUE OF THIS EXERCISE IS
+    -----------------------------------
+    It is not in the code, which is three lines. It is in having a FIXED battery you can run
+    again every time you change something, and compare the answers side by side.
 
-    Sin bateria fija, la evaluacion cualitativa se convierte en escribir prompts hasta encontrar
-    uno donde el modelo quede bien. Con ella, ves cuando una tirada nueva empeora en algo que
-    antes salia bien, que es la informacion que de verdad necesitas.
+    Without a fixed battery, qualitative evaluation turns into writing prompts until you find
+    one where the model looks good. With it, you see when a new run gets worse at something
+    that used to come out well, which is the information you actually need.
 
     Args:
-        generate_fn: `fn(prompt) -> texto generado`.
-        prompts: secuencia de `(prompt, etiqueta)`, o None para usar la bateria de TinyStories.
+        generate_fn: `fn(prompt) -> generated text`.
+        prompts: sequence of `(prompt, label)`, or None to use the TinyStories battery.
 
     Returns:
-        Una lista de dicts con las claves `prompt`, `que_prueba` y `completion`.
+        A list of dicts with the keys `prompt`, `tests` and `completion`.
     """
-    raise NotImplementedError("TODO: modulo 15, ejercicio 3 - run_prompt_battery")
+    raise NotImplementedError("TODO: module 15, exercise 3 - run_prompt_battery")

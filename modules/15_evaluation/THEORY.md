@@ -1,160 +1,157 @@
-# 15 — Evaluación
+# 15 — Evaluation
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque "¿es bueno mi modelo?" es más difícil de responder de lo que parece.**
+**Because "is my model any good?" is harder to answer than it looks.**
 
-Tienes un modelo entrenado y un número: la pérdida. ¿Y ahora qué? Ese número no te dice si
-el modelo escribe historias que alguien querría leer, y comparar tu número con el de otro
-modelo puede ser directamente engañoso.
+You have a trained model and one number: the loss. Now what? That number does not tell you
+whether the model writes stories someone would want to read, and comparing your number with
+another model's can be outright misleading.
 
-Aquí aprendes a usar tres herramientas distintas y, sobre todo, **qué mide cada una y dónde
-falla**. Incluida una métrica que sí es comparable entre modelos distintos y que casi nadie
-usa, y la parte que ninguna métrica automática sustituye: leer lo que escribe.
+Here you learn to use three different tools and, above all, **what each one measures and where
+it fails**. Including a metric that *is* comparable across different models and that almost
+nobody uses, and the part no automatic metric replaces: reading what it writes.
 
-Es también el módulo donde se pone en contexto lo que has construido, con expectativas
-concretas sobre qué puede y qué no puede hacer un modelo de 9M.
+It is also the module where what you have built gets put in context, with concrete
+expectations about what a 9M model can and cannot do.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué comparar perplejidades entre modelos con tokenizadores distintos **no significa
-  nada**, y se hace constantemente
-- Una métrica que sí es comparable, y su interpretación exacta: tu modelo es un compresor
-- Cómo evaluar cualitativamente con una batería fija de prompts
-- Qué esperar realmente de un modelo de 9M, para no llevarte una decepción injusta
+- Why comparing perplexities between models with different tokenizers **means nothing**, and
+  it is done constantly
+- A metric that *is* comparable, and its exact interpretation: your model is a compressor
+- How to evaluate qualitatively with a fixed battery of prompts
+- What to really expect from a 9M model, so you do not end up unfairly disappointed
 
-### Cuánto cuesta
+### What it costs
 
-2 horas. Tres funciones cortas y un informe generado que puedes leer con calma.
+2 hours. Three short functions and a generated report you can read at your leisure.
 
 ---
 
-## Perplejidad: la métrica de siempre
+## Perplexity: the usual metric
 
-Ya la conoces del módulo 05. Es $e^L$, con $L$ la pérdida media, y se interpreta como
-**entre cuántas opciones equiprobables está dudando el modelo**:
+You already know it from module 05. It is $e^L$, with $L$ the mean loss, and it is read as
+**how many equiprobable options the model is hesitating between**:
 
 ```
-pérdida 8,317  →  perplejidad 4096   (sin entrenar, dudando entre todo el vocabulario)
-pérdida 1,60   →  perplejidad 4,95   (dudando entre unas 5 opciones)
+loss 8.317  →  perplexity 4096   (untrained, hesitating over the whole vocabulary)
+loss 1.60   →  perplexity 4.95   (hesitating between about 5 options)
 ```
 
-Es la métrica más usada porque es barata, automática y correlaciona bien con la calidad
-*dentro de un mismo setup*.
+It is the most used metric because it is cheap, automatic and correlates well with quality
+*within the same setup*.
 
-### Y su problema, que es serio
+### And its problem, which is serious
 
-**La perplejidad depende del tokenizador.** Si tu vocabulario parte las palabras en trozos
-más pequeños, cada token individual es más fácil de predecir y tu perplejidad sale mejor
-sin que el modelo sea mejor.
+**Perplexity depends on the tokenizer.** If your vocabulary splits words into smaller pieces,
+each individual token is easier to predict and your perplexity comes out better without the
+model being better.
 
-Un ejemplo extremo: un modelo a nivel de bit tendría perplejidad cercana a 2 y sería
-inútil. Uno a nivel de palabra, con el mismo texto, tendría perplejidad de cientos.
+An extreme example: a bit-level model would have a perplexity close to 2 and would be useless.
+A word-level one, on the same text, would have a perplexity in the hundreds.
 
-**Comparar perplejidades entre modelos con tokenizadores distintos no significa nada**, y se
-hace constantemente en papers y en posts de blog.
+**Comparing perplexities between models with different tokenizers means nothing**, and it is
+done constantly in papers and in blog posts.
 
-## Bits por byte: la métrica que sí es comparable
+## Bits per byte: the metric that *is* comparable
 
-La solución: normalizar por **bytes de texto original** en vez de por tokens. Los bytes no
-dependen de cómo trocees.
+The solution: normalize by **bytes of original text** instead of by tokens. Bytes do not depend
+on how you chop things up.
 
 $$\text{bits/byte} = \frac{L_{\text{total}} / \ln 2}{n_{\text{bytes}}}$$
 
-El $\ln 2$ convierte nats a bits.
+The $\ln 2$ converts nats into bits.
 
-Y tiene una interpretación exacta y bonita: **es cuántos bits necesitarías para transmitir el
-texto usando el modelo como compresor**. Un modelo de 1,0 bits/byte comprime a la octava
-parte. Referencias:
+And it has an exact and rather nice interpretation: **it is how many bits you would need to
+transmit the text using the model as a compressor**. A model at 1.0 bits/byte compresses to an
+eighth. Reference points:
 
 | | bits/byte |
 |---|---|
-| gzip sobre texto en inglés | ~2,5 |
-| un buen modelo pequeño | ~1,2 |
-| los mejores LLM | 0,6–0,8 |
-| el límite teórico (Shannon) | ~0,6–1,3 (discutido) |
+| gzip on English text | ~2.5 |
+| a good small model | ~1.2 |
+| the best LLMs | 0.6–0.8 |
+| the theoretical limit (Shannon) | ~0.6–1.3 (disputed) |
 
-Esta equivalencia entre predicción y compresión viene de Shannon (1948) y no es una
-analogía: es una identidad. Un modelo de lenguaje **es** un compresor.
+This equivalence between prediction and compression comes from Shannon (1948) and it is not an
+analogy: it is an identity. A language model **is** a compressor.
 
-## La batería cualitativa
+## The qualitative battery
 
-Ninguna de las dos métricas anteriores te dice si el modelo escribe historias que un humano
-querría leer. Para eso hay que leerlas.
+Neither of the two previous metrics tells you whether the model writes stories a human would
+want to read. For that you have to read them.
 
-El paper de TinyStories propone evaluar tres cosas por separado, con prompts fijos:
+The TinyStories paper proposes evaluating three things separately, with fixed prompts:
 
-**Gramática.** ¿Las frases están bien construidas? ¿Concuerdan sujeto y verbo?
+**Grammar.** Are the sentences well built? Do subject and verb agree?
 
-**Coherencia.** ¿La historia se contradice? Si en la primera frase el gato es negro, ¿sigue
-siendo negro tres frases después?
+**Coherence.** Does the story contradict itself? If in the first sentence the cat is black, is
+it still black three sentences later?
 
-**Creatividad.** ¿Aporta algo o repite plantillas?
+**Creativity.** Does it contribute anything or does it repeat templates?
 
-Lo interesante del paper es que estas tres capacidades **aparecen a escalas distintas**. Un
-modelo de 1M de parámetros ya hace gramática decente; la coherencia necesita más; la
-creatividad, todavía más. No es una escalera única: son habilidades que emergen por
-separado.
+What is interesting about the paper is that these three capabilities **appear at different
+scales**. A 1M-parameter model already does decent grammar; coherence needs more; creativity,
+more still. It is not a single ladder: they are abilities that emerge separately.
 
-En el módulo usarás una batería de seis prompts fijos y leerás las continuaciones tú. Sí,
-a mano. No hay atajo.
+In this module you will use a battery of six fixed prompts and read the continuations
+yourself. Yes, by hand. There is no shortcut.
 
-## Por qué no hay una métrica automática buena
+## Why there is no good automatic metric
 
-Se han intentado muchas y todas fallan por el mismo sitio.
+Many have been tried and they all fail in the same place.
 
-**BLEU, ROUGE** y compañía comparan contra una respuesta de referencia. Para generación
-libre no hay una respuesta correcta: hay infinitas, y todas distintas de la de referencia.
+**BLEU, ROUGE** and company compare against a reference answer. For free generation there is no
+correct answer: there are infinitely many, and all of them different from the reference one.
 
-**Usar otro LLM como juez** (LLM-as-a-judge) es lo que se hace ahora, y funciona
-razonablemente para modelos grandes. Tiene sesgos conocidos y bien documentados: prefiere
-respuestas largas, prefiere el estilo del propio modelo juez, y es sensible al orden en que
-se le presentan las opciones.
+**Using another LLM as a judge** (LLM-as-a-judge) is what is done now, and it works reasonably
+for large models. It has known and well-documented biases: it prefers long answers, it prefers
+the judge model's own style, and it is sensitive to the order the options are presented in.
 
-**La evaluación humana** es el patrón oro y es cara, lenta y ruidosa: dos anotadores
-discrepan más de lo que uno esperaría.
+**Human evaluation** is the gold standard and it is expensive, slow and noisy: two annotators
+disagree more than you would expect.
 
-Para tu modelo de 9M, leer seis continuaciones es perfectamente razonable y probablemente
-más informativo que cualquier número.
+For your 9M model, reading six continuations is perfectly reasonable and probably more
+informative than any number.
 
-## Qué esperar de un modelo de 9M sobre TinyStories
+## What to expect from a 9M model on TinyStories
 
-Sé concreto con las expectativas, porque el paper original entrenaba modelos parecidos:
+Be concrete about expectations, because the original paper trained similar models:
 
-- **Gramática correcta la mayor parte del tiempo.** Frases bien formadas.
-- **Coherencia local, no global.** Dos o tres frases seguidas tienen sentido; una historia
-  de diez, probablemente no.
-- **Vocabulario limitado**, que es lo esperado: TinyStories está escrito a propósito con
-  vocabulario de niño de 4 años.
-- **Nada de razonamiento.** Ni aritmética, ni conocimiento del mundo, ni instrucciones.
+- **Correct grammar most of the time.** Well-formed sentences.
+- **Local coherence, not global.** Two or three sentences in a row make sense; a ten-sentence
+  story, probably not.
+- **Limited vocabulary**, which is what you would expect: TinyStories is deliberately written
+  with the vocabulary of a 4-year-old.
+- **No reasoning at all.** No arithmetic, no world knowledge, no instruction following.
 
-Si tu modelo hace eso, ha funcionado. Si esperabas algo parecido a un asistente, la
-diferencia no es de entrenamiento: es de tres o cuatro órdenes de magnitud en parámetros y
-datos, y del post-entrenamiento que verás en el módulo 16.
+If your model does that, it worked. If you were expecting something like an assistant, the
+difference is not one of training: it is three or four orders of magnitude in parameters and
+data, and the post-training you will see in module 16.
 
-## Dónde está el debate
+## Where the debate is
 
-**La relación entre perplejidad y capacidades es más floja de lo que se asume.** Se sabe que
-bajar la pérdida mejora el modelo, pero no cuánto ni en qué. Dos modelos con la misma
-perplejidad pueden comportarse muy distinto en tareas concretas, y la perplejidad puede
-bajar por memorización sin que mejore nada útil.
+**The relationship between perplexity and capabilities is looser than people assume.** It is
+known that lowering the loss improves the model, but not by how much or in what. Two models
+with the same perplexity can behave very differently on specific tasks, and perplexity can go
+down through memorization without anything useful improving.
 
-**La contaminación de datos ha arruinado buena parte de la evaluación por benchmarks.** Los
-conjuntos de test están en internet, y los modelos se entrenan con internet. Cuando un
-modelo saca buena nota en un benchmark, distinguir "ha aprendido" de "lo ha visto" es
-técnicamente difícil y comercialmente incómodo. Es uno de los problemas metodológicos más
-serios del campo ahora mismo.
+**Data contamination has ruined a good part of benchmark evaluation.** The test sets are on the
+internet, and the models are trained on the internet. When a model scores well on a benchmark,
+telling "it has learned" apart from "it has seen it" is technically hard and commercially
+uncomfortable. It is one of the most serious methodological problems in the field right now.
 
-**Y las capacidades emergentes están en discusión activa.** Se documentaron saltos bruscos
-de capacidad al aumentar la escala, y en 2023 se publicó un análisis convincente
-argumentando que muchos de esos saltos son **artefactos de métricas discontinuas**: si mides
-con una métrica de todo-o-nada, ves saltos donde con una continua verías una curva suave. La
-discusión sigue.
+**And emergent capabilities are under active discussion.** Sharp jumps in capability were
+documented as scale increased, and in 2023 a convincing analysis was published arguing that
+many of those jumps are **artefacts of discontinuous metrics**: if you measure with an
+all-or-nothing metric, you see jumps where a continuous one would show a smooth curve. The
+discussion continues.
 
 ---
 
-**Para ampliar:** Eldan & Li 2023, [TinyStories](https://arxiv.org/abs/2305.07759) (la
-batería cualitativa) · Shannon 1948, *A Mathematical Theory of Communication* (predicción y
-compresión) · Schaeffer et al. 2023,
-[Are Emergent Abilities a Mirage?](https://arxiv.org/abs/2304.15004). Términos sueltos, en
+**Further reading:** Eldan & Li 2023, [TinyStories](https://arxiv.org/abs/2305.07759) (the
+qualitative battery) · Shannon 1948, *A Mathematical Theory of Communication* (prediction and
+compression) · Schaeffer et al. 2023,
+[Are Emergent Abilities a Mirage?](https://arxiv.org/abs/2304.15004). Stray terms are in
 [GLOSSARY.md](../../GLOSSARY.md).
