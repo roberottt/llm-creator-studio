@@ -1,204 +1,201 @@
-# 17 — Extras y límites honestos
+# 17 — Extras and honest limits
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque conviene saber dónde estás.**
+**Because it is worth knowing where you stand.**
 
-Dos cosas. La primera es práctica: cómo hacer el modelo cuatro veces más pequeño para poder
-servirlo, con una técnica que se usa en producción en todas partes.
+Two things. The first is practical: how to make the model four times smaller so you can serve
+it, with a technique used in production everywhere.
 
-La segunda es una conversación franca. Has construido un modelo de 8,9 millones de
-parámetros. Un modelo frontier tiene del orden de un billón. La distancia no es sólo de
-tamaño, y merece la pena entender las **cinco** cosas que la componen, porque cuatro de ellas
-se mencionan mucho menos que la primera.
+The second is a frank conversation. You have built a model of 8.9 million parameters. A
+frontier model has on the order of a trillion. The distance is not only one of size, and it is
+worth understanding the **five** things that make it up, because four of them get mentioned far
+less than the first.
 
-Y también la otra cara: qué has conseguido de verdad, que es bastante más de lo que parece
-mirando sólo los parámetros.
+And also the other side: what you have actually achieved, which is rather more than it looks
+if you only look at the parameters.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Cómo guardar el modelo en la cuarta parte de espacio, y qué se pierde exactamente
-- Por qué 127 y no 128 (y por qué ese detalle importa más de lo que parece)
-- Qué separa tu modelo de GPT-4, con las cinco piezas desglosadas
-- Qué te llevas del curso que no sale en los tutoriales
+- How to store the model in a quarter of the space, and what exactly is lost
+- Why 127 and not 128 (and why that detail matters more than it seems)
+- What separates your model from GPT-4, with the five pieces broken down
+- What you take away from the course that does not appear in the tutorials
 
-### Cuánto cuesta
+### What it costs
 
-2 horas. Es el último.
+2 hours. It is the last one.
 
 ---
 
-## Cuantización: el modelo en la cuarta parte
+## Quantization: the model in a quarter of the space
 
-Tu modelo ocupa 35,7 MB en fp32. Guardando los pesos en enteros de 8 bits ocuparía 8,9 MB.
+Your model takes 35.7 MB in fp32. Storing the weights as 8-bit integers it would take 8.9 MB.
 
-La idea es sencilla: en vez de guardar cada peso como un float de 4 bytes, se guarda un
-entero de 1 byte más una **escala** que permite recuperar el valor aproximado.
+The idea is simple: instead of storing each weight as a 4-byte float, you store a 1-byte
+integer plus a **scale** that lets you recover the approximate value.
 
-### Con números
+### With numbers
 
-Toma una fila de pesos:
+Take a row of weights:
 
 ```
 W = [0.12, -0.45, 0.03, 0.28]
 ```
 
-El mayor en valor absoluto es 0,45. Se mapea ese rango a `[-127, +127]`:
+The largest in absolute value is 0.45. That range is mapped to `[-127, +127]`:
 
 ```
-escala = 0.45 / 127 = 0.003543
+scale = 0.45 / 127 = 0.003543
 
-W_int8 = round(W / escala) = [34, -127, 8, 79]
+W_int8 = round(W / scale) = [34, -127, 8, 79]
 ```
 
-Y para recuperar:
+And to recover it:
 
 ```
-W' = W_int8 × escala = [0.1204, -0.4500, 0.0283, 0.2799]
+W' = W_int8 × scale = [0.1204, -0.4500, 0.0283, 0.2799]
 ```
 
-No es exacto. El error es del orden de media unidad de escala, y eso es lo que se paga.
+It is not exact. The error is on the order of half a unit of scale, and that is what you pay.
 
-### Por qué 127 y no 128
+### Why 127 and not 128
 
-`int8` va de −128 a 127. Usando 127 el rango queda **simétrico** y el cero se representa
-exactamente. Eso importa más de lo que parece: en una matriz con muchos valores pequeños,
-que el cero sea exacto evita un sesgo sistemático que se acumularía capa tras capa.
+`int8` goes from −128 to 127. Using 127 the range is **symmetric** and zero is represented
+exactly. That matters more than it seems: in a matrix with many small values, zero being exact
+avoids a systematic bias that would accumulate layer after layer.
 
-### Por canal frente a por tensor
+### Per channel against per tensor
 
-Se puede calcular **una escala para toda la matriz** o **una por fila**. Por fila cuesta un
-vector de escalas más —despreciable— y reduce bastante el error, porque una sola fila con
-valores grandes no arrastra a las demás.
+You can compute **one scale for the whole matrix** or **one per row**. Per row costs one extra
+vector of scales —negligible— and reduces the error quite a lot, because a single row with
+large values does not drag the rest along.
 
-Medido sobre una matriz real del modelo:
+Measured on a real matrix from the model:
 
-| método | error relativo |
+| method | relative error |
 |---|---|
-| por tensor | 1,07% |
-| **por canal** | **0,71%** |
+| per tensor | 1.07% |
+| **per channel** | **0.71%** |
 
-Es lo que hacen todas las implementaciones serias.
+It is what every serious implementation does.
 
-### Qué se gana y qué se pierde
+### What you gain and what you lose
 
-Se gana **4× en tamaño**. En una GPU con poca memoria, eso puede ser la diferencia entre que
-el modelo quepa o no.
+You gain **4× in size**. On a GPU with little memory, that can be the difference between the
+model fitting or not.
 
-Se pierde precisión. Que un error del 0,7% en los pesos apenas afecte a la calidad del
-modelo es un **hecho empírico**, no un teorema. Nadie predijo que las redes fueran tan
-robustas a la cuantización; se descubrió probando.
+You lose precision. That a 0.7% error in the weights barely affects the model's quality is an
+**empirical fact**, not a theorem. Nobody predicted that networks would be so robust to
+quantization; it was discovered by trying.
 
-Y hay un matiz que se suele omitir: **cuantizar los pesos no acelera nada por sí solo** si
-después conviertes a float para multiplicar. La aceleración de verdad requiere kernels que
-operen en int8 nativamente, y eso depende del hardware.
+And there is a nuance that is usually left out: **quantizing the weights does not speed
+anything up on its own** if afterwards you convert to float to multiply. Real acceleration
+requires kernels that operate natively in int8, and that depends on the hardware.
 
-## Servir el modelo
+## Serving the model
 
-Con el modelo entrenado y cuantizado, servirlo es un problema de ingeniería normal: un
-endpoint HTTP que recibe un prompt y devuelve tokens. Con FastAPI son unas 30 líneas.
+With the model trained and quantized, serving it is an ordinary engineering problem: an HTTP
+endpoint that receives a prompt and returns tokens. With FastAPI it is about 30 lines.
 
-Lo único específico de LLM es que conviene **transmitir en streaming**: enviar cada token
-según se genera en vez de esperar a la respuesta completa. Con generación a 30 tokens/s, una
-respuesta de 200 tokens tarda 7 segundos, y esperar 7 segundos mirando una pantalla en
-blanco se percibe como algo roto.
+The only LLM-specific thing is that it is worth **streaming**: sending each token as it is
+generated instead of waiting for the complete answer. At 30 tokens/s, a 200-token answer takes
+7 seconds, and waiting 7 seconds staring at a blank screen feels like something broken.
 
-## Y ahora la parte honesta: qué te separa de un modelo frontier
+## And now the honest part: what separates you from a frontier model
 
-Tu modelo tiene 8,9 millones de parámetros y ha visto 500 millones de tokens. Un modelo
-frontier tiene del orden de un billón de parámetros y ha visto decenas de billones de
-tokens. La diferencia no es de grado.
+Your model has 8.9 million parameters and has seen 500 million tokens. A frontier model has on
+the order of a trillion parameters and has seen tens of trillions of tokens. The difference is
+not one of degree.
 
-Pero **el tamaño es solo una de cinco cosas**, y las otras cuatro se mencionan menos.
+But **size is only one of five things**, and the other four get mentioned less.
 
-### 1. Los datos
+### 1. The data
 
-Tú usas TinyStories: 2 GB de texto sintético, limpio y homogéneo. Un modelo frontier usa
-del orden de 15 billones de tokens, filtrados con clasificadores entrenados para el
-propósito, deduplicados, mezclados en proporciones ajustadas experimentalmente, y con
-cantidades enormes de código y matemáticas porque **mejoran el razonamiento en tareas que no
-son ni código ni matemáticas** — un resultado empírico que nadie predijo y que sigue sin
-explicarse bien.
+You use TinyStories: 2 GB of synthetic, clean, homogeneous text. A frontier model uses on the
+order of 15 trillion tokens, filtered with classifiers trained for the purpose, deduplicated,
+mixed in experimentally tuned proportions, and with enormous amounts of code and mathematics
+because **they improve reasoning on tasks that are neither code nor mathematics** — an
+empirical result nobody predicted and which still is not well explained.
 
-La composición exacta de esos datasets es el secreto peor guardado y mejor protegido del
-sector. Ningún laboratorio publica su receta.
+The exact composition of those datasets is the worst-kept and best-protected secret in the
+industry. No lab publishes its recipe.
 
-### 2. El cómputo
+### 2. The compute
 
 ```
-tu modelo    : ~2,3·10¹⁶ FLOPs      unas horas en una RTX 2060
-GPT-4        : ~2·10²⁵ FLOPs        miles de GPUs durante meses
+your model   : ~2.3·10¹⁶ FLOPs      a few hours on an RTX 2060
+GPT-4        : ~2·10²⁵ FLOPs        thousands of GPUs for months
 ```
 
-Son **nueve órdenes de magnitud**. Y el coste no es solo de las GPUs: es el centro de datos,
-la red que las conecta, y los ingenieros que mantienen todo eso funcionando durante meses sin
-que una tirada se caiga.
+That is **nine orders of magnitude**. And the cost is not only the GPUs: it is the data centre,
+the network connecting them, and the engineers keeping all of that running for months without
+a run falling over.
 
-### 3. La arquitectura
+### 3. The architecture
 
-Tu modelo es denso: todos los parámetros participan en cada token. Los modelos grandes usan
-**Mixture of Experts**, donde una red enrutadora activa solo una fracción de los parámetros
-por token. Eso permite tener un billón de parámetros con el coste de cómputo de cien mil
-millones.
+Your model is dense: every parameter takes part in every token. Large models use **Mixture of
+Experts**, where a router network activates only a fraction of the parameters per token. That
+lets you have a trillion parameters with the compute cost of a hundred billion.
 
-Añade también atención con contexto largo, técnicas de eficiencia de memoria en la atención,
-y una cantidad considerable de trabajo en que todo eso entrene de forma estable.
+Add to that long-context attention, memory-efficiency techniques in attention, and a
+considerable amount of work on making all of that train stably.
 
-### 4. El post-entrenamiento
+### 4. The post-training
 
-Viste el SFT en el módulo 16. Después viene RLHF o DPO: recoger preferencias humanas entre
-respuestas y ajustar el modelo hacia las preferidas. Y después de eso, iteraciones de
-red-teaming, evaluación y ajuste que duran meses.
+You saw SFT in module 16. After that comes RLHF or DPO: collecting human preferences between
+answers and adjusting the model towards the preferred ones. And after that, iterations of
+red-teaming, evaluation and adjustment that last months.
 
-**Esa fase es la que convierte un modelo que predice texto en algo que quieras usar**, y en
-los laboratorios grandes emplea a más gente que el pretraining.
+**That phase is what turns a model that predicts text into something you would want to use**,
+and in the large labs it employs more people than pretraining.
 
-### 5. La infraestructura
+### 5. The infrastructure
 
-Entrenar en miles de GPUs durante meses requiere paralelismo en varias dimensiones a la vez,
-tolerancia a fallos (con miles de GPUs, alguna falla cada pocas horas), monitorización, y la
-capacidad de reanudar sin perder días de trabajo. Es un problema de sistemas distribuidos
-tan difícil como el problema de machine learning.
+Training on thousands of GPUs for months requires parallelism along several dimensions at
+once, fault tolerance (with thousands of GPUs, one fails every few hours), monitoring, and the
+ability to resume without losing days of work. It is a distributed systems problem as hard as
+the machine learning problem.
 
-## Lo que sí has conseguido
+## What you have achieved
 
-Y ahora la otra cara, porque es igual de cierta.
+And now the other side, because it is just as true.
 
-**Has escrito todas las piezas.** La atención, RoPE, SwiGLU, AdamW, la KV cache, el
-tokenizador. Todas validadas numéricamente contra PyTorch. Un modelo frontier usa
-exactamente estas piezas: más grandes, con más ingeniería alrededor, pero las mismas.
+**You have written all the pieces.** Attention, RoPE, SwiGLU, AdamW, the KV cache, the
+tokenizer. All validated numerically against PyTorch. A frontier model uses exactly these
+pieces: bigger, with more engineering around them, but the same ones.
 
-**Sabes leer un paper de arquitectura.** Cuando salga el siguiente modelo y digan que usa
-grouped-query attention o RMSNorm o SwiGLU, sabes qué son y por qué.
+**You know how to read an architecture paper.** When the next model comes out and they say it
+uses grouped-query attention or RMSNorm or SwiGLU, you know what those are and why.
 
-**Sabes depurar un entrenamiento.** La pérdida del paso 0 frente a `ln(V)`, el overfit a un
-batch, la norma del gradiente, la MFU. Eso es lo que distingue a quien sabe entrenar modelos
-de quien copia scripts.
+**You know how to debug a training run.** The step-0 loss against `ln(V)`, the overfit on a
+batch, the gradient norm, the MFU. That is what separates someone who knows how to train models
+from someone who copies scripts.
 
-**Y sabes qué no se sabe.** A lo largo del curso has visto que SwiGLU funciona sin
-explicación, que Adam domina sin que nadie sepa bien por qué, que las leyes de escala tienen
-intervalos de confianza más amplios de lo que se reporta, y que la evaluación por benchmarks
-está contaminada. Esa parte no suele aparecer en los tutoriales, y es la que más te va a
-servir para leer con criterio.
+**And you know what is not known.** Throughout the course you have seen that SwiGLU works
+without an explanation, that Adam dominates without anyone quite knowing why, that scaling laws
+have wider confidence intervals than reported, and that benchmark evaluation is contaminated.
+That part does not usually appear in tutorials, and it is the one that will serve you most for
+reading with judgement.
 
-## Dónde está el debate
+## Where the debate is
 
-**Si escalar basta.** La posición de que "escalar es todo lo que hace falta" tiene defensores
-serios y detractores serios. Los datos de alta calidad se están agotando, y los modelos
-entrenados con datos sintéticos generados por otros modelos muestran degradación en algunos
-setups. Nadie sabe si la curva sigue.
+**Whether scaling is enough.** The position that "scaling is all you need" has serious
+defenders and serious detractors. High-quality data is running out, and models trained on
+synthetic data generated by other models show degradation in some setups. Nobody knows whether
+the curve continues.
 
-**Qué construye un modelo por dentro.** La interpretabilidad mecanicista ha conseguido
-explicar componentes concretos —las *induction heads* del módulo 06 son el caso de éxito—
-pero está muy lejos de dar cuenta de un modelo entero. Si estos sistemas "entienden" en algún
-sentido útil de la palabra es una pregunta abierta, y desconfía de quien te dé una respuesta
-tajante en cualquiera de las dos direcciones.
+**What a model builds inside.** Mechanistic interpretability has managed to explain specific
+components —the *induction heads* of module 06 are the success story— but it is a long way from
+accounting for a whole model. Whether these systems "understand" in any useful sense of the
+word is an open question, and be suspicious of anyone who gives you a categorical answer in
+either direction.
 
 ---
 
-**Para ampliar:** Dettmers et al. 2022,
+**Further reading:** Dettmers et al. 2022,
 [LLM.int8()](https://arxiv.org/abs/2208.07339) · Shazeer et al. 2017,
 [Outrageously Large Neural Networks](https://arxiv.org/abs/1701.06538) (MoE) ·
 Elhage et al. 2021,
 [Transformer Circuits](https://transformer-circuits.pub/2021/framework/index.html).
-Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

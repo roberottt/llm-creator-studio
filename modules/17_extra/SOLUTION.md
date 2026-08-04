@@ -1,6 +1,6 @@
-# 17 — Solución comentada
+# 17 — Annotated solution
 
-## Ejercicio 1 — `quantize_int8_symmetric`
+## Exercise 1 — `quantize_int8_symmetric`
 
 ```python
 if per_channel and weight.dim() >= 2:
@@ -8,37 +8,37 @@ if per_channel and weight.dim() >= 2:
 else:
     max_abs = weight.abs().amax()
 
-escala = (max_abs / 127.0).clamp_min(1e-12)
-cuantizado = torch.round(weight / escala).clamp(-127, 127).to(torch.int8)
-return cuantizado, escala
+scale = (max_abs / 127.0).clamp_min(1e-12)
+quantized = torch.round(weight / scale).clamp(-127, 127).to(torch.int8)
+return quantized, scale
 ```
 
-**El `clamp_min(1e-12)`** evita dividir por cero si una fila es todo ceros. Pasa más de lo
-que uno espera con matrices dispersas.
+**The `clamp_min(1e-12)`** avoids dividing by zero if a row is all zeros. It happens more than
+you would expect with sparse matrices.
 
-**El `clamp(-127, 127)`** protege del redondeo en el borde. Sin él, un valor justo en el
-máximo podría redondear a 128, que no cabe en `int8` y haría *wrap around* a −128: el peso
-más grande se convertiría en el más negativo. Silencioso y devastador.
+**The `clamp(-127, 127)`** protects against rounding at the edge. Without it, a value right at
+the maximum could round to 128, which does not fit in `int8` and would *wrap around* to −128:
+the largest weight would become the most negative one. Silent and devastating.
 
-**Por qué 127 y no 128.** `int8` va de −128 a 127. Usando 127 el rango queda simétrico y el
-cero se representa exactamente. En una matriz con muchos valores pequeños, que el cero sea
-exacto evita un sesgo sistemático que se acumularía capa tras capa.
+**Why 127 and not 128.** `int8` goes from −128 to 127. Using 127 the range is symmetric and
+zero is represented exactly. In a matrix with many small values, zero being exact avoids a
+systematic bias that would accumulate layer after layer.
 
-## Ejercicio 2 — `dequantize_int8`
+## Exercise 2 — `dequantize_int8`
 
 ```python
 return quantized.to(torch.float32) * scale
 ```
 
-**El `.to(torch.float32)` va antes de multiplicar.** Si multiplicaras el `int8` directamente,
-PyTorch haría la operación en enteros y el resultado sería basura.
+**The `.to(torch.float32)` goes before the multiplication.** If you multiplied the `int8`
+directly, PyTorch would do the operation in integers and the result would be garbage.
 
-## Ejercicio 3 — `quantization_error`
+## Exercise 3 — `quantization_error`
 
 ```python
-q, escala = quantize_int8_symmetric(original, per_channel=per_channel)
-recuperado = dequantize_int8(q, escala)
-error = (original - recuperado).abs()
+q, scale = quantize_int8_symmetric(original, per_channel=per_channel)
+recovered = dequantize_int8(q, scale)
+error = (original - recovered).abs()
 
 return {
     "relative_error": float(error.norm()) / max(float(original.norm()), 1e-12),
@@ -46,128 +46,79 @@ return {
     "mean_error": float(error.mean()),
     "compression": original.element_size() / q.element_size(),
     "original_bytes": original.numel() * original.element_size(),
-    "quantized_bytes": q.numel() * q.element_size() + escala.numel() * escala.element_size(),
+    "quantized_bytes": q.numel() * q.element_size() + scale.numel() * scale.element_size(),
 }
 ```
 
-**`element_size()`** da los bytes por elemento (4 para float32, 1 para int8). Con eso la
-compresión sale sola, sin números mágicos.
+**`element_size()`** gives the bytes per element (4 for float32, 1 for int8). With that the
+compression comes out on its own, with no magic numbers.
 
-**Los bytes cuantizados incluyen las escalas.** Con una escala por fila son despreciables,
-pero contarlas es lo honesto. Hay un test que lo comprueba.
+**The quantized bytes include the scales.** With one scale per row they are negligible, but
+counting them is the honest thing. There is a test that checks it.
 
-**El error relativo es la métrica que conviene mirar**, porque es independiente de la escala
-de los datos: puedes comparar capas distintas. El test
-`test_el_error_relativo_es_independiente_de_la_escala` multiplica los pesos por 1000 y
-verifica que no cambia.
+**The relative error is the metric worth looking at**, because it is independent of the scale
+of the data: you can compare different layers. The test
+`test_the_relative_error_is_independent_of_the_scale` multiplies the weights by 1000 and
+verifies it does not change.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-**El ejemplo a mano:**
+**The example by hand:**
 
-| original | int8 | recuperado | error |
+| original | int8 | recovered | error |
 |---|---|---|---|
-| +0,1200 | 34 | +0,1205 | 0,0005 |
-| **−0,4500** | **−127** | **−0,4500** | **0,0000** |
-| +0,0300 | 8 | +0,0283 | 0,0017 |
-| +0,2800 | 79 | +0,2799 | 0,0001 |
+| +0.1200 | 34 | +0.1205 | 0.0005 |
+| **−0.4500** | **−127** | **−0.4500** | **0.0000** |
+| +0.0300 | 8 | +0.0283 | 0.0017 |
+| +0.2800 | 79 | +0.2799 | 0.0001 |
 
-El −0,45 se recupera **exacto** porque es el máximo y se mapea justo a −127. Los demás
-pierden hasta media unidad de escala.
+The −0.45 is recovered **exactly** because it is the maximum and maps right onto −127. The rest
+lose up to half a unit of scale.
 
-**Sobre el modelo real:**
+**On the real model:**
 
-| matriz | por canal | por tensor |
+| matrix | per channel | per tensor |
 |---|---|---|
-| token_embedding | 0,711% | 1,108% |
-| q_proj | 0,714% | 1,067% |
-| down_proj | 0,779% | 1,116% |
+| token_embedding | 0.711% | 1.108% |
+| q_proj | 0.714% | 1.067% |
+| down_proj | 0.779% | 1.116% |
 
-**Por canal siempre gana**, y por un margen consistente: una sola fila con valores grandes no
-arrastra a las demás. Cuesta un vector de escalas más, que es despreciable.
+**Per channel always wins**, and by a consistent margin: a single row with large values does
+not drag the others along. It costs one extra vector of scales, which is negligible.
 
-Y el resultado que importa: **35,7 MB → 9,0 MB, 4× más pequeño**, con un 0,7% de error en los
-pesos.
+And the result that matters: **35.7 MB → 9.0 MB, 4× smaller**, with a 0.7% error in the
+weights.
 
-## Dos matices que se suelen omitir
+## Two nuances that are usually left out
 
-**Que un error del 0,7% apenas afecte a la calidad del modelo es un hecho empírico, no un
-teorema.** Nadie predijo que las redes fueran tan robustas a la cuantización; se descubrió
-probando. Y no es universal: hay capas y arquitecturas donde int8 sí degrada de forma
-apreciable, y por eso existen esquemas mixtos que dejan algunas capas en más precisión.
+**That a 0.7% error barely affects the model's quality is an empirical fact, not a theorem.**
+Nobody predicted that networks would be so robust to quantization; it was discovered by trying.
+And it is not universal: there are layers and architectures where int8 does degrade
+appreciably, and that is why mixed schemes exist that keep some layers at higher precision.
 
-**Cuantizar los pesos no acelera nada por sí solo** si después conviertes a float para
-multiplicar, que es lo que hace este ejercicio. La aceleración de verdad requiere kernels que
-operen en int8 nativamente, y eso depende del hardware. Lo que sí ganas siempre es memoria, y
-en una GPU con 6 GB eso puede ser la diferencia entre que el modelo quepa o no.
-
----
-
-## Fin del curso
-
-Has escrito **todas** las piezas: la atención, RoPE, SwiGLU, RMSNorm, AdamW, la KV cache, el
-tokenizador BPE, el bucle de entrenamiento. Todas validadas numéricamente contra PyTorch o
-contra los papers originales.
-
-Un modelo frontier usa exactamente estas piezas. Más grandes, con muchísima más ingeniería
-alrededor, con datos que nadie publica y cómputo que cuesta cien millones. Pero las mismas.
-
-Lo que te llevas que no sale en los tutoriales: **sabes qué no se sabe**. Que SwiGLU funciona
-sin explicación y su propio autor lo dice. Que Adam domina sin que nadie entienda bien por
-qué. Que las leyes de escala tienen intervalos de confianza más amplios de lo que se reporta.
-Que los benchmarks están contaminados. Que la interpretabilidad ha explicado unos pocos
-circuitos y ni de lejos un modelo entero.
-
-Eso es lo que distingue leer un paper con criterio de leerlo con fe.
+**Quantizing the weights does not speed anything up on its own** if afterwards you convert to
+float to multiply, which is what this exercise does. Real acceleration requires kernels that
+operate natively in int8, and that depends on the hardware. What you always gain is memory,
+and on a GPU with 6 GB that can be the difference between the model fitting or not.
 
 ---
 
-## El código completo
+## End of the course
 
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+You have written **all** the pieces: attention, RoPE, SwiGLU, RMSNorm, AdamW, the KV cache, the
+BPE tokenizer, the training loop. All validated numerically against PyTorch or against the
+original papers.
 
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
+A frontier model uses exactly these pieces. Bigger, with vastly more engineering around them,
+with data nobody publishes and compute that costs a hundred million. But the same ones.
 
-```python
-def quantize_int8_symmetric(
-    weight: torch.Tensor, per_channel: bool = True
-) -> tuple[torch.Tensor, torch.Tensor]:
-    if per_channel and weight.dim() >= 2:
-        max_abs = weight.abs().amax(dim=-1, keepdim=True)
-    else:
-        max_abs = weight.abs().amax()
+What you take away that does not appear in the tutorials: **you know what is not known**. That
+SwiGLU works without an explanation and its own author says so. That Adam dominates without
+anyone quite understanding why. That scaling laws have wider confidence intervals than
+reported. That the benchmarks are contaminated. That interpretability has explained a few
+circuits and nowhere near a whole model.
 
-    # clamp_min evita dividir por cero si una fila es todo ceros.
-    escala = (max_abs / 127.0).clamp_min(1e-12)
-    cuantizado = torch.round(weight / escala).clamp(-127, 127).to(torch.int8)
-    return cuantizado, escala
-
-
-def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
-    return quantized.to(torch.float32) * scale
-
-
-def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict[str, float]:
-    q, escala = quantize_int8_symmetric(original, per_channel=per_channel)
-    recuperado = dequantize_int8(q, escala)
-
-    error = (original - recuperado).abs()
-    norma_original = float(original.norm())
-
-    return {
-        "relative_error": float(error.norm()) / max(norma_original, 1e-12),
-        "max_error": float(error.max()),
-        "mean_error": float(error.mean()),
-        "compression": original.element_size() / q.element_size(),
-        "original_bytes": original.numel() * original.element_size(),
-        "quantized_bytes": q.numel() * q.element_size() + escala.numel() * escala.element_size(),
-    }
-```
-
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+That is what separates reading a paper with judgement from reading it with faith.
 
 ---
 
