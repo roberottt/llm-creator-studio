@@ -1,179 +1,178 @@
-# 08 — FFN, GELU y SwiGLU
+# 08 — FFN, GELU and SwiGLU
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque dos tercios de tu modelo están aquí, y casi nadie lo sabe.**
+**Because two thirds of your model are here, and almost nobody knows it.**
 
-Cuando alguien dice que un modelo tiene N parámetros, la mayoría no están en la atención:
-están en esta parte, que recibe muchísima menos atención en las explicaciones. En nuestro
-modelo son 5,16 millones de 8,93.
+When someone says a model has N parameters, most of them are not in the attention: they are
+in this part, which gets far less attention in the explanations. In our model that is 5.16
+million out of 8.93.
 
-Y hay una razón más profunda. La atención es una media ponderada, o sea una **operación
-lineal**, y apilar operaciones lineales no sirve de nada: cien capas equivalen a una. Lo que
-impide que el Transformer entero se derrumbe a una sola multiplicación de matrices es
-precisamente este módulo. La demo lo mide: cinco capas lineales sin activación dan
-exactamente el mismo resultado que una sola matriz.
+And there is a deeper reason. Attention is a weighted average, that is, a **linear
+operation**, and stacking linear operations achieves nothing: a hundred layers are
+equivalent to one. What stops the whole Transformer from collapsing into a single matrix
+multiplication is precisely this module. The demo measures it: five linear layers with no
+activation give exactly the same result as a single matrix.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué sin una no-linealidad la profundidad de una red es una ilusión
-- Qué le pasa a una neurona con ReLU cuando se va a la zona negativa (se muere, literalmente)
-- Qué es SwiGLU y **de dónde sale el 896** del config del modelo final
-- Un caso donde el propio autor del paper escribe que no sabe por qué funciona
+- Why without a nonlinearity a network's depth is an illusion
+- What happens to a ReLU neuron when it drifts into the negative zone (it dies, literally)
+- What SwiGLU is and **where the 896** in the final model's config comes from
+- A case where the paper's own author writes that he does not know why it works
 
-### Cuánto cuesta
+### What it costs
 
-1,5 horas. El segundo ejercicio es aritmética pura y produce un número del config.
+1.5 hours. The second exercise is pure arithmetic and produces a number from the config.
 
 ---
 
-## El problema: la atención sola no basta
+## The problem: attention alone is not enough
 
-Fíjate en lo que hace la atención: mezcla vectores con pesos. Una media ponderada. Y una
-media ponderada es una **operación lineal**.
+Look at what attention does: it mixes vectors with weights. A weighted average. And a
+weighted average is a **linear operation**.
 
-Eso es un problema serio, y se ve con números. Imagina que apilas dos capas lineales sin
-nada en medio:
+That is a serious problem, and you can see it with numbers. Imagine stacking two linear
+layers with nothing in between:
 
 ```
-capa 1:  y = W₁ · x
-capa 2:  z = W₂ · y = W₂ · (W₁ · x) = (W₂ · W₁) · x
+layer 1:  y = W₁ · x
+layer 2:  z = W₂ · y = W₂ · (W₁ · x) = (W₂ · W₁) · x
 ```
 
-$W_2 W_1$ es **una sola matriz**. Cien capas lineales apiladas equivalen exactamente a una
-capa lineal. Toda la profundidad se derrumba.
+$W_2 W_1$ is **a single matrix**. A hundred stacked linear layers are exactly equivalent to
+one linear layer. All the depth collapses.
 
-Para que apilar sirva de algo hace falta algo que no sea lineal entre capa y capa. Ese es el
-trabajo del FFN.
+For stacking to be worth anything you need something that is not linear between layers. That
+is the FFN's job.
 
-## La forma clásica: expandir, doblar, contraer
+## The classic shape: expand, bend, contract
 
-$$\text{FFN}(x) = W_2 \cdot \text{activación}(W_1 x)$$
+$$\text{FFN}(x) = W_2 \cdot \text{activation}(W_1 x)$$
 
-Con $W_1$ de $d \to 4d$ y $W_2$ de $4d \to d$. Se expande a 4 veces el tamaño, se aplica la
-no-linealidad, y se vuelve a comprimir.
+With $W_1$ going $d \to 4d$ and $W_2$ going $4d \to d$. It expands to 4 times the size,
+applies the nonlinearity, and compresses again.
 
-**¿Por qué 4x?** Honestamente: porque lo puso el paper de 2017 y funcionó. No hay una
-derivación. Se han probado otros factores y 4 sigue siendo un punto razonable, pero es
-convención, no teorema. Lo que sí tiene sentido es *expandir*: la no-linealidad tiene más
-espacio donde operar, y hay una interpretación —discutida— de que el FFN funciona como una
-memoria de tipo clave-valor, donde cada una de las $4d$ neuronas intermedias reconoce un
-patrón concreto.
+**Why 4x?** Honestly: because the 2017 paper said so and it worked. There is no derivation.
+Other factors have been tried and 4 is still a reasonable point, but it is convention, not
+theorem. What does make sense is *expanding*: the nonlinearity has more room to operate, and
+there is an interpretation — a debated one — that the FFN works as a key-value memory, where
+each of the $4d$ intermediate neurons recognizes a specific pattern.
 
-Una diferencia importante con la atención: **el FFN procesa cada token por separado**. No
-mezcla información entre posiciones. La atención mueve información entre tokens; el FFN la
-procesa. Alternan.
+An important difference from attention: **the FFN processes each token separately**. It does
+not mix information between positions. Attention moves information between tokens; the FFN
+processes it. They alternate.
 
-## ReLU, y por qué no basta
+## ReLU, and why it is not enough
 
-La no-linealidad más simple es ReLU: $\max(0, x)$. Funciona, pero tiene un defecto. Su
-derivada es exactamente **0** para toda entrada negativa. Si una neurona acaba dando
-siempre valores negativos, deja de recibir gradiente para siempre. Está muerta y no hay
-forma de recuperarla.
+The simplest nonlinearity is ReLU: $\max(0, x)$. It works, but it has a flaw. Its derivative
+is exactly **0** for every negative input. If a neuron ends up always producing negative
+values, it stops receiving gradient forever. It is dead and there is no way to recover it.
 
-## GELU: un corte suave
+## GELU: a soft cut
 
 $$\text{GELU}(x) = x \cdot \Phi(x)$$
 
-donde $\Phi(x)$ es la probabilidad de que una normal estándar salga menor que $x$.
+where $\Phi(x)$ is the probability that a standard normal comes out below $x$.
 
-La intuición: en vez de decidir con un corte duro si dejar pasar $x$, lo multiplica por la
-probabilidad de que $x$ "destaque". Con números:
+The intuition: instead of deciding with a hard cut whether to let $x$ through, it multiplies
+it by the probability that $x$ "stands out". With numbers:
 
 ```
-x = -3   ->  Φ(-3) = 0.001   ->  GELU = -0.003    casi anulado
-x = -1   ->  Φ(-1) = 0.159   ->  GELU = -0.159    parcialmente
+x = -3   ->  Φ(-3) = 0.001   ->  GELU = -0.003    almost cancelled
+x = -1   ->  Φ(-1) = 0.159   ->  GELU = -0.159    partially
 x =  0   ->  Φ(0)  = 0.5     ->  GELU =  0
-x =  1   ->  Φ(1)  = 0.841   ->  GELU =  0.841    casi entero
-x =  3   ->  Φ(3)  = 0.999   ->  GELU =  2.996    entero
+x =  1   ->  Φ(1)  = 0.841   ->  GELU =  0.841    almost whole
+x =  3   ->  Φ(3)  = 0.999   ->  GELU =  2.996    whole
 ```
 
-La transición es suave, así que la derivada nunca es exactamente cero: una neurona en la
-zona negativa puede recuperarse.
+The transition is smooth, so the derivative is never exactly zero: a neuron in the negative
+zone can recover.
 
-En la práctica se usa una aproximación con tanh, porque `erf` era lento en las GPU de 2016:
+In practice a tanh approximation is used, because `erf` was slow on 2016 GPUs:
 
 $$\text{GELU}(x) \approx 0.5x\left(1 + \tanh\left[\sqrt{2/\pi}\,(x + 0.044715x^3)\right]\right)$$
 
-Hoy la diferencia de velocidad es irrelevante, pero GPT-2 se entrenó con la aproximación y
-por compatibilidad se sigue usando. Es lo que hace `F.gelu(x, approximate="tanh")`.
+Today the speed difference is irrelevant, but GPT-2 was trained with the approximation and
+it is still used for compatibility. It is what `F.gelu(x, approximate="tanh")` does.
 
-## SwiGLU: añadir una puerta
+## SwiGLU: adding a gate
 
-Aquí viene el cambio que usa nuestro modelo, y todos los modernos.
+Here comes the change our model uses, and every modern one.
 
-La idea de las variantes **GLU** (*Gated Linear Unit*) es tener **dos** proyecciones en vez
-de una. Una de ellas actúa como **puerta**: multiplica a la otra elemento a elemento y
-decide cuánta señal pasa por cada dimensión.
+The idea behind the **GLU** (*Gated Linear Unit*) variants is having **two** projections
+instead of one. One of them acts as a **gate**: it multiplies the other element by element
+and decides how much signal passes through each dimension.
 
 $$\text{SwiGLU}(x) = \big(\text{Swish}(xW_{\text{gate}}) \odot xW_{\text{up}}\big) W_{\text{down}}$$
 
-con $\text{Swish}(z) = z \cdot \sigma(z)$, que es prácticamente GELU con otra fórmula.
+with $\text{Swish}(z) = z \cdot \sigma(z)$, which is practically GELU under another formula.
 
-Lo interesante es que ese filtrado **depende de la entrada**. Una activación normal aplica
-la misma función a todo; una puerta decide, para cada dimensión y cada token, cuánto deja
-pasar.
+The interesting part is that this filtering **depends on the input**. A normal activation
+applies the same function to everything; a gate decides, for each dimension and each token,
+how much it lets through.
 
-### El factor 2/3, con la aritmética
+### The 2/3 factor, with the arithmetic
 
-SwiGLU tiene **tres** matrices en lugar de dos. Con el mismo $d_{ff}$ eso sería un 50% más
-de parámetros. Para gastar lo mismo se reduce $d_{ff}$ a dos tercios:
+SwiGLU has **three** matrices instead of two. With the same $d_{ff}$ that would be 50% more
+parameters. To spend the same, $d_{ff}$ is cut to two thirds:
 
 ```
-FFN clásico:  2 matrices × d × 4d           = 8d²
+classic FFN:  2 matrices × d × 4d           = 8d²
 SwiGLU:       3 matrices × d × (2/3 · 4d)   = 3 · d · (8/3)d = 8d²   ✓
 ```
 
-Con nuestro $d_{\text{model}} = 320$:
+With our $d_{\text{model}} = 320$:
 
 ```
-(2/3) × 4 × 320 = 853,33
+(2/3) × 4 × 320 = 853.33
 ```
 
-Y después se redondea **hacia arriba al siguiente múltiplo de 64**: $853{,}33 \to 896$. Eso
-da el `d_ff: 896` del config.
+And then it is rounded **up to the next multiple of 64**: $853.33 \to 896$. That gives the
+`d_ff: 896` in the config.
 
-El redondeo no es cosmético. Las dimensiones alineadas a potencias de dos permiten a los
-tensor cores usar sus rutas rápidas; una matriz de 853 columnas es notablemente más lenta
-que una de 896, con más parámetros y todo.
+The rounding is not cosmetic. Dimensions aligned to powers of two let the tensor cores take
+their fast paths; a matrix with 853 columns is noticeably slower than one with 896, extra
+parameters and all.
 
-## Dónde están los parámetros
+## Where the parameters are
 
-Con el config final, por capa:
+With the final config, per layer:
 
-| componente | parámetros | % |
+| component | parameters | % |
 |---|---|---|
-| atención ($4d^2$) | 409.600 | 32% |
-| SwiGLU ($3 \cdot d \cdot d_{ff}$) | 860.160 | 68% |
+| attention ($4d^2$) | 409,600 | 32% |
+| SwiGLU ($3 \cdot d \cdot d_{ff}$) | 860,160 | 68% |
 
-**Dos tercios del modelo son FFN.** Cuando leas que un modelo tiene N parámetros, la
-mayoría están aquí, no en la atención. Es también donde la investigación en
-interpretabilidad ha encontrado el almacenamiento de hechos concretos: hay trabajos que
-localizan y editan afirmaciones específicas modificando pesos del FFN de capas concretas.
+**Two thirds of the model is FFN.** When you read that a model has N parameters, most of
+them are here, not in the attention. It is also where interpretability research has found
+the storage of concrete facts: there is work that locates and edits specific claims by
+modifying the FFN weights of particular layers.
 
-## Dónde está el debate
+## Where the debate is
 
-Este módulo es probablemente donde el "no sabemos por qué" es más explícito, y viene del
-propio autor.
+This module is probably where the "we do not know why" is most explicit, and it comes from
+the author himself.
 
-Shazeer (2020) probó sistemáticamente todas las variantes GLU y SwiGLU salió la mejor de
-forma consistente. Su conclusión, citada literalmente del paper:
+Shazeer (2020) systematically tried every GLU variant and SwiGLU came out best consistently.
+His conclusion, quoted literally from the paper:
 
 > *"We offer no explanation as to why these architectures seem to work; we attribute their
 > success, as all else, to divine benevolence."*
 
-No es una boutade: es honestidad sobre el estado del asunto. SwiGLU se usa hoy en Llama,
-Mistral, PaLM y casi todo lo demás, y la justificación es que funciona mejor en los
-benchmarks. No hay una teoría.
+It is not a joke: it is honesty about the state of the matter. SwiGLU is used today in
+Llama, Mistral, PaLM and almost everything else, and the justification is that it works
+better on the benchmarks. There is no theory.
 
-Lo mismo pasa con el 4x y con la interpretación del FFN como memoria clave-valor: son
-observaciones e hipótesis razonables, no resultados establecidos. Conviene tenerlo presente
-cuando leas explicaciones que suenan muy seguras de sí mismas.
+The same goes for the 4x and for the interpretation of the FFN as a key-value memory: they
+are reasonable observations and hypotheses, not established results. It is worth keeping in
+mind when you read explanations that sound very sure of themselves.
 
 ---
 
-**Para ampliar:** Hendrycks & Gimpel 2016,
+**Further reading:** Hendrycks & Gimpel 2016,
 [Gaussian Error Linear Units](https://arxiv.org/abs/1606.08415) · Shazeer 2020,
-[GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) (el paper de la cita) ·
-Geva et al. 2021, [Transformer Feed-Forward Layers Are Key-Value Memories](https://arxiv.org/abs/2012.14913).
-Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+[GLU Variants Improve Transformer](https://arxiv.org/abs/2002.05202) (the paper with the
+quote) · Geva et al. 2021,
+[Transformer Feed-Forward Layers Are Key-Value Memories](https://arxiv.org/abs/2012.14913).
+Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

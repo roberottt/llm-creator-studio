@@ -1,6 +1,6 @@
-"""Tests del modulo 08. Ejecutalos con `llmfs check 08`.
+"""Tests for module 08. Run them with `llmfs check 08`.
 
-El oraculo externo es `F.gelu(x, approximate="tanh")`.
+The external oracle is `F.gelu(x, approximate="tanh")`.
 """
 
 from __future__ import annotations
@@ -14,197 +14,197 @@ import torch.nn.functional as F
 import llmfs.reference as ref
 from llmfs.testing import assert_close, assert_scalar_close, copy_parameters, load_exercises
 
-ej = load_exercises(__file__)
+ex = load_exercises(__file__)
 
 
-# --------------------------------------------------------------------- ejercicio 1: gelu
+# --------------------------------------------------------------------- exercise 1: gelu
 
 
-def test_coincide_con_f_gelu_aproximado():
+def test_it_matches_the_approximate_f_gelu():
     x = torch.linspace(-6, 6, 500)
-    assert_close(ej.gelu(x), F.gelu(x, approximate="tanh"), what="GELU")
+    assert_close(ex.gelu(x), F.gelu(x, approximate="tanh"), what="GELU")
 
 
-def test_los_valores_del_enunciado():
+def test_the_values_from_the_statement():
     x = torch.tensor([-3.0, -1.0, 0.0, 1.0, 3.0])
-    esperado = torch.tensor([-0.0036, -0.1588, 0.0, 0.8412, 2.9964])
-    assert_close(ej.gelu(x), esperado, atol=1e-3, what="los valores de THEORY.md")
+    expected = torch.tensor([-0.0036, -0.1588, 0.0, 0.8412, 2.9964])
+    assert_close(ex.gelu(x), expected, atol=1e-3, what="the THEORY.md values")
 
 
-def test_gelu_en_cero_es_cero():
-    assert_scalar_close(ej.gelu(torch.zeros(1))[0], 0.0, atol=1e-9, what="GELU(0)")
+def test_gelu_at_zero_is_zero():
+    assert_scalar_close(ex.gelu(torch.zeros(1))[0], 0.0, atol=1e-9, what="GELU(0)")
 
 
-def test_es_casi_la_identidad_para_valores_grandes():
+def test_it_is_almost_the_identity_for_large_values():
     x = torch.tensor([10.0, 20.0])
-    assert_close(ej.gelu(x), x, rtol=1e-4, what="GELU de valores muy positivos")
+    assert_close(ex.gelu(x), x, rtol=1e-4, what="GELU of very positive values")
 
 
-def test_anula_casi_del_todo_los_valores_muy_negativos():
-    assert bool((ej.gelu(torch.tensor([-10.0, -20.0])).abs() < 1e-6).all())
+def test_it_almost_completely_cancels_very_negative_values():
+    assert bool((ex.gelu(torch.tensor([-10.0, -20.0])).abs() < 1e-6).all())
 
 
-def test_la_derivada_no_es_cero_en_la_zona_negativa():
-    """La ventaja sobre ReLU: una neurona en negativo puede recuperarse."""
+def test_the_derivative_is_not_zero_in_the_negative_zone():
+    """The advantage over ReLU: a neuron in the negative zone can recover."""
     x = torch.tensor([-1.0], requires_grad=True)
-    ej.gelu(x).backward()
+    ex.gelu(x).backward()
     assert abs(float(x.grad)) > 0.01, (
-        "la derivada en x=-1 es practicamente cero: eso es ReLU, no GELU"
+        "the derivative at x=-1 is practically zero: that is ReLU, not GELU"
     )
 
 
-def test_no_es_relu():
+def test_it_is_not_relu():
     x = torch.tensor([-2.0, -1.0, -0.5])
-    assert not torch.allclose(ej.gelu(x), torch.zeros(3), atol=1e-3), (
-        "anulas por completo los negativos: has implementado ReLU"
+    assert not torch.allclose(ex.gelu(x), torch.zeros(3), atol=1e-3), (
+        "you cancel the negatives entirely: you have implemented ReLU"
     )
 
 
-def test_conserva_la_forma():
-    for forma in [(10,), (4, 8), (2, 3, 16)]:
-        assert ej.gelu(torch.randn(*forma)).shape == forma
+def test_it_preserves_the_shape():
+    for shape in [(10,), (4, 8), (2, 3, 16)]:
+        assert ex.gelu(torch.randn(*shape)).shape == shape
 
 
-def test_gelu_coincide_con_la_referencia():
+def test_gelu_matches_the_reference():
     torch.manual_seed(0)
     x = torch.randn(4, 8, 32)
-    assert_close(ej.gelu(x), ref.gelu(x), what="GELU")
+    assert_close(ex.gelu(x), ref.gelu(x), what="GELU")
 
 
-# -------------------------------------------------------- ejercicio 2: swiglu_hidden_dim
+# -------------------------------------------------------- exercise 2: swiglu_hidden_dim
 
 
-def test_produce_el_896_del_config_final():
-    assert ej.swiglu_hidden_dim(320) == 896
+def test_it_produces_the_896_of_the_final_config():
+    assert ex.swiglu_hidden_dim(320) == 896
 
 
-def test_produce_el_384_del_config_juguete():
-    assert ej.swiglu_hidden_dim(128) == 384
+def test_it_produces_the_384_of_the_toy_config():
+    assert ex.swiglu_hidden_dim(128) == 384
 
 
 @pytest.mark.parametrize("d_model", [64, 128, 256, 320, 512, 768, 1024, 4096])
-def test_d_ff_coincide_con_la_referencia(d_model):
-    assert ej.swiglu_hidden_dim(d_model) == ref.swiglu_hidden_dim(d_model)
+def test_d_ff_matches_the_reference(d_model):
+    assert ex.swiglu_hidden_dim(d_model) == ref.swiglu_hidden_dim(d_model)
 
 
-def test_el_resultado_es_multiplo_de_64():
+def test_the_result_is_a_multiple_of_64():
     for d in (64, 100, 320, 777, 1024):
-        assert ej.swiglu_hidden_dim(d) % 64 == 0
+        assert ex.swiglu_hidden_dim(d) % 64 == 0
 
 
-def test_redondea_hacia_arriba_y_no_hacia_abajo():
-    """int(2*4*320/3) = 853, y el multiplo de 64 mas cercano por arriba es 896, no 832."""
-    assert ej.swiglu_hidden_dim(320) == 896
-    assert ej.swiglu_hidden_dim(320) != 832
+def test_it_rounds_up_and_not_down():
+    """int(2*4*320/3) = 853, and the nearest multiple of 64 above is 896, not 832."""
+    assert ex.swiglu_hidden_dim(320) == 896
+    assert ex.swiglu_hidden_dim(320) != 832
 
 
-def test_respeta_otro_multiple_of():
-    valor = ej.swiglu_hidden_dim(320, multiple_of=256)
-    assert valor % 256 == 0 and valor >= 853
+def test_it_respects_another_multiple_of():
+    value = ex.swiglu_hidden_dim(320, multiple_of=256)
+    assert value % 256 == 0 and value >= 853
 
 
-def test_un_valor_ya_multiplo_no_se_infla():
-    """96 -> int(2*384/3) = 256, que ya es multiplo de 64: debe quedarse en 256."""
-    assert ej.swiglu_hidden_dim(96) == 256
+def test_a_value_already_a_multiple_does_not_get_inflated():
+    """96 -> int(2*384/3) = 256, which is already a multiple of 64: it must stay at 256."""
+    assert ex.swiglu_hidden_dim(96) == 256
 
 
-def test_el_multiplicador_extra_se_aplica():
-    """Llama lo usa para ajustar a mano el tamanyo del FFN."""
-    normal = ej.swiglu_hidden_dim(4096)
-    con_factor = ej.swiglu_hidden_dim(4096, ffn_dim_multiplier=1.3)
-    assert con_factor > normal
+def test_the_extra_multiplier_gets_applied():
+    """Llama uses it to tune the FFN size by hand."""
+    normal = ex.swiglu_hidden_dim(4096)
+    with_factor = ex.swiglu_hidden_dim(4096, ffn_dim_multiplier=1.3)
+    assert with_factor > normal
 
 
-def test_swiglu_gasta_los_mismos_parametros_que_un_ffn_clasico():
-    """La razon de ser del 2/3, comprobada con numeros."""
+def test_swiglu_spends_the_same_parameters_as_a_classic_ffn():
+    """The reason for the 2/3, checked with numbers."""
     d = 320
-    clasico = 2 * d * (4 * d)
-    swiglu = 3 * d * ej.swiglu_hidden_dim(d)
-    assert abs(swiglu - clasico) / clasico < 0.06, (
-        f"SwiGLU gasta {swiglu:,} y el clasico {clasico:,}: deberian parecerse mucho"
+    classic = 2 * d * (4 * d)
+    swiglu = 3 * d * ex.swiglu_hidden_dim(d)
+    assert abs(swiglu - classic) / classic < 0.06, (
+        f"SwiGLU spends {swiglu:,} and the classic one {classic:,}: they should be close"
     )
 
 
-def test_devuelve_un_entero():
-    assert isinstance(ej.swiglu_hidden_dim(320), int)
+def test_it_returns_an_integer():
+    assert isinstance(ex.swiglu_hidden_dim(320), int)
 
 
-# ------------------------------------------------------------------ ejercicio 3: SwiGLU
+# ------------------------------------------------------------------ exercise 3: SwiGLU
 
 
-def test_swiglu_tiene_la_arquitectura_esperada():
-    copy_parameters(ref.SwiGLU(64, 128), ej.SwiGLU(64, 128))
+def test_swiglu_has_the_expected_architecture():
+    copy_parameters(ref.SwiGLU(64, 128), ex.SwiGLU(64, 128))
 
 
-def test_swiglu_devuelve_la_forma_correcta():
-    ffn = ej.SwiGLU(64, 128)
+def test_swiglu_returns_the_right_shape():
+    ffn = ex.SwiGLU(64, 128)
     assert ffn(torch.randn(2, 7, 64)).shape == (2, 7, 64)
 
 
-def test_swiglu_coincide_con_la_referencia():
+def test_swiglu_matches_the_reference():
     torch.manual_seed(0)
-    mio, suyo = ej.SwiGLU(64, 128), ref.SwiGLU(64, 128)
-    copy_parameters(suyo, mio)
-    mio.eval()
-    suyo.eval()
+    mine, theirs = ex.SwiGLU(64, 128), ref.SwiGLU(64, 128)
+    copy_parameters(theirs, mine)
+    mine.eval()
+    theirs.eval()
     x = torch.randn(2, 5, 64)
-    assert_close(mio(x), suyo(x), what="la salida de SwiGLU")
+    assert_close(mine(x), theirs(x), what="SwiGLU's output")
 
 
-def test_swiglu_coincide_con_la_formula():
+def test_swiglu_matches_the_formula():
     torch.manual_seed(0)
-    ffn = ej.SwiGLU(64, 128)
+    ffn = ex.SwiGLU(64, 128)
     ffn.eval()
     x = torch.randn(2, 5, 64)
     manual = ffn.down_proj(F.silu(ffn.gate_proj(x)) * ffn.up_proj(x))
-    assert_close(ffn(x), manual, what="SwiGLU frente a la formula")
+    assert_close(ffn(x), manual, what="SwiGLU against the formula")
 
 
-def test_swiglu_aplica_la_activacion_a_la_rama_gate():
-    """Si la aplicas a up_proj en vez de a gate_proj, no coincide con la referencia."""
+def test_swiglu_applies_the_activation_to_the_gate_branch():
+    """If you apply it to up_proj instead of gate_proj, it does not match the reference."""
     torch.manual_seed(0)
-    ffn = ej.SwiGLU(64, 128)
+    ffn = ex.SwiGLU(64, 128)
     ffn.eval()
     x = torch.randn(2, 5, 64)
-    al_reves = ffn.down_proj(ffn.gate_proj(x) * F.silu(ffn.up_proj(x)))
-    assert not torch.allclose(ffn(x), al_reves, atol=1e-5), (
-        "has puesto la activacion en up_proj; va en gate_proj"
+    swapped = ffn.down_proj(ffn.gate_proj(x) * F.silu(ffn.up_proj(x)))
+    assert not torch.allclose(ffn(x), swapped, atol=1e-5), (
+        "you put the activation on up_proj; it goes on gate_proj"
     )
 
 
-def test_swiglu_tiene_tres_matrices():
-    ffn = ej.SwiGLU(320, 896, bias=False)
+def test_swiglu_has_three_matrices():
+    ffn = ex.SwiGLU(320, 896, bias=False)
     assert sum(p.numel() for p in ffn.parameters()) == 3 * 320 * 896
 
 
-def test_swiglu_reproduce_los_parametros_por_capa_del_modelo_final():
-    """860.160, el numero del desglose del config."""
-    assert sum(p.numel() for p in ej.SwiGLU(320, 896, bias=False).parameters()) == 860_160
+def test_swiglu_reproduces_the_final_models_per_layer_parameters():
+    """860,160, the number from the config's breakdown."""
+    assert sum(p.numel() for p in ex.SwiGLU(320, 896, bias=False).parameters()) == 860_160
 
 
-def test_swiglu_procesa_cada_token_por_separado():
-    """El FFN no mezcla posiciones: eso es trabajo de la atencion."""
+def test_swiglu_processes_each_token_separately():
+    """The FFN does not mix positions: that is attention's job."""
     torch.manual_seed(0)
-    ffn = ej.SwiGLU(32, 64)
+    ffn = ex.SwiGLU(32, 64)
     ffn.eval()
     x = torch.randn(1, 4, 32)
 
-    entero = ffn(x)
-    solo_uno = ffn(x[:, 2:3, :])
-    assert_close(solo_uno[0, 0], entero[0, 2], atol=1e-5, what="el token 2 aislado")
+    whole = ffn(x)
+    just_one = ffn(x[:, 2:3, :])
+    assert_close(just_one[0, 0], whole[0, 2], atol=1e-5, what="token 2 in isolation")
 
 
-def test_swiglu_es_no_lineal():
-    """Si fuera lineal, apilar bloques no serviria de nada."""
+def test_swiglu_is_nonlinear():
+    """If it were linear, stacking blocks would achieve nothing."""
     torch.manual_seed(0)
-    ffn = ej.SwiGLU(32, 64)
+    ffn = ex.SwiGLU(32, 64)
     ffn.eval()
     x = torch.randn(1, 3, 32)
     assert not torch.allclose(ffn(2 * x), 2 * ffn(x), atol=1e-3), (
-        "f(2x) == 2*f(x): tu modulo es lineal, falta la activacion"
+        "f(2x) == 2*f(x): your module is linear, the activation is missing"
     )
 
 
-def test_swiglu_sin_sesgos_por_defecto():
-    ffn = ej.SwiGLU(32, 64)
-    assert ffn.gate_proj.bias is None, "bias=False por defecto, como el config del modelo"
+def test_swiglu_has_no_biases_by_default():
+    ffn = ex.SwiGLU(32, 64)
+    assert ffn.gate_proj.bias is None, "bias=False by default, like the model's config"

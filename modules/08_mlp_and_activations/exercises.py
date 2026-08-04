@@ -1,47 +1,48 @@
-"""Modulo 08 - FFN, GELU y SwiGLU.
+"""Module 08 - FFN, GELU and SwiGLU.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 08` -> `llmfs hint 08 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 08` -> `llmfs hint 08 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-La parte del Transformer donde estan DOS TERCIOS de los parametros:
+The part of the Transformer where TWO THIRDS of the parameters live:
 
-    gelu               (ej. 1)  la no-linealidad clasica
-    swiglu_hidden_dim  (ej. 2)  aritmetica: de aqui sale el 896 del config final
-    SwiGLU             (ej. 3)  el FFN con puerta que usa el modelo
+    gelu               (ex. 1)  the classic nonlinearity
+    swiglu_hidden_dim  (ex. 2)  arithmetic: the 896 in the final config comes from here
+    SwiGLU             (ex. 3)  the gated FFN the model uses
 
-El ejercicio 2 es el mas corto del curso y produce un numero que ya has visto en el YAML.
+Exercise 2 is the shortest in the course and produces a number you have already seen in the
+YAML.
 
-POR QUÉ HACE FALTA ESTO
-=======================
+WHY THIS IS NEEDED
+==================
 
-La atencion es una media ponderada, o sea una operacion LINEAL. Y dos operaciones lineales
-seguidas son una sola:
+Attention is a weighted average, that is, a LINEAR operation. And two linear operations in a
+row are one:
 
     W2 · (W1 · x) = (W2 · W1) · x
 
-Cien capas lineales apiladas equivalen a UNA. Lo unico que impide que el Transformer entero
-se derrumbe es la no-linealidad de este modulo.
+A hundred stacked linear layers are equivalent to ONE. The only thing stopping the whole
+Transformer from collapsing is this module's nonlinearity.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **FFN / MLP** (feed-forward network): la parte de cada bloque que NO es atencion. Procesa
-  cada token por separado, sin mirar a los demas.
-- **activacion**: la funcion no lineal que va entre capas. ReLU, GELU, Swish.
-- **no-linealidad**: cualquier funcion que no sea `f(ax+b) = a·f(x)+b`. Es lo que hace que
-  apilar capas sirva de algo.
-- **puerta** (gate): en SwiGLU, una de las dos ramas multiplica a la otra y decide cuanta
-  senyal pasa por cada dimension. A diferencia de una activacion normal, ese filtrado
-  depende de la entrada.
-- **d_ff**: la dimension interna del FFN. En nuestro modelo, 896.
+- **FFN / MLP** (feed-forward network): the part of each block that is NOT attention. It
+  processes each token separately, without looking at the others.
+- **activation**: the nonlinear function that goes between layers. ReLU, GELU, Swish.
+- **nonlinearity**: any function that is not `f(ax+b) = a·f(x)+b`. It is what makes stacking
+  layers worth anything.
+- **gate**: in SwiGLU, one of the two branches multiplies the other and decides how much
+  signal passes through each dimension. Unlike a normal activation, that filtering depends
+  on the input.
+- **d_ff**: the FFN's inner dimension. In our model, 896.
 
-    llmfs demo 08     ensenya el colapso lineal y compara las activaciones
+    llmfs demo 08     shows the linear collapse and compares the activations
 """
 
 from __future__ import annotations
@@ -54,178 +55,180 @@ import torch.nn.functional as F
 
 
 def gelu(x: torch.Tensor) -> torch.Tensor:
-    """GELU con la aproximacion por tanh.
+    """GELU with the tanh approximation.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Una linea, transcribiendo la formula tal cual:
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    One line, transcribing the formula as it stands:
 
         return 0.5 * x * (1.0 + torch.tanh(
             math.sqrt(2.0 / math.pi) * (x + 0.044715 * x.pow(3))
         ))
 
-    Sin bucles ni ramas. Los dos errores posibles son teclear mal una constante
-    (`sqrt(2/pi) ~= 0.7978`) o reagrupar la expresion de forma que cambie el orden de
-    operaciones.
+    No loops and no branches. The two possible mistakes are mistyping a constant
+    (`sqrt(2/pi) ~= 0.7978`) or regrouping the expression in a way that changes the order of
+    operations.
 
-    VALORES PARA COMPROBAR
-    ----------------------
-        x = -3  ->  -0.0036     casi anulado
-        x = -1  ->  -0.1588     parcialmente
+    VALUES TO CHECK AGAINST
+    -----------------------
+        x = -3  ->  -0.0036     almost cancelled
+        x = -1  ->  -0.1588     partially
         x =  0  ->   0.0000
-        x =  1  ->   0.8412     casi entero
-        x =  3  ->   2.9964     entero
+        x =  1  ->   0.8412     almost whole
+        x =  3  ->   2.9964     whole
 
-    QUÉ HACE Y POR QUÉ HACE FALTA
-    -----------------------------
-    Es la NO-LINEALIDAD. Sin algo asi entre capa y capa, apilar capas no sirve de nada: dos
-    multiplicaciones de matriz seguidas son una sola multiplicacion de matriz.
+    WHAT IT DOES AND WHY IT IS NEEDED
+    ---------------------------------
+    It is the NONLINEARITY. Without something like it between layers, stacking layers
+    achieves nothing: two matrix multiplications in a row are one matrix multiplication.
 
-    GELU multiplica `x` por la probabilidad de que una normal estandar salga menor que `x`. En
-    vez de decidir con un corte duro si dejar pasar el valor (como hace ReLU), lo atenua de
-    forma gradual.
+    GELU multiplies `x` by the probability that a standard normal comes out below `x`.
+    Instead of deciding with a hard cut whether to let the value through (as ReLU does), it
+    attenuates it gradually.
 
-    POR QUÉ LA APROXIMACIÓN Y NO LA EXACTA
-    --------------------------------------
-    La definicion real usa `erf`, que era lento en las GPU de 2016. Hoy la diferencia es
-    irrelevante, pero GPT-2 se entreno con la aproximacion y por compatibilidad se sigue
-    usando.
+    WHY THE APPROXIMATION AND NOT THE EXACT ONE
+    -------------------------------------------
+    The real definition uses `erf`, which was slow on 2016 GPUs. Today the difference is
+    irrelevant, but GPT-2 was trained with the approximation and it is still used for
+    compatibility.
 
-    Tu resultado tiene que coincidir con `F.gelu(x, approximate="tanh")`, NO con `F.gelu(x)` a
-    secas: son funciones distintas y el test compara contra la primera.
+    Your result has to match `F.gelu(x, approximate="tanh")`, NOT plain `F.gelu(x)`: they are
+    different functions and the test compares against the first.
 
-    LO IMPORTANTE NO ES LA FÓRMULA, ES LA DERIVADA
-    ----------------------------------------------
+    WHAT MATTERS IS NOT THE FORMULA, IT IS THE DERIVATIVE
+    -----------------------------------------------------
         x       ReLU     dReLU/dx      GELU      dGELU/dx
         -3.0    0.0000   0.0000       -0.0036   -0.0119
         -1.0    0.0000   0.0000       -0.1588   -0.0833
 
-    Con ReLU la derivada en toda la zona negativa es CERO EXACTO. Una neurona que acabe dando
-    siempre valores negativos deja de recibir gradiente para siempre: esta muerta y no hay
-    forma de resucitarla. GELU tiene derivada pequenya pero no nula, asi que puede volver.
+    With ReLU the derivative throughout the negative zone is EXACTLY ZERO. A neuron that ends
+    up always producing negative values stops receiving gradient forever: it is dead and
+    there is no way to revive it. GELU's derivative is small but not zero, so it can come
+    back.
 
     Args:
-        x: cualquier forma.
+        x: any shape.
 
     Returns:
-        Del mismo tamanyo que `x`.
+        The same shape as `x`.
     """
-    raise NotImplementedError("TODO: modulo 08, ejercicio 1 - gelu")
+    raise NotImplementedError("TODO: module 08, exercise 1 - gelu")
 
 
 def swiglu_hidden_dim(
     d_model: int, multiple_of: int = 64, ffn_dim_multiplier: float | None = None
 ) -> int:
-    """Calcula `d_ff` para SwiGLU. Este ejercicio produce el 896 del config final.
+    """Computes `d_ff` for SwiGLU. This exercise produces the 896 in the final config.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines.
 
-        1. Los dos tercios del 4x clasico:
+        1. Two thirds of the classic 4x:
 
                hidden = int(2 * (4 * d_model) / 3)
 
-        2. El multiplicador opcional:
+        2. The optional multiplier:
 
                if ffn_dim_multiplier is not None:
                    hidden = int(ffn_dim_multiplier * hidden)
 
-        3. Redondea HACIA ARRIBA al siguiente multiplo de `multiple_of`:
+        3. Round UP to the next multiple of `multiple_of`:
 
                return multiple_of * ((hidden + multiple_of - 1) // multiple_of)
 
-    EL REDONDEO DEL PASO 3, SIN `math.ceil`
-    ---------------------------------------
-    Sumar `multiple_of - 1` antes de la division entera fuerza el redondeo hacia arriba, y si
-    el valor ya era multiplo exacto no lo cambia. Es el idioma estandar y evita meter floats
-    donde no hacen falta.
+    THE ROUNDING IN STEP 3, WITHOUT `math.ceil`
+    -------------------------------------------
+    Adding `multiple_of - 1` before the integer division forces rounding up, and if the value
+    was already an exact multiple it does not change it. It is the standard idiom and it
+    avoids putting floats where they are not needed.
 
-    COMPRUÉBALO CON LOS DOS CASOS DEL CURSO
-    ---------------------------------------
+    CHECK IT WITH THE COURSE'S TWO CASES
+    ------------------------------------
         d_model = 320:  int(2*1280/3) = 853  ->  64 * ((853+63)//64) = 64 * 14 = 896
         d_model = 128:  int(2*512/3)  = 341  ->  64 * ((341+63)//64) = 64 *  6 = 384
 
-    El 896 es el `d_ff` del config del modelo final, y el 384 el del juguete.
+    The 896 is the final model's `d_ff`, and the 384 is the toy's.
 
-    DE DÓNDE SALE EL 2/3
-    --------------------
-    Es lo unico conceptual del ejercicio.
+    WHERE THE 2/3 COMES FROM
+    ------------------------
+    It is the only conceptual part of the exercise.
 
-        FFN clasico:  2 matrices x d x 4d           = 8d²
-        SwiGLU:       3 matrices x d x (2/3 * 4d)   = 8d²      <- mismo presupuesto
-        SwiGLU sin ajustar: 3 x d x 4d              = 12d²     <- un 50% mas
+        classic FFN:  2 matrices x d x 4d           = 8d²
+        SwiGLU:       3 matrices x d x (2/3 * 4d)   = 8d²      <- same budget
+        SwiGLU unadjusted: 3 x d x 4d               = 12d²     <- 50% more
 
-    SwiGLU tiene TRES matrices donde el FFN clasico tiene dos. Con el mismo `d_ff` costaria un
-    50% mas, asi que se reduce el hidden a dos tercios para gastar lo mismo y poder comparar de
-    forma justa.
+    SwiGLU has THREE matrices where the classic FFN has two. With the same `d_ff` it would
+    cost 50% more, so the hidden size is cut to two thirds to spend the same and be able to
+    compare fairly.
 
-    POR QUÉ SE REDONDEA
-    -------------------
-    No es cosmetica. Las dimensiones alineadas a potencias de dos dejan que los tensor cores
-    usen sus rutas rapidas. Una matriz de 853 columnas es notablemente mas lenta que una de
-    896, teniendo MENOS parametros.
+    WHY WE ROUND
+    ------------
+    It is not cosmetic. Dimensions aligned to powers of two let the tensor cores take their
+    fast paths. A matrix with 853 columns is noticeably slower than one with 896, while
+    having FEWER parameters.
 
     Args:
-        d_model: la dimension del modelo.
-        multiple_of: al multiplo de cuanto redondear.
-        ffn_dim_multiplier: factor extra opcional (Llama lo usa para ajustar a mano).
+        d_model: the model dimension.
+        multiple_of: what to round to a multiple of.
+        ffn_dim_multiplier: optional extra factor (Llama uses it to tune by hand).
 
     Returns:
-        `d_ff` como entero.
+        `d_ff` as an integer.
     """
-    raise NotImplementedError("TODO: modulo 08, ejercicio 2 - swiglu_hidden_dim")
+    raise NotImplementedError("TODO: module 08, exercise 2 - swiglu_hidden_dim")
 
 
 class SwiGLU(nn.Module):
-    """El FFN con puerta que usa el modelo final. Dos tercios de sus parametros estan aqui.
+    """The gated FFN the final model uses. Two thirds of its parameters are here.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    **En `__init__`** (cuatro lineas ademas del `super()`). Los nombres importan:
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    **In `__init__`** (four lines besides the `super()`). The names matter:
 
         self.gate_proj = nn.Linear(d_model, d_ff, bias=bias)
         self.up_proj   = nn.Linear(d_model, d_ff, bias=bias)
         self.down_proj = nn.Linear(d_ff, d_model, bias=bias)
         self.dropout   = nn.Dropout(dropout)
 
-    **En `forward`** (una linea):
+    **In `forward`** (one line):
 
         return self.dropout(self.down_proj(
             F.silu(self.gate_proj(x)) * self.up_proj(x)
         ))
 
-    TRES DETALLES
+    THREE DETAILS
     -------------
-    **El `*` es multiplicacion ELEMENTO A ELEMENTO**, no matricial. Las dos ramas salen con la
-    misma forma `(B, T, d_ff)` y se multiplican punto a punto. Si pusieras `@` las formas ni
-    siquiera cuadrarian.
+    **The `*` is ELEMENTWISE multiplication**, not matrix multiplication. Both branches come
+    out with the same shape `(B, T, d_ff)` and are multiplied point by point. If you put `@`
+    the shapes would not even line up.
 
-    **La activacion va en `gate_proj`, NO en `up_proj`.** Numericamente el modulo funcionaria
-    igual de bien con la asignacion invertida —es simetrico salvo por que pesos aprenden que—
-    pero NO coincidiria con la referencia al copiar pesos y el test fallaria con una diferencia
-    dificil de interpretar. Hay un test dedicado a senyalarlo.
+    **The activation goes on `gate_proj`, NOT on `up_proj`.** Numerically the module would
+    work just as well with the assignment swapped — it is symmetric apart from which weights
+    learn what — but it would NOT match the reference when copying weights and the test would
+    fail with a difference that is hard to interpret. There is a dedicated test that points
+    it out.
 
-    **`F.silu` es Swish**, o sea `z * sigmoid(z)`. Puedes escribirlo a mano
-    (`x * torch.sigmoid(x)`) y da lo mismo, pero `F.silu` tiene un kernel fusionado.
+    **`F.silu` is Swish**, that is, `z * sigmoid(z)`. You can write it by hand
+    (`x * torch.sigmoid(x)`) and it gives the same thing, but `F.silu` has a fused kernel.
 
-    QUÉ ESTÁ PASANDO
-    ----------------
-    Hay DOS proyecciones en paralelo desde la misma entrada. Una de ellas, tras pasar por
-    Swish, actua como PUERTA: multiplica a la otra y decide cuanta senyal deja pasar por cada
-    dimension.
+    WHAT IS HAPPENING
+    -----------------
+    There are TWO projections in parallel from the same input. One of them, after going
+    through Swish, acts as a GATE: it multiplies the other and decides how much signal it
+    lets through each dimension.
 
-    La diferencia con una activacion normal es que ese filtrado DEPENDE DE LA ENTRADA. Una
-    activacion aplica la misma funcion a todo; una puerta decide, para cada dimension y cada
-    token, cuanto pasa.
+    The difference from a normal activation is that this filtering DEPENDS ON THE INPUT. An
+    activation applies the same function to everything; a gate decides, for each dimension
+    and each token, how much gets through.
 
-    UN APUNTE QUE CONVIENE TENER CLARO
-    ----------------------------------
-    El FFN procesa cada token POR SEPARADO. No mezcla informacion entre posiciones: eso es
-    trabajo de la atencion. Aqui no hace falta ninguna mascara ni nada parecido.
+    A POINT WORTH BEING CLEAR ON
+    ----------------------------
+    The FFN processes each token SEPARATELY. It does not mix information between positions:
+    that is attention's job. No mask or anything like it is needed here.
 
-    `bias=False` por defecto es la config del modelo final, y es lo que hace que el conteo de
-    parametros de exactamente `3 * d_model * d_ff`.
+    `bias=False` by default is the final model's config, and it is what makes the parameter
+    count come out at exactly `3 * d_model * d_ff`.
 
     forward(x):
         Args:
@@ -236,7 +239,7 @@ class SwiGLU(nn.Module):
 
     def __init__(self, d_model: int, d_ff: int, dropout: float = 0.0, bias: bool = False) -> None:
         super().__init__()
-        raise NotImplementedError("TODO: modulo 08, ejercicio 3 - SwiGLU.__init__")
+        raise NotImplementedError("TODO: module 08, exercise 3 - SwiGLU.__init__")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        raise NotImplementedError("TODO: modulo 08, ejercicio 3 - SwiGLU.forward")
+        raise NotImplementedError("TODO: module 08, exercise 3 - SwiGLU.forward")
