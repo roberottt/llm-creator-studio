@@ -1,19 +1,18 @@
-"""Demo del modulo 14: las estrategias de muestreo, y la cache que hace todo mas rapido.
+"""Module 14 demo: the sampling strategies, and the cache that makes everything faster.
 
     llmfs demo 14
 
-Usa el modelo entrenado en el modulo 13 si existe (`checkpoints/tiny_char/best.pt`); si no,
-uno sin entrenar (que sirve igual para medir velocidad, aunque el texto sea ruido).
+It uses the model trained in module 13 if it exists (`checkpoints/tiny_char/best.pt`); if
+not, an untrained one (which still works for measuring speed, even if the text is noise).
 
-Tres experimentos:
-  1. Los filtros, con numeros pequenyos que puedes seguir a mano.
-  2. El mismo prompt con distintas estrategias de muestreo. Se ve el bucle de greedy.
-  3. La KV cache: salida identica y speedup medido.
+Three experiments:
+  1. The filters, with small numbers you can follow by hand.
+  2. The same prompt with different sampling strategies. You can see greedy's loop.
+  3. The KV cache: identical output and a measured speedup.
 """
 
 from __future__ import annotations
 
-import math
 import time
 
 import matplotlib
@@ -42,8 +41,8 @@ KVCache = resolve("14_inference", "KVCache")
 generate_with_cache = resolve("14_inference", "generate_with_cache")
 
 
-def cargar_modelo(cfg_dev):
-    """El modelo entrenado del modulo 13, o uno nuevo si no existe."""
+def load_model(cfg_dev):
+    """The trained model from module 13, or a new one if it does not exist."""
     from llmfs.data import prepare
     from llmfs.train import load_checkpoint
 
@@ -51,246 +50,254 @@ def cargar_modelo(cfg_dev):
     dataset = prepare(cfg, quiet=True)
     cfg.model.vocab_size = dataset.vocab_size
 
-    modelo = GPT(cfg.model)
-    ruta = cfg.run_dir / "best.pt"
-    entrenado = False
-    if ruta.exists():
+    model = GPT(cfg.model)
+    path = cfg.run_dir / "best.pt"
+    trained = False
+    if path.exists():
         try:
-            load_checkpoint(ruta, modelo, map_location="cpu")
-            entrenado = True
+            load_checkpoint(path, model, map_location="cpu")
+            trained = True
         except Exception:
             pass
 
-    return modelo.to(cfg_dev.device).eval(), dataset, cfg, entrenado
+    return model.to(cfg_dev.device).eval(), dataset, cfg, trained
 
 
-def experimento_filtros():
-    console.rule("[bold]1. Los filtros, con numeros que puedes seguir a mano[/bold]")
+def filters_experiment():
+    console.rule("[bold]1. The filters, with numbers you can follow by hand[/bold]")
 
     logits = torch.tensor([[3.0, 2.0, 1.0, 0.5, -1.0, -3.0]])
     probs = F.softmax(logits, dim=-1)[0]
 
-    tabla = Table(header_style="bold")
-    tabla.add_column("token", justify="right")
-    tabla.add_column("logit", justify="right")
-    tabla.add_column("prob", justify="right")
-    tabla.add_column("acumulada", justify="right")
-    tabla.add_column("top-k=2")
-    tabla.add_column("top-p=0.9")
+    table = Table(header_style="bold")
+    table.add_column("token", justify="right")
+    table.add_column("logit", justify="right")
+    table.add_column("prob", justify="right")
+    table.add_column("cumulative", justify="right")
+    table.add_column("top-k=2")
+    table.add_column("top-p=0.9")
 
     tk = top_k_filter(logits.clone(), 2)[0]
     tp = top_p_filter(logits.clone(), 0.9)[0]
-    acum = 0.0
+    cum = 0.0
     for i in range(6):
-        acum += float(probs[i])
-        tabla.add_row(
+        cum += float(probs[i])
+        table.add_row(
             str(i),
             f"{float(logits[0, i]):+.1f}",
             f"{float(probs[i]):.3f}",
-            f"{acum:.3f}",
-            "[green]si[/green]" if torch.isfinite(tk[i]) else "[dim]no[/dim]",
-            "[green]si[/green]" if torch.isfinite(tp[i]) else "[dim]no[/dim]",
+            f"{cum:.3f}",
+            "[green]yes[/green]" if torch.isfinite(tk[i]) else "[dim]no[/dim]",
+            "[green]yes[/green]" if torch.isfinite(tp[i]) else "[dim]no[/dim]",
         )
-    console.print(tabla)
+    console.print(table)
     console.print(
-        f"[dim]top-p=0.9 deja {int(torch.isfinite(tp).sum())} candidatos: el conjunto mas "
-        "pequenyo cuya masa EXCEDE 0.9.\nFijate en que el token que cruza el umbral entra: "
-        "sin el, la masa se quedaria por debajo.[/dim]\n"
+        f"[dim]top-p=0.9 leaves {int(torch.isfinite(tp).sum())} candidates: the smallest set "
+        "whose mass EXCEEDS 0.9.\nNote that the token crossing the threshold goes in: without "
+        "it, the mass would stay below.[/dim]\n"
     )
 
-    console.print("[bold]La temperatura, sobre los mismos logits:[/bold]")
-    tabla2 = Table(header_style="bold")
-    tabla2.add_column("T", justify="right")
+    console.print("[bold]The temperature, on the same logits:[/bold]")
+    table2 = Table(header_style="bold")
+    table2.add_column("T", justify="right")
     for i in range(4):
-        tabla2.add_column(f"tok {i}", justify="right")
-    tabla2.add_column("efecto")
-    for T, efecto in [(0.5, "afilada: casi siempre el primero"),
-                      (1.0, "la distribucion tal cual"),
-                      (2.0, "plana: mas variedad")]:
+        table2.add_column(f"tok {i}", justify="right")
+    table2.add_column("effect")
+    for T, effect in [
+        (0.5, "sharp: almost always the first one"),
+        (1.0, "the distribution as it is"),
+        (2.0, "flat: more variety"),
+    ]:
         p = F.softmax(logits / T, dim=-1)[0]
-        tabla2.add_row(f"{T}", *[f"{float(p[i]):.3f}" for i in range(4)], efecto)
-    console.print(tabla2)
+        table2.add_row(f"{T}", *[f"{float(p[i]):.3f}" for i in range(4)], effect)
+    console.print(table2)
 
-    console.print("\n[bold]La penalizacion de repeticion:[/bold]")
+    console.print("\n[bold]The repetition penalty:[/bold]")
     pen = apply_repetition_penalty(logits.clone(), torch.tensor([[0, 5]]), 2.0)[0]
     console.print(
         f"  token 0 (logit [green]+3.0[/green]) -> {float(pen[0]):+.2f}   "
-        "[dim]positivo: se DIVIDE[/dim]\n"
+        "[dim]positive: it is DIVIDED[/dim]\n"
         f"  token 5 (logit [red]-3.0[/red]) -> {float(pen[5]):+.2f}   "
-        "[dim]negativo: se MULTIPLICA[/dim]\n\n"
-        "[dim]Si dividieras siempre, el -3.0 pasaria a -1.5 y el token se volveria MAS\n"
-        "probable: justo lo contrario de penalizarlo. Y como los logits negativos son la\n"
-        "mayoria, estarias premiando casi todo lo que ya salio.[/dim]"
+        "[dim]negative: it is MULTIPLIED[/dim]\n\n"
+        "[dim]If you always divided, the -3.0 would become -1.5 and the token would become\n"
+        "MORE likely: exactly the opposite of penalizing it. And since negative logits are\n"
+        "the majority, you would be rewarding almost everything that already came out.[/dim]"
     )
 
 
-def experimento_muestreo(modelo, dataset, cfg_dev, entrenado):
-    console.rule("[bold]2. La misma frase con distintas estrategias[/bold]")
-    if not entrenado:
+def sampling_experiment(model, dataset, cfg_dev, trained):
+    console.rule("[bold]2. The same sentence with different strategies[/bold]")
+    if not trained:
         console.print(
-            "[yellow]No hay modelo entrenado en checkpoints/tiny_char/best.pt.[/yellow]\n"
-            "[dim]Entrena uno con `llmfs train --config tiny_char` y vuelve a ejecutar esto:\n"
-            "el texto sera legible y la comparacion tendra sentido.[/dim]\n"
+            "[yellow]There is no trained model at checkpoints/tiny_char/best.pt.[/yellow]\n"
+            "[dim]Train one with `llmfs train --config tiny_char` and run this again:\n"
+            "the text will be readable and the comparison will make sense.[/dim]\n"
         )
 
     prompt = "The king"
     ids = torch.tensor([dataset.encode(prompt)], device=cfg_dev.device)
 
-    estrategias = [
+    strategies = [
         ("greedy (T=0)", dict(temperature=0.0)),
         ("T=0.5", dict(temperature=0.5)),
         ("T=0.8 + top-k 40", dict(temperature=0.8, top_k=40)),
         ("T=0.8 + top-p 0.9", dict(temperature=0.8, top_p=0.9)),
-        ("T=1.5 (demasiado)", dict(temperature=1.5)),
+        ("T=1.5 (too much)", dict(temperature=1.5)),
         ("greedy + penalty 1.3", dict(temperature=0.0, repetition_penalty=1.3)),
     ]
 
-    for nombre, kwargs in estrategias:
+    for name, kwargs in strategies:
         set_seed(1234)
-        salida = generate_with_cache(modelo, ids.clone(), 150, **kwargs)
-        texto = dataset.decode(salida[0].tolist()).replace("\n", " ")
-        # Cuanta repeticion hay: fraccion de 4-gramas distintos
-        gramas = [texto[i : i + 4] for i in range(len(texto) - 4)]
-        variedad = len(set(gramas)) / max(1, len(gramas))
-        color = "red" if variedad < 0.5 else "yellow" if variedad < 0.8 else "green"
+        out = generate_with_cache(model, ids.clone(), 150, **kwargs)
+        text = dataset.decode(out[0].tolist()).replace("\n", " ")
+        # How much repetition there is: fraction of distinct 4-grams
+        grams = [text[i : i + 4] for i in range(len(text) - 4)]
+        variety = len(set(grams)) / max(1, len(grams))
+        color = "red" if variety < 0.5 else "yellow" if variety < 0.8 else "green"
         console.print(
             Panel(
-                texto[:180],
-                title=f"{nombre}  |  variedad de 4-gramas: [{color}]{variedad:.0%}[/{color}]",
+                text[:180],
+                title=f"{name}  |  4-gram variety: [{color}]{variety:.0%}[/{color}]",
                 border_style=color,
             )
         )
 
     console.print(
-        "[dim]Mira la variedad de greedy frente a las demas. Greedy siempre elige el token\n"
-        "mas probable, es determinista, y se mete en bucles: el texto humano NO maximiza la\n"
-        "probabilidad, y esa es la observacion central de Holtzman et al. (2020).\n\n"
-        "La penalizacion de repeticion rescata a greedy sin dejar de ser determinista.[/dim]"
+        "[dim]Look at greedy's variety compared to the rest. Greedy always picks the most\n"
+        "likely token, it is deterministic, and it gets stuck in loops: human text does NOT\n"
+        "maximize probability, and that is the central observation of Holtzman et al. (2020).\n\n"
+        "The repetition penalty rescues greedy without it ceasing to be deterministic.[/dim]"
     )
 
 
-def experimento_cache(modelo, cfg_dev, cfg):
-    console.rule("[bold]3. La KV cache[/bold]")
+def cache_experiment(model, cfg_dev, cfg):
+    console.rule("[bold]3. The KV cache[/bold]")
 
     prompt = torch.randint(0, cfg.model.vocab_size, (1, 8), device=cfg_dev.device)
 
-    # Para medir la velocidad hace falta un modelo con contexto largo: con el juguete
-    # (contexto 128) las tiradas de 100+ tokens topan con el limite y la comparacion se
-    # aplana justo donde empezaba a ser interesante.
+    # To measure the speed you need a model with a long context: with the toy one
+    # (context 128) runs of 100+ tokens hit the limit and the comparison flattens out right
+    # where it was starting to get interesting.
     from llmfs.config import ModelConfig
 
     set_seed(0)
-    cfg_largo = ModelConfig(
-        vocab_size=cfg.model.vocab_size, n_layers=4, d_model=128, n_heads=4,
-        d_ff=384, context_length=1024,
+    long_cfg = ModelConfig(
+        vocab_size=cfg.model.vocab_size,
+        n_layers=4,
+        d_model=128,
+        n_heads=4,
+        d_ff=384,
+        context_length=1024,
     )
-    modelo_largo = GPT(cfg_largo).to(cfg_dev.device).eval()
-    prompt_largo = torch.randint(0, cfg.model.vocab_size, (1, 8), device=cfg_dev.device)
+    long_model = GPT(long_cfg).to(cfg_dev.device).eval()
+    long_prompt = torch.randint(0, cfg.model.vocab_size, (1, 8), device=cfg_dev.device)
 
-    console.print("[bold]Primero lo importante: ¿da la misma salida?[/bold]\n")
-    sin = modelo.generate(prompt.clone(), 40, temperature=0.0)
-    con = generate_with_cache(modelo, prompt.clone(), 40, temperature=0.0)
-    iguales = torch.equal(sin, con)
+    console.print("[bold]First the important thing: does it give the same output?[/bold]\n")
+    without = model.generate(prompt.clone(), 40, temperature=0.0)
+    with_ = generate_with_cache(model, prompt.clone(), 40, temperature=0.0)
+    equal = torch.equal(without, with_)
     console.print(
-        f"  sin cache: {sin[0, -10:].tolist()}\n"
-        f"  con cache: {con[0, -10:].tolist()}\n"
+        f"  without cache: {without[0, -10:].tolist()}\n"
+        f"  with cache: {with_[0, -10:].tolist()}\n"
         + (
-            "  [bold green]IDENTICOS.[/bold green] La cache es una optimizacion pura: no "
-            "cambia el resultado.\n"
-            if iguales
-            else "  [bold red]DIVERGEN.[/bold red] Mira el pos_offset de RoPE.\n"
+            "  [bold green]IDENTICAL.[/bold green] The cache is a pure optimization: it does "
+            "not change the result.\n"
+            if equal
+            else "  [bold red]THEY DIVERGE.[/bold red] Look at RoPE's pos_offset.\n"
         )
     )
 
-    console.print("[bold]Y ahora la velocidad:[/bold]\n")
-    tabla = Table(header_style="bold")
-    tabla.add_column("tokens", justify="right")
-    tabla.add_column("sin cache", justify="right")
-    tabla.add_column("con cache", justify="right")
-    tabla.add_column("speedup", justify="right")
-    tabla.add_column("memoria de la cache", justify="right")
+    console.print("[bold]And now the speed:[/bold]\n")
+    table = Table(header_style="bold")
+    table.add_column("tokens", justify="right")
+    table.add_column("without cache", justify="right")
+    table.add_column("with cache", justify="right")
+    table.add_column("speedup", justify="right")
+    table.add_column("cache memory", justify="right")
 
     console.print(
-        f"[dim](midiendo sobre un modelo de contexto {cfg_largo.context_length}: con el\n"
-        f"juguete de contexto {cfg.model.context_length} las tiradas largas toparian con el\n"
-        f"limite y la comparacion se aplanaria justo donde empieza a ser interesante)[/dim]\n"
+        f"[dim](measuring on a model with context {long_cfg.context_length}: with the toy one\n"
+        f"of context {cfg.model.context_length} the long runs would hit the limit and the\n"
+        f"comparison would flatten out right where it gets interesting)[/dim]\n"
     )
 
-    longitudes, speedups = [], []
+    lengths, speedups = [], []
     for n in (50, 100, 200, 400, 800):
         t0 = time.perf_counter()
-        modelo_largo.generate(prompt_largo.clone(), n, temperature=0.0)
+        long_model.generate(long_prompt.clone(), n, temperature=0.0)
         cfg_dev.synchronize()
-        t_sin = time.perf_counter() - t0
+        t_without = time.perf_counter() - t0
 
         t0 = time.perf_counter()
-        generate_with_cache(modelo_largo, prompt_largo.clone(), n, temperature=0.0)
+        generate_with_cache(long_model, long_prompt.clone(), n, temperature=0.0)
         cfg_dev.synchronize()
-        t_con = time.perf_counter() - t0
+        t_with = time.perf_counter() - t0
 
-        cache = KVCache(cfg_largo.n_layers)
-        modelo_largo(prompt_largo, use_cache=True, cache=cache)
+        cache = KVCache(long_cfg.n_layers)
+        long_model(long_prompt, use_cache=True, cache=cache)
         for _ in range(n):
-            modelo_largo(prompt_largo[:, -1:], use_cache=True, cache=cache)
+            long_model(long_prompt[:, -1:], use_cache=True, cache=cache)
 
-        longitudes.append(n)
-        speedups.append(t_sin / max(t_con, 1e-9))
-        tabla.add_row(
+        lengths.append(n)
+        speedups.append(t_without / max(t_with, 1e-9))
+        table.add_row(
             str(n),
-            f"{t_sin * 1000:.0f} ms",
-            f"{t_con * 1000:.0f} ms",
-            f"[bold]{t_sin / max(t_con, 1e-9):.2f}x[/bold]",
+            f"{t_without * 1000:.0f} ms",
+            f"{t_with * 1000:.0f} ms",
+            f"[bold]{t_without / max(t_with, 1e-9):.2f}x[/bold]",
             f"{cache.memory_bytes() / 1024:.0f} KB",
         )
-    console.print(tabla)
+    console.print(table)
 
-    bytes_full = 2 * 6 * 512 * 320 * 2   # el modelo final: 6 capas, ctx 512, d 320, fp16
+    bytes_full = 2 * 6 * 512 * 320 * 2  # the final model: 6 layers, ctx 512, d 320, fp16
     console.print(
-        f"\n[dim]El speedup crece con la longitud: sin cache generar N tokens cuesta O(N^2)\n"
-        f"y con cache O(N). Con secuencias mas largas la diferencia se dispara.\n\n"
-        f"La memoria de la cache es 2 * n_layers * T * d_model * bytes. Para el modelo FINAL\n"
-        f"de 9M con contexto 512 en fp16 son {bytes_full / 1e6:.1f} MB: nada. Para un modelo de\n"
-        f"70B con contexto 100.000, decenas de gigabytes, mas que los propios pesos. De ahi\n"
-        f"que existan tecnicas como grouped-query attention.[/dim]"
+        f"\n[dim]The speedup grows with the length: without the cache, generating N tokens\n"
+        f"costs O(N^2) and with it O(N). With longer sequences the difference takes off.\n\n"
+        f"The cache memory is 2 * n_layers * T * d_model * bytes. For the FINAL 9M model with\n"
+        f"context 512 in fp16 that is {bytes_full / 1e6:.1f} MB: nothing. For a 70B model with\n"
+        f"a 100,000-token context, tens of gigabytes, more than the weights themselves. Hence\n"
+        f"techniques like grouped-query attention.[/dim]"
     )
-    return longitudes, speedups
+    return lengths, speedups
 
 
 def main() -> None:
     cfg_dev = get_device()
-    modelo, dataset, cfg, entrenado = cargar_modelo(cfg_dev)
+    model, dataset, cfg, trained = load_model(cfg_dev)
 
-    if entrenado:
-        console.print("[green]Usando el modelo entrenado de checkpoints/tiny_char/best.pt[/green]\n")
+    if trained:
+        console.print(
+            "[green]Using the trained model from checkpoints/tiny_char/best.pt[/green]\n"
+        )
 
-    experimento_filtros()
-    experimento_muestreo(modelo, dataset, cfg_dev, entrenado)
-    longitudes, speedups = experimento_cache(modelo, cfg_dev, cfg)
+    filters_experiment()
+    sampling_experiment(model, dataset, cfg_dev, trained)
+    lengths, speedups = cache_experiment(model, cfg_dev, cfg)
 
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
     logits = torch.tensor([[3.0, 2.0, 1.0, 0.5, -1.0, -3.0]])
     for T in (0.5, 1.0, 2.0):
-        izq.plot(F.softmax(logits / T, dim=-1)[0].numpy(), marker="o", label=f"T = {T}")
-    izq.set_xlabel("token")
-    izq.set_ylabel("probabilidad")
-    izq.set_title("El efecto de la temperatura")
-    izq.grid(alpha=0.3)
-    izq.legend()
+        left.plot(F.softmax(logits / T, dim=-1)[0].numpy(), marker="o", label=f"T = {T}")
+    left.set_xlabel("token")
+    left.set_ylabel("probability")
+    left.set_title("The effect of the temperature")
+    left.grid(alpha=0.3)
+    left.legend()
 
-    der.plot(longitudes, speedups, marker="o", color="tab:green")
-    der.axhline(1.0, color="gray", ls="--", lw=1, label="sin ganancia")
-    der.set_xlabel("tokens generados")
-    der.set_ylabel("speedup de la KV cache")
-    der.set_title("La ganancia crece con la longitud")
-    der.grid(alpha=0.3)
-    der.legend(fontsize=8)
+    right.plot(lengths, speedups, marker="o", color="tab:green")
+    right.axhline(1.0, color="gray", ls="--", lw=1, label="no gain")
+    right.set_xlabel("tokens generated")
+    right.set_ylabel("KV cache speedup")
+    right.set_title("The gain grows with the length")
+    right.grid(alpha=0.3)
+    right.legend(fontsize=8)
 
     fig.tight_layout()
-    destino = figures_dir() / "14_inference.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "14_inference.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target}[/green]")
 
 
 if __name__ == "__main__":

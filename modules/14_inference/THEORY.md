@@ -1,218 +1,219 @@
-# 14 — Inferencia y muestreo
+# 14 — Inference and sampling
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque un modelo entrenado no sirve de nada si no sabes sacarle texto.**
+**Because a trained model is no use if you do not know how to get text out of it.**
 
-Y sacar texto tiene más miga de la que parece. Si eliges siempre el token más probable
-—que es lo obvio— el modelo se mete en bucles: *"the cat sat on the mat. the cat sat on the
-mat."* La demo lo enseña. Resulta que **el texto humano no maximiza la probabilidad**, y
-entender eso es la mitad del módulo.
+And getting text out has more to it than it looks. If you always pick the most likely token
+—which is the obvious thing— the model gets stuck in loops: *"the cat sat on the mat. the cat
+sat on the mat."* The demo shows it. It turns out that **human text does not maximize
+probability**, and understanding that is half the module.
 
-La otra mitad es velocidad. La generación ingenua recalcula todo el contexto en cada token,
-lo que hace que generar N tokens cueste N². La KV cache lo arregla, y es la optimización más
-importante que existe en inferencia: sin ella, ningún chatbot sería usable.
+The other half is speed. Naive generation recomputes the whole context for every token, which
+makes generating N tokens cost N². The KV cache fixes it, and it is the most important
+optimization there is in inference: without it, no chatbot would be usable.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué coger siempre lo más probable produce texto malo
-- Qué hacen la temperatura, top-k y top-p, y **cuál usar cuándo**
-- Cómo generar N veces más rápido sin cambiar ni un token de la salida
-- Por qué los modelos con contexto muy largo consumen tanta memoria en inferencia
+- Why always taking the most likely thing produces bad text
+- What temperature, top-k and top-p do, and **which one to use when**
+- How to generate N times faster without changing a single token of the output
+- Why models with very long contexts consume so much memory at inference time
 
-### Cuánto cuesta
+### What it costs
 
-3 horas. Los tres primeros ejercicios son cortos; la cache es donde está la dificultad.
+3 hours. The first three exercises are short; the cache is where the difficulty is.
 
 ---
 
-## Parte 1: cómo elegir el siguiente token
+## Part 1: how to pick the next token
 
-El modelo te da 4096 números, uno por token del vocabulario. ¿Cuál eliges?
+The model gives you 4096 numbers, one per token of the vocabulary. Which one do you pick?
 
-### Greedy: siempre el más probable
+### Greedy: always the most likely
 
-Lo obvio, y funciona mal. Es determinista —con el mismo prompt siempre sale exactamente lo
-mismo— y sobre todo **se mete en bucles**:
+The obvious thing, and it works badly. It is deterministic —with the same prompt you always
+get exactly the same thing— and above all **it gets stuck in loops**:
 
 ```
 The cat sat on the mat. The cat sat on the mat. The cat sat on the mat.
 ```
 
-La razón es sutil y la explica bien Holtzman et al. (2020): el texto humano **no maximiza
-la probabilidad**. Una persona escribe cosas sorprendentes de vez en cuando; siempre elegir
-lo más probable produce texto plano y repetitivo, aunque cada token individual sea
+The reason is subtle and Holtzman et al. (2020) explain it well: human text **does not
+maximize probability**. A person writes surprising things every now and then; always picking
+the most likely thing produces flat, repetitive text, even though each individual token is
 plausible.
 
-### Temperatura: aplanar o afilar la distribución
+### Temperature: flattening or sharpening the distribution
 
-Se dividen los logits por un número antes del softmax:
+You divide the logits by a number before the softmax:
 
 $$P_i = \frac{e^{z_i/T}}{\sum_j e^{z_j/T}}$$
 
-Con números. Supón logits `[3, 2, 1]`:
+With numbers. Suppose logits `[3, 2, 1]`:
 
 ```
-T = 1.0   →  [0.665, 0.245, 0.090]     la distribución tal cual
-T = 0.5   →  [0.867, 0.117, 0.016]     más afilada: casi siempre el primero
-T = 2.0   →  [0.506, 0.307, 0.186]     más plana: más variedad
-T → 0     →  [1, 0, 0]                 equivale a greedy
+T = 1.0   →  [0.665, 0.245, 0.090]     the distribution as it is
+T = 0.5   →  [0.867, 0.117, 0.016]     sharper: almost always the first one
+T = 2.0   →  [0.506, 0.307, 0.186]     flatter: more variety
+T → 0     →  [1, 0, 0]                 equivalent to greedy
 ```
 
-Dividir por un número pequeño **separa** los logits, y como el softmax es exponencial, esa
-separación se amplifica. Dividir por uno grande los **junta**.
+Dividing by a small number **separates** the logits, and since the softmax is exponential,
+that separation gets amplified. Dividing by a large one **brings them together**.
 
-Valores típicos: 0,7–0,9 para texto coherente, 1,0 para variedad, por encima de 1,2 empieza
-a desvariar.
+Typical values: 0.7–0.9 for coherent text, 1.0 for variety, above 1.2 it starts to ramble.
 
-### Top-k: quedarse con los k mejores
+### Top-k: keeping the k best
 
-El problema de la temperatura sola es que **nunca elimina** los tokens malos, solo los hace
-menos probables. Con 4096 tokens, la cola larga puede acumular un 20% de la masa entre
-miles de opciones absurdas, y de vez en cuando sale una.
+The problem with temperature alone is that it **never eliminates** the bad tokens, it just
+makes them less likely. With 4096 tokens, the long tail can hold 20% of the mass across
+thousands of absurd options, and every so often one comes out.
 
-Top-k lo corta en seco: ordena, se queda con los `k` mayores, pone el resto a $-\infty$.
+Top-k cuts it dead: sort, keep the `k` largest, set the rest to $-\infty$.
 
-Su defecto es que `k` es **fijo**. Si el modelo está segurísimo del siguiente token, k=40
-mete 39 alternativas malas. Si está genuinamente indeciso entre 100, corta opciones buenas.
+Its flaw is that `k` is **fixed**. If the model is dead sure about the next token, k=40 lets
+in 39 bad alternatives. If it is genuinely undecided between 100, it cuts off good options.
 
-### Top-p (nucleus): quedarse con los que suman p
+### Top-p (nucleus): keeping the ones that add up to p
 
-La respuesta a ese defecto. En vez de un número fijo, se acumula probabilidad hasta llegar a
-`p` y se corta ahí:
+The answer to that flaw. Instead of a fixed number, you accumulate probability until you reach
+`p` and cut there:
 
 ```
 probs = [0.60, 0.25, 0.10, 0.03, 0.02]
 p = 0.9
 
-acumulado sin este token:
-  0.60  →  0.00  ≤ 0.9  →  entra
-  0.25  →  0.60  ≤ 0.9  →  entra
-  0.10  →  0.85  ≤ 0.9  →  entra   ← el que CRUZA el umbral también entra
-  0.03  →  0.95  > 0.9  →  fuera
-  0.02  →  0.98  > 0.9  →  fuera
+accumulated without this token:
+  0.60  →  0.00  ≤ 0.9  →  in
+  0.25  →  0.60  ≤ 0.9  →  in
+  0.10  →  0.85  ≤ 0.9  →  in    ← the one that CROSSES the threshold goes in too
+  0.03  →  0.95  > 0.9  →  out
+  0.02  →  0.98  > 0.9  →  out
 ```
 
-Se queda con 3 candidatos, que suman 0,95.
+It keeps 3 candidates, which add up to 0.95.
 
-**Fíjate en el token que cruza el umbral: entra.** La definición de Holtzman es *"el conjunto
-más pequeño cuya probabilidad acumulada **excede** p"*, y `[0.60, 0.25]` suma 0,85, que no
-excede 0,9. Hace falta el tercero. Si cortaras antes, el conjunto no llegaría a la masa
-pedida.
+**Note the token that crosses the threshold: it goes in.** Holtzman's definition is *"the
+smallest set whose cumulative probability **exceeds** p"*, and `[0.60, 0.25]` adds up to 0.85,
+which does not exceed 0.9. You need the third one. If you cut earlier, the set would not reach
+the requested mass.
 
-Es un off-by-one fácil de equivocar —yo lo tuve mal escribiendo este módulo— y por eso en el
-código la comparación es sobre la acumulada **antes** de incluir cada token.
+It is an easy off-by-one to get wrong —I had it wrong writing this module— and that is why in
+the code the comparison is against the cumulative **before** including each token.
 
-Y si la distribución fuera `[0.2, 0.2, 0.2, 0.2, 0.2]`, se quedaría con los 5. **El número de
-candidatos se adapta a lo seguro que esté el modelo**, y eso es exactamente lo que quieres.
+And if the distribution were `[0.2, 0.2, 0.2, 0.2, 0.2]`, it would keep all 5. **The number of
+candidates adapts to how sure the model is**, and that is exactly what you want.
 
-Un detalle de implementación: **el token más probable siempre se conserva**, aunque él solo
-ya supere `p`. Si no, con `p=0.5` y un token de probabilidad 0,9 te quedarías sin candidatos.
+An implementation detail: **the most likely token is always kept**, even if it alone already
+exceeds `p`. Otherwise, with `p=0.5` and a token of probability 0.9 you would be left with no
+candidates.
 
-### Penalización de repetición
+### Repetition penalty
 
-Un parche directo contra los bucles: bajar el logit de los tokens que ya han salido.
+A direct patch against loops: lower the logit of the tokens that have already come out.
 
-Aquí hay un detalle que casi todo el mundo implementa mal. Hay que **dividir si el logit es
-positivo y multiplicar si es negativo**:
+Here there is a detail that almost everyone implements wrong. You have to **divide if the
+logit is positive and multiply if it is negative**:
 
 ```
-logit = +3  →  3 / 1.1 = 2.73    lo acerca a cero
-logit = -3  →  -3 * 1.1 = -3.3   lo aleja de cero, hacia abajo
+logit = +3  →  3 / 1.1 = 2.73    moves it towards zero
+logit = -3  →  -3 * 1.1 = -3.3   moves it away from zero, downwards
 ```
 
-Si dividieras siempre, un logit de −5 pasaría a −4,5, o sea que el token se volvería **más**
-probable: justo lo contrario.
+If you always divided, a logit of −5 would become −4.5, that is, the token would become **more**
+likely: exactly the opposite.
 
-## Parte 2: la KV cache
+## Part 2: the KV cache
 
-Ahora la parte de velocidad, y es donde está la ganancia grande.
+Now the speed part, and it is where the big win is.
 
-### El problema
+### The problem
 
-Al generar el token 100, la versión ingenua pasa los 100 tokens por el modelo. Otra vez.
-Aunque los 99 primeros no han cambiado nada.
+When generating token 100, the naive version passes all 100 tokens through the model. Again.
+Even though the first 99 have not changed at all.
 
-Generar N tokens cuesta $O(N^2)$ cuando debería costar $O(N)$.
+Generating N tokens costs $O(N^2)$ when it should cost $O(N)$.
 
-### La solución
+### The solution
 
-Guardar las claves y valores de cada capa. En cada paso, procesar **solo el token nuevo** y
-concatenar sus K y V a lo guardado.
+Save the keys and values of each layer. At every step, process **only the new token** and
+concatenate its K and V to what is saved.
 
-Lo que **no** se puede cachear son las queries: cada token nuevo necesita su propia pregunta.
-Lo que se reutiliza son las respuestas (K) y los contenidos (V) de los anteriores. De ahí el
-nombre.
+What you **cannot** cache are the queries: every new token needs its own question. What gets
+reused are the answers (K) and the contents (V) of the previous ones. Hence the name.
 
-El bucle queda en dos fases:
+The loop ends up in two phases:
 
-1. **Prefill:** se pasa el prompt entero de golpe y se llena la cache.
-2. **Decode:** en cada paso entra un solo token.
+1. **Prefill:** the whole prompt goes through at once and fills the cache.
+2. **Decode:** at each step a single token goes in.
 
-### El detalle que rompe todo si lo olvidas
+### The detail that breaks everything if you forget it
 
-**RoPE tiene que rotar el token nuevo con el ángulo de su posición real.** Al generar el
-token 50 le pasas un tensor de longitud 1, y si aplicas RoPE tal cual, lo rotará como si
-fuera la posición 0.
+**RoPE has to rotate the new token with the angle of its real position.** When generating
+token 50 you pass it a tensor of length 1, and if you apply RoPE as is, it will rotate it as if
+it were position 0.
 
-Por eso `apply_rope` necesita saber cuántos tokens hay ya en la cache:
+That is why `apply_rope` needs to know how many tokens are already in the cache:
 
 ```python
 cos_t = cos[pos_offset : pos_offset + seq_len]
 ```
 
-Sin ese recorte, la generación con cache produce texto distinto —y peor— que sin ella, y el
-bug es difícil de localizar porque nada falla: simplemente el modelo escribe mal.
+Without that slice, generation with the cache produces different —and worse— text than without
+it, and the bug is hard to find because nothing fails: the model simply writes badly.
 
-### La memoria
+### The memory
 
-$$\text{memoria KV} = 2 \times n_{\text{layers}} \times T \times d_{\text{model}} \times \text{bytes}$$
+$$\text{KV memory} = 2 \times n_{\text{layers}} \times T \times d_{\text{model}} \times \text{bytes}$$
 
-Nuestro modelo con 512 tokens en fp16: **3,9 MB**. Nada.
+Our model with 512 tokens in fp16: **3.9 MB**. Nothing.
 
-Un modelo de 70B con contexto de 100.000 tokens: decenas de gigabytes, más que los propios
-pesos. Por eso existen técnicas como *grouped-query attention*, que comparten K y V entre
-varias cabezas.
+A 70B model with a 100,000-token context: tens of gigabytes, more than the weights themselves.
+That is why techniques like *grouped-query attention* exist, which share K and V across several
+heads.
 
-### Una limitación que conviene conocer
+### A limitation worth knowing about
 
-La generación con cache **para** al llegar al contexto máximo, en vez de recortar como hace
-la versión ingenua.
+Generation with the cache **stops** when it reaches the maximum context, instead of cropping
+the way the naive version does.
 
-No es pereza. Recortar con cache exigiría descartar las entradas antiguas **y remapear las
-posiciones de RoPE** de todo lo que queda, porque los tokens supervivientes pasarían a
-ocupar posiciones distintas de aquellas con las que se rotaron. Eso se llama *sliding window
-attention*, y es un tema por sí solo.
+It is not laziness. Cropping with a cache would require discarding the old entries **and
+remapping the RoPE positions** of everything that is left, because the surviving tokens would
+end up in different positions from the ones they were rotated with. That is called *sliding
+window attention*, and it is a topic in itself.
 
-Parar es lo honesto: la alternativa silenciosa sería generar texto incorrecto sin avisar.
+Stopping is the honest thing: the silent alternative would be generating incorrect text
+without warning.
 
-### La comprobación obligatoria
+### The mandatory check
 
-La cache tiene que dar **exactamente la misma salida**, no parecida. Con `temperature=0`
-(greedy, determinista) las dos secuencias deben coincidir token a token. Si no, hay un bug.
+The cache has to give **exactly the same output**, not a similar one. With `temperature=0`
+(greedy, deterministic) the two sequences must match token by token. If they do not, there is
+a bug.
 
-En la demo verás ambas cosas: salida idéntica y un speedup de 2–3× que crece con la longitud.
+In the demo you will see both things: identical output and a 2–3× speedup that grows with the
+length.
 
-## Dónde está el debate
+## Where the debate is
 
-**Nadie sabe cuáles son los parámetros de muestreo correctos.** Los valores que se usan
-—temperatura 0,8, top-p 0,9— son folclore heredado, ajustados a ojo sobre modelos concretos.
-No hay teoría que los derive, y el óptimo depende del modelo, de la tarea y de a quién le
-preguntes.
+**Nobody knows what the right sampling parameters are.** The values in use —temperature 0.8,
+top-p 0.9— are inherited folklore, tuned by eye on particular models. There is no theory that
+derives them, and the optimum depends on the model, on the task and on who you ask.
 
-Más de fondo: **por qué el texto humano no maximiza la probabilidad** sigue sin explicación
-satisfactoria. Holtzman et al. lo documentaron empíricamente y propusieron top-p como
-remedio, pero la pregunta de fondo —qué distribución genera realmente el lenguaje humano y
-por qué maximizar verosimilitud se aleja de ella— está abierta.
+More fundamentally: **why human text does not maximize probability** still has no satisfying
+explanation. Holtzman et al. documented it empirically and proposed top-p as a remedy, but the
+underlying question —what distribution actually generates human language and why maximizing
+likelihood moves away from it— is open.
 
-Y hay una discusión práctica en curso sobre si el muestreo debería sustituirse por algo
-mejor. Se han propuesto alternativas (typical sampling, mirostat, min-p) con argumentos
-razonables, y ninguna ha desplazado a top-p. Puede que porque no sean mejores, o puede que
-por inercia.
+And there is a practical discussion going on about whether sampling should be replaced by
+something better. Alternatives have been proposed (typical sampling, mirostat, min-p) with
+reasonable arguments, and none has displaced top-p. Maybe because they are not better, or
+maybe out of inertia.
 
 ---
 
-**Para ampliar:** Holtzman et al. 2020,
+**Further reading:** Holtzman et al. 2020,
 [The Curious Case of Neural Text Degeneration](https://arxiv.org/abs/1904.09751) (top-p) ·
 Fan et al. 2018, [Hierarchical Neural Story Generation](https://arxiv.org/abs/1805.04833)
-(top-k). Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+(top-k). Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

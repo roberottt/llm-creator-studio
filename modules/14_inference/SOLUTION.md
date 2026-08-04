@@ -1,95 +1,95 @@
-# 14 — Solución comentada
+# 14 — Annotated solution
 
-## Ejercicio 1 — `apply_repetition_penalty`
+## Exercise 1 — `apply_repetition_penalty`
 
 ```python
 if penalty == 1.0:
     return logits
 
-salida = logits.clone()
-for fila in range(logits.shape[0]):
-    vistos = torch.unique(generated[fila])
-    valores = salida[fila, vistos]
-    salida[fila, vistos] = torch.where(valores > 0, valores / penalty, valores * penalty)
-return salida
+out = logits.clone()
+for row in range(logits.shape[0]):
+    seen = torch.unique(generated[row])
+    values = out[row, seen]
+    out[row, seen] = torch.where(values > 0, values / penalty, values * penalty)
+return out
 ```
 
-**El `torch.where` es todo el ejercicio.** Positivos se dividen, negativos se multiplican.
+**The `torch.where` is the whole exercise.** Positives get divided, negatives get multiplied.
 
-Compruébalo con los números del demo, con `penalty=2.0`:
+Check it with the demo numbers, with `penalty=2.0`:
 
 ```
-logit +3.0  →  3.0 / 2.0 = +1.50    menos probable  ✓
-logit −3.0  →  −3.0 × 2.0 = −6.00   menos probable  ✓
+logit +3.0  →  3.0 / 2.0 = +1.50    less likely  ✓
+logit −3.0  →  −3.0 × 2.0 = −6.00   less likely  ✓
 ```
 
-Si dividieras siempre, el −3,0 pasaría a −1,5 y el token se volvería **más** probable. Y
-como los logits negativos son la mayoría del vocabulario, estarías premiando casi todo lo
-que ya salió: exactamente lo contrario de lo que pretendes.
+If you always divided, the −3.0 would become −1.5 and the token would become **more** likely.
+And since negative logits are the majority of the vocabulary, you would be rewarding almost
+everything that already came out: exactly the opposite of what you intend.
 
-El `torch.unique` evita penalizar dos veces un token que salió dos veces. Hay
-implementaciones que sí acumulan; nosotros no, para que el efecto sea predecible.
+The `torch.unique` avoids penalizing twice a token that came out twice. There are
+implementations that do accumulate; ours does not, so the effect is predictable.
 
-## Ejercicio 2 — `top_k_filter`
+## Exercise 2 — `top_k_filter`
 
 ```python
 if k <= 0 or k >= logits.shape[-1]:
     return logits
 
-umbral = torch.topk(logits, k, dim=-1).values[..., -1:]
-return logits.masked_fill(logits < umbral, float("-inf"))
+threshold = torch.topk(logits, k, dim=-1).values[..., -1:]
+return logits.masked_fill(logits < threshold, float("-inf"))
 ```
 
-**El `[..., -1:]` con dos puntos** conserva la dimensión para que el broadcast funcione. Con
-`[..., -1]` la perderías y `masked_fill` compararía mal.
+**The `[..., -1:]` with the colon** keeps the dimension so the broadcast works. With
+`[..., -1]` you would lose it and `masked_fill` would compare wrongly.
 
-**`<` y no `<=`**: el propio umbral —el k-ésimo logit— tiene que sobrevivir.
+**`<` and not `<=`**: the threshold itself —the k-th logit— has to survive.
 
-## Ejercicio 3 — `top_p_filter`
+## Exercise 3 — `top_p_filter`
 
 ```python
 if p >= 1.0:
     return logits
 
-ordenados, indices = torch.sort(logits, descending=True, dim=-1)
-probs = F.softmax(ordenados, dim=-1)
-acumulada = torch.cumsum(probs, dim=-1)
+sorted_logits, indices = torch.sort(logits, descending=True, dim=-1)
+probs = F.softmax(sorted_logits, dim=-1)
+cumulative = torch.cumsum(probs, dim=-1)
 
-quitar = acumulada - probs > p
-quitar[..., 0] = False
+drop = cumulative - probs > p
+drop[..., 0] = False
 
-a_quitar = quitar.scatter(-1, indices, quitar)
-return logits.masked_fill(a_quitar, float("-inf"))
+to_drop = drop.scatter(-1, indices, drop)
+return logits.masked_fill(to_drop, float("-inf"))
 ```
 
-### El off-by-one que yo mismo tuve mal
+### The off-by-one I got wrong myself
 
-Escribiendo este módulo puse en la teoría que `[0.60, 0.25, 0.10, 0.03, 0.02]` con `p=0.9`
-dejaba **2** candidatos. El test dijo 3, y el test tenía razón.
+Writing this module I put in the theory that `[0.60, 0.25, 0.10, 0.03, 0.02]` with `p=0.9`
+left **2** candidates. The test said 3, and the test was right.
 
-La definición de Holtzman es *"el conjunto más pequeño cuya probabilidad acumulada **excede**
-p"*. Y `0.60 + 0.25 = 0.85` **no** excede 0,9. Hace falta el tercero, que lleva la masa a
-0,95.
+Holtzman's definition is *"the smallest set whose cumulative probability **exceeds** p"*. And
+`0.60 + 0.25 = 0.85` does **not** exceed 0.9. The third one is needed, and it takes the mass
+to 0.95.
 
-Por eso la comparación es `acumulada - probs > p`: se mira la acumulada **antes** de incluir
-cada token, de forma que el que cruza el umbral todavía entra. Si compararas `acumulada > p`
-a secas, cortarías uno de más.
+That is why the comparison is `cumulative - probs > p`: you look at the cumulative **before**
+including each token, so the one that crosses the threshold still gets in. If you compared
+`cumulative > p` plainly, you would cut one too many.
 
-Es el mismo criterio que usa la implementación de HuggingFace, que lo resuelve desplazando
-la máscara una posición a la derecha.
+It is the same criterion HuggingFace's implementation uses, which solves it by shifting the
+mask one position to the right.
 
-### El `quitar[..., 0] = False`
+### The `drop[..., 0] = False`
 
-Con `p=0.5` y un token de probabilidad 0,9, sin esa línea no quedaría ningún candidato y
-`torch.multinomial` reventaría. El token más probable **siempre** sobrevive.
+With `p=0.5` and a token of probability 0.9, without that line no candidate would be left and
+`torch.multinomial` would blow up. The most likely token **always** survives.
 
-### El `scatter`, que es lo que más cuesta ver
+### The `scatter`, which is the hardest part to see
 
-Has ordenado los logits, así que las marcas de "quitar" están en orden de probabilidad, no
-en orden de token. `scatter(-1, indices, quitar)` las devuelve a su sitio: para cada posición
-`j` del tensor ordenado, escribe su marca en la posición `indices[j]` del resultado.
+You sorted the logits, so the "drop" marks are in order of probability, not in order of token.
+`scatter(-1, indices, drop)` puts them back in place: for every position `j` of the sorted
+tensor, it writes its mark at position `indices[j]` of the result.
 
-## Ejercicio 4 — `KVCache`
+## Exercise 4 — `KVCache`
 
 ```python
 def update(self, layer, k, v):
@@ -102,230 +102,93 @@ def update(self, layer, k, v):
     return self.keys[layer], self.values[layer]
 ```
 
-**`dim=-2`** es la dimensión de tiempo con la forma `(B, n_heads, T, head_dim)`. Índice
-negativo: con `dim=2` funcionaría aquí y se rompería si algún día cambia el número de
-dimensiones.
+**`dim=-2`** is the time dimension with the shape `(B, n_heads, T, head_dim)`. A negative
+index: with `dim=2` it would work here and break the day the number of dimensions changes.
 
-Lo demás es contabilidad. La clase es deliberadamente sencilla porque la dificultad no está
-aquí, está en el ejercicio 5.
+The rest is bookkeeping. The class is deliberately simple because the difficulty is not here,
+it is in exercise 5.
 
-## Ejercicio 5 — `generate_with_cache`
+## Exercise 5 — `generate_with_cache`
 
-### El detalle que rompe todo
+### The detail that breaks everything
 
-**RoPE tiene que rotar el token nuevo con el ángulo de su posición real.**
+**RoPE has to rotate the new token with the angle of its real position.**
 
-Al generar el token 50 le pasas un tensor de longitud 1. Si aplicas RoPE tal cual, lo rota
-como si fuera la posición 0. El resultado: la generación con cache produce texto **distinto
-y peor** que sin ella, y nada falla — simplemente el modelo escribe mal.
+When generating token 50 you pass it a tensor of length 1. If you apply RoPE as is, it rotates
+it as if it were position 0. The result: generation with the cache produces **different and
+worse** text than without it, and nothing fails — the model simply writes badly.
 
-Por eso la atención recibe `pos_offset` y recorta las tablas:
+That is why attention receives `pos_offset` and slices the tables:
 
 ```python
 cos_t = cos[pos_offset : pos_offset + seq_len]
 ```
 
-El test `test_la_cache_da_exactamente_la_misma_salida` es lo que lo caza, y su mensaje de
-error apunta directamente aquí.
+The test `test_the_cache_gives_exactly_the_same_output` is what catches it, and its error
+message points straight here.
 
-### El orden de los filtros
+### The order of the filters
 
 ```
-penalización → temperatura → top-k → top-p
+penalty → temperature → top-k → top-p
 ```
 
-La temperatura va antes de los filtros porque cambia las probabilidades acumuladas que mira
-top-p. (No cambia el *ranking*: dividir por una constante positiva no reordena nada.)
+The temperature goes before the filters because it changes the cumulative probabilities top-p
+looks at. (It does not change the *ranking*: dividing by a positive constant does not reorder
+anything.)
 
-### El `.float()` de los logits
+### The `.float()` on the logits
 
-Bajo AMP los logits llegan en fp16, y `torch.multinomial` sobre fp16 puede dar resultados
-raros con probabilidades muy pequeñas. Convertir a fp32 antes de muestrear es barato.
+Under AMP the logits arrive in fp16, and `torch.multinomial` on fp16 can give odd results with
+very small probabilities. Converting to fp32 before sampling is cheap.
 
-### Un bug que encontré escribiendo el demo
+### A bug I found writing the demo
 
-La primera versión reventaba al generar más allá del contexto: `model.generate` recorta con
-`idx[:, -context_length:]`, pero con cache eso no vale.
+The first version blew up when generating past the context: `model.generate` crops with
+`idx[:, -context_length:]`, but with a cache that will not do.
 
-Recortar con cache exigiría descartar las entradas antiguas **y remapear las posiciones de
-RoPE** de todo lo que queda, porque los tokens supervivientes pasarían a ocupar posiciones
-distintas de aquellas con las que se rotaron. Eso es *sliding window attention* y da para un
-módulo entero.
+Cropping with a cache would require discarding the old entries **and remapping the RoPE
+positions** of everything that is left, because the surviving tokens would end up in different
+positions from the ones they were rotated with. That is *sliding window attention* and it is
+worth a module of its own.
 
-La solución que adopté es parar limpiamente al llegar al límite, y lanzar un `ValueError`
-claro si el prompt ya lo llena. Parar es lo honesto: la alternativa silenciosa sería generar
-texto incorrecto sin avisar.
+The solution I adopted is to stop cleanly on reaching the limit, and to raise a clear
+`ValueError` if the prompt already fills it. Stopping is the honest thing: the silent
+alternative would be generating incorrect text without warning.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-**El bucle de greedy**, medido como fracción de 4-gramas distintos:
+**Greedy's loop**, measured as the fraction of distinct 4-grams:
 
-| estrategia | variedad | texto |
+| strategy | variety | text |
 |---|---|---|
 | greedy (T=0) | **29%** | `The king of the sea of the sea That shall see the sea of the sea` |
-| T=0,8 + top-k 40 | 96% | `The king; To bring what heart you but dead-look'd me to-morrow` |
-| T=1,5 | 100% | `Tak't I am fan undooses our very looks, Were stewest, grounde;` |
-| greedy + penalty 1,3 | 93% | `The king, As to my lady's brother with the prince.` |
+| T=0.8 + top-k 40 | 96% | `The king; To bring what heart you but dead-look'd me to-morrow` |
+| T=1.5 | 100% | `Tak't I am fan undooses our very looks, Were stewest, grounde;` |
+| greedy + penalty 1.3 | 93% | `The king, As to my lady's brother with the prince.` |
 
-Greedy se atasca en `the sea of the sea` de forma perfectamente visible. **El texto humano no
-maximiza la probabilidad**, y esa es la observación central de Holtzman et al.
+Greedy gets stuck on `the sea of the sea` in a perfectly visible way. **Human text does not
+maximize probability**, and that is Holtzman et al.'s central observation.
 
-Fíjate también en la última fila: la penalización rescata a greedy sin quitarle el
-determinismo. Y en T=1,5, donde el 100% de variedad es señal de que ya desvaría.
+Note the last row too: the penalty rescues greedy without taking away its determinism. And
+T=1.5, where 100% variety is a sign that it is already rambling.
 
-**Y la cache:**
+**And the cache:**
 
 ```
-sin cache: [43, 1, 57, 43, 39, 0, 32, 46, 39, 58]
-con cache: [43, 1, 57, 43, 39, 0, 32, 46, 39, 58]   IDÉNTICOS
+without cache: [43, 1, 57, 43, 39, 0, 32, 46, 39, 58]
+with cache:    [43, 1, 57, 43, 39, 0, 32, 46, 39, 58]   IDENTICAL
 ```
 
-| tokens | sin cache | con cache | speedup |
+| tokens | without cache | with cache | speedup |
 |---|---|---|---|
-| 50 | 159 ms | 133 ms | 1,20x |
-| 200 | 1115 ms | 833 ms | 1,34x |
-| 800 | 4330 ms | 1962 ms | **2,21x** |
+| 50 | 159 ms | 133 ms | 1.20x |
+| 200 | 1115 ms | 833 ms | 1.34x |
+| 800 | 4330 ms | 1962 ms | **2.21x** |
 
-**El speedup crece con la longitud**, que es exactamente lo que predice el análisis: sin
-cache es $O(N^2)$ y con cache $O(N)$. Con las secuencias cortas de este ejemplo la ganancia
-es modesta; con contextos de miles de tokens, la diferencia es de otro orden.
-
----
-
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-def apply_repetition_penalty(
-    logits: torch.Tensor, generated: torch.Tensor, penalty: float = 1.1
-) -> torch.Tensor:
-    if penalty == 1.0:
-        return logits
-
-    salida = logits.clone()
-    for fila in range(logits.shape[0]):
-        vistos = torch.unique(generated[fila])
-        valores = salida[fila, vistos]
-        salida[fila, vistos] = torch.where(valores > 0, valores / penalty, valores * penalty)
-    return salida
-
-
-def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
-    if k <= 0 or k >= logits.shape[-1]:
-        return logits
-
-    umbral = torch.topk(logits, k, dim=-1).values[..., -1:]
-    return logits.masked_fill(logits < umbral, float("-inf"))
-
-
-def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
-    if p >= 1.0:
-        return logits
-
-    ordenados, indices = torch.sort(logits, descending=True, dim=-1)
-    acumulada = torch.cumsum(F.softmax(ordenados, dim=-1), dim=-1)
-
-    quitar = acumulada - F.softmax(ordenados, dim=-1) > p
-    quitar[..., 0] = False  # el mas probable siempre se queda
-
-    a_quitar = quitar.scatter(-1, indices, quitar)
-    return logits.masked_fill(a_quitar, float("-inf"))
-
-
-class KVCache:
-
-    def __init__(self, n_layers: int) -> None:
-        self.n_layers = n_layers
-        self.keys: list[torch.Tensor | None] = [None] * n_layers
-        self.values: list[torch.Tensor | None] = [None] * n_layers
-
-    def update(
-        self, layer: int, k: torch.Tensor, v: torch.Tensor
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.keys[layer] is None:
-            self.keys[layer] = k
-            self.values[layer] = v
-        else:
-            # dim=-2 es la dimension de tiempo con la forma (B, heads, T, head_dim)
-            self.keys[layer] = torch.cat([self.keys[layer], k], dim=-2)
-            self.values[layer] = torch.cat([self.values[layer], v], dim=-2)
-        return self.keys[layer], self.values[layer]
-
-    @property
-    def seq_len(self) -> int:
-        return 0 if self.keys[0] is None else self.keys[0].shape[-2]
-
-    def reset(self) -> None:
-        self.keys = [None] * self.n_layers
-        self.values = [None] * self.n_layers
-
-    def memory_bytes(self) -> int:
-        return sum(
-            t.numel() * t.element_size()
-            for t in [*self.keys, *self.values]
-            if t is not None
-        )
-
-
-@torch.no_grad()
-def generate_with_cache(
-    model: Any,
-    idx: torch.Tensor,
-    max_new_tokens: int,
-    temperature: float = 1.0,
-    top_k: int | None = None,
-    top_p: float | None = None,
-    repetition_penalty: float = 1.0,
-    eos_token: int | None = None,
-) -> torch.Tensor:
-    model.eval()
-    cache = KVCache(model.cfg.n_layers)
-    contexto_max = model.cfg.context_length
-
-    if idx.shape[1] >= contexto_max:
-        raise ValueError(
-            f"el prompt ya tiene {idx.shape[1]} tokens y el contexto del modelo es "
-            f"{contexto_max}: no queda sitio para generar"
-        )
-
-    logits, _ = model(idx, use_cache=True, cache=cache)
-
-    for _ in range(max_new_tokens):
-        if idx.shape[1] >= contexto_max:
-            break
-        siguiente = logits[:, -1, :].float()
-
-        if repetition_penalty != 1.0:
-            siguiente = apply_repetition_penalty(siguiente, idx, repetition_penalty)
-        if temperature != 1.0:
-            siguiente = siguiente / max(temperature, 1e-8)
-        if top_k is not None:
-            siguiente = top_k_filter(siguiente, top_k)
-        if top_p is not None:
-            siguiente = top_p_filter(siguiente, top_p)
-
-        if temperature == 0.0:
-            nuevo = siguiente.argmax(dim=-1, keepdim=True)
-        else:
-            nuevo = torch.multinomial(F.softmax(siguiente, dim=-1), num_samples=1)
-
-        idx = torch.cat([idx, nuevo], dim=1)
-        if eos_token is not None and bool((nuevo == eos_token).all()):
-            break
-
-        # Solo el token nuevo: la cache tiene el resto.
-        logits, _ = model(nuevo, use_cache=True, cache=cache)
-
-    return idx
-```
-
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+**The speedup grows with the length**, which is exactly what the analysis predicts: without a
+cache it is $O(N^2)$ and with one $O(N)$. With the short sequences in this example the gain is
+modest; with contexts of thousands of tokens, the difference is of another order.
 
 ---
 

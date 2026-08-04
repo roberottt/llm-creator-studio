@@ -1,44 +1,45 @@
-"""Modulo 14 - Inferencia y muestreo.
+"""Module 14 - Inference and sampling.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa en orden -> `llmfs check 14` -> `llmfs hint 14 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement in order -> `llmfs check 14` -> `llmfs hint 14 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Como se saca texto de un modelo entrenado, y como hacerlo rapido:
+How you get text out of a trained model, and how to do it fast:
 
-    apply_repetition_penalty  (ej. 1)  romper los bucles
-    top_k_filter              (ej. 2)  quedarse con los k mejores
-    top_p_filter              (ej. 3)  quedarse con los que suman p
+    apply_repetition_penalty  (ex. 1)  breaking the loops
+    top_k_filter              (ex. 2)  keeping the k best
+    top_p_filter              (ex. 3)  keeping the ones that add up to p
             |
-    KVCache                   (ej. 4)  guardar lo ya calculado
+    KVCache                   (ex. 4)  saving what has already been computed
             |
             v
-    generate_with_cache       (ej. 5)  el bucle que junta todo
+    generate_with_cache       (ex. 5)  the loop that puts it all together
 
-Los tres primeros son cortos. El 5 es donde esta la dificultad, y tiene una comprobacion
-implacable: con la cache tiene que salir EXACTAMENTE el mismo texto que sin ella.
+The first three are short. Number 5 is where the difficulty is, and it has a relentless
+check: with the cache it has to produce EXACTLY the same text as without it.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **muestrear** (sample): elegir el siguiente token al azar respetando sus probabilidades,
-  en vez de coger siempre el mas probable.
-- **greedy**: coger siempre el mas probable. Es determinista y se mete en bucles.
-- **temperatura**: dividir los logits antes del softmax. Menor de 1 afila la distribucion,
-  mayor de 1 la aplana.
-- **top-k / top-p**: dos formas de descartar los tokens malos. Top-k coge un numero fijo,
-  top-p un numero variable segun lo seguro que este el modelo.
-- **KV cache**: guardar las claves y valores ya calculados para no recalcularlos en cada
-  token. Convierte un coste O(N^2) en O(N).
-- **prefill / decode**: las dos fases de la generacion. Prefill procesa el prompt entero;
-  decode va token a token.
+- **sample**: pick the next token at random respecting its probabilities, instead of always
+  taking the most likely one.
+- **greedy**: always taking the most likely one. It is deterministic and it gets stuck in
+  loops.
+- **temperature**: dividing the logits before the softmax. Below 1 sharpens the distribution,
+  above 1 flattens it.
+- **top-k / top-p**: two ways of discarding the bad tokens. Top-k takes a fixed number, top-p
+  a variable number depending on how sure the model is.
+- **KV cache**: saving the keys and values already computed so they are not recomputed for
+  every token. It turns an O(N^2) cost into O(N).
+- **prefill / decode**: the two phases of generation. Prefill processes the whole prompt;
+  decode goes token by token.
 
-    llmfs demo 14     compara estrategias de muestreo y mide el speedup de la cache
+    llmfs demo 14     compares sampling strategies and measures the cache speedup
 """
 
 from __future__ import annotations
@@ -52,235 +53,235 @@ import torch.nn.functional as F
 def apply_repetition_penalty(
     logits: torch.Tensor, generated: torch.Tensor, penalty: float = 1.1
 ) -> torch.Tensor:
-    """Penaliza los tokens que ya han salido, para romper bucles.
+    """Penalizes the tokens that have already come out, to break loops.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un bucle por filas del batch. Cuatro lineas dentro.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A loop over the rows of the batch. Four lines inside.
 
-        1. Copia, para no modificar la entrada:
+        1. A copy, so you do not modify the input:
 
                out = logits.clone()
 
-        2. Para cada fila:
+        2. For each row:
 
-               for fila in range(logits.shape[0]):
-                   vistos = torch.unique(generated[fila])
-                   valores = out[fila, vistos]
-                   out[fila, vistos] = torch.where(
-                       valores > 0, valores / penalty, valores * penalty
+               for row in range(logits.shape[0]):
+                   seen = torch.unique(generated[row])
+                   values = out[row, seen]
+                   out[row, seen] = torch.where(
+                       values > 0, values / penalty, values * penalty
                    )
 
         3. `return out`
 
-    Si `penalty == 1.0` puedes devolver `logits` tal cual y ahorrarte todo: dividir y
-    multiplicar por 1 no hace nada.
+    If `penalty == 1.0` you can return `logits` as it is and save yourself everything:
+    dividing and multiplying by 1 does nothing.
 
-    EL DETALLE QUE CASI TODO EL MUNDO IMPLEMENTA MAL
-    ------------------------------------------------
-        logit > 0  ->  logit / penalty      lo acerca a cero
-        logit < 0  ->  logit * penalty      lo aleja de cero, HACIA ABAJO
+    THE DETAIL ALMOST EVERYONE IMPLEMENTS WRONG
+    -------------------------------------------
+        logit > 0  ->  logit / penalty      moves it towards zero
+        logit < 0  ->  logit * penalty      moves it away from zero, DOWNWARDS
 
-    Con penalty=1.1:
+    With penalty=1.1:
 
-        +3.0  ->   3.0 / 1.1 =  2.73    menos probable   OK
-        -3.0  ->  -3.0 * 1.1 = -3.30    menos probable   OK
+        +3.0  ->   3.0 / 1.1 =  2.73    less likely   OK
+        -3.0  ->  -3.0 * 1.1 = -3.30    less likely   OK
 
-    Si dividieras SIEMPRE, el -3.0 pasaria a -2.73, o sea que el token se volveria MAS
-    probable: justo lo contrario de penalizarlo. Y como los logits negativos son la mayoria
-    aplastante, estarias premiando casi todo lo que ya salio. El bug es silencioso: el texto
-    sale repetitivo y parece que el parametro no hace nada.
+    If you ALWAYS divided, the -3.0 would become -2.73, that is, the token would become MORE
+    likely: exactly the opposite of penalizing it. And since negative logits are the
+    overwhelming majority, you would be rewarding almost everything that already came out. The
+    bug is silent: the text comes out repetitive and it looks like the parameter does nothing.
 
-    Por eso hace falta el `torch.where` y no vale una sola operacion.
+    That is why the `torch.where` is needed and a single operation will not do.
 
-    POR QUÉ `torch.unique`
-    ----------------------
-    Evita penalizar dos veces un token que aparecio dos veces. Si escribieses
-    `out[fila, generated[fila]] = ...` con indices repetidos, PyTorch aplica la asignacion una
-    sola vez de forma no determinista, asi que ni siquiera acumularia bien. Hay
-    implementaciones que si acumulan a proposito; nosotros no, para que el efecto sea
-    predecible.
+    WHY `torch.unique`
+    ------------------
+    It avoids penalizing twice a token that appeared twice. If you wrote
+    `out[row, generated[row]] = ...` with repeated indices, PyTorch applies the assignment only
+    once, non-deterministically, so it would not even accumulate properly. There are
+    implementations that do accumulate on purpose; ours does not, so the effect is predictable.
 
-    QUÉ ES ESTO EN REALIDAD
-    -----------------------
-    Un parche. Un modelo bien entrenado no deberia meterse en bucles, y el nuestro, siendo de
-    9M, si lo hace. Esto lo tapa: si un token ya ha aparecido, se le baja el logit.
+    WHAT THIS REALLY IS
+    -------------------
+    A patch. A well-trained model should not get stuck in loops, and ours, being 9M, does.
+    This covers it up: if a token has already appeared, its logit is lowered.
 
-    No es un metodo con base teorica —a diferencia de top-p, que sale de un paper con
-    experimentos— sino un truco practico que funciona. Con valores altos (>1.3) empieza a
-    notarse: el modelo evita palabras necesarias, como articulos y preposiciones, que por su
-    naturaleza tienen que repetirse.
+    It is not a method with a theoretical basis —unlike top-p, which comes from a paper with
+    experiments— but a practical trick that works. With high values (>1.3) it starts to show:
+    the model avoids necessary words, like articles and prepositions, which by their nature
+    have to repeat.
 
     Args:
-        logits: `(B, vocab_size)`, los logits del siguiente token.
-        generated: `(B, T)`, los tokens generados hasta ahora.
-        penalty: 1.0 no hace nada. Valores tipicos: 1.05 a 1.2.
+        logits: `(B, vocab_size)`, the logits of the next token.
+        generated: `(B, T)`, the tokens generated so far.
+        penalty: 1.0 does nothing. Typical values: 1.05 to 1.2.
 
     Returns:
-        Los logits penalizados. NO modifica la entrada.
+        The penalized logits. It does NOT modify the input.
     """
-    raise NotImplementedError("TODO: modulo 14, ejercicio 1 - apply_repetition_penalty")
+    raise NotImplementedError("TODO: module 14, exercise 1 - apply_repetition_penalty")
 
 
 def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
-    """Deja solo los `k` logits mayores y pone el resto a -inf.
+    """Leaves only the `k` largest logits and sets the rest to -inf.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines.
 
-        1. El caso borde:
+        1. The edge case:
 
                if k <= 0 or k >= logits.shape[-1]:
                    return logits
 
-        2. El umbral, que es el k-esimo logit mayor:
+        2. The threshold, which is the k-th largest logit:
 
-               umbral = torch.topk(logits, k, dim=-1).values[..., -1:]
+               threshold = torch.topk(logits, k, dim=-1).values[..., -1:]
 
-        3. El filtro:
+        3. The filter:
 
-               return logits.masked_fill(logits < umbral, float("-inf"))
+               return logits.masked_fill(logits < threshold, float("-inf"))
 
-    DOS COSAS QUE MIRAR CON LUPA
-    ----------------------------
-    **El `[..., -1:]` con dos puntos.** `torch.topk` devuelve los k valores ordenados de mayor a
-    menor, asi que el ultimo es el umbral. Con `[..., -1]` (sin los dos puntos) perderias esa
-    dimension y el broadcast del paso 3 no cuadraria. Con `[..., -1:]` te queda `(B, 1)`, que se
-    emite bien contra `(B, vocab_size)`.
+    TWO THINGS TO LOOK AT CLOSELY
+    -----------------------------
+    **The `[..., -1:]` with the colon.** `torch.topk` returns the k values sorted from largest
+    to smallest, so the last one is the threshold. With `[..., -1]` (without the colon) you
+    would lose that dimension and the broadcast in step 3 would not line up. With `[..., -1:]`
+    you get `(B, 1)`, which broadcasts properly against `(B, vocab_size)`.
 
-    **`<` y no `<=`.** El propio umbral tiene que SOBREVIVIR: es el k-esimo mejor y forma parte
-    de los k que quieres. Con `<=` te quedarias con k-1 candidatos (o con menos si hay empates).
+    **`<` and not `<=`.** The threshold itself has to SURVIVE: it is the k-th best and it is
+    one of the k you want. With `<=` you would end up with k-1 candidates (or fewer if there
+    are ties).
 
-    POR QUÉ -inf Y NO 0
-    -------------------
-    Porque estos numeros van a pasar por un softmax, y `exp(-inf) = 0` exacto. Poner 0 no
-    descartaria nada: 0 es un logit perfectamente normal, y `exp(0) = 1` es una probabilidad
-    BASTANTE alta comparada con un logit de -5.
+    WHY -inf AND NOT 0
+    ------------------
+    Because these numbers are going through a softmax, and `exp(-inf) = 0` exactly. Putting 0
+    would not discard anything: 0 is a perfectly normal logit, and `exp(0) = 1` is a QUITE high
+    probability compared to a logit of -5.
 
-    QUÉ PROBLEMA RESUELVE
-    ---------------------
-    Con vocabulario de 4096 hay miles de tokens con probabilidad diminuta pero no nula.
-    Sumadas, esa cola larga puede llevarse un 20% de la masa total, y de vez en cuando sale una
-    de esas y descarrila la frase entera. Como el modelo es autorregresivo, no hay vuelta atras:
-    sigue generando sobre el error.
+    WHAT PROBLEM IT SOLVES
+    ----------------------
+    With a vocabulary of 4096 there are thousands of tokens with a tiny but non-zero
+    probability. Added up, that long tail can take 20% of the total mass, and every so often
+    one of those comes out and derails the whole sentence. Since the model is autoregressive,
+    there is no going back: it keeps generating on top of the mistake.
 
-    Top-k corta la cola en seco.
+    Top-k cuts the tail dead.
 
-    SU DEFECTO, QUE ARREGLA EL EJERCICIO SIGUIENTE
-    ----------------------------------------------
-    `k` es FIJO. Si el modelo esta segurisimo del siguiente token (despues de "Once upon a",
-    "time" se lleva el 99%), k=40 mete 39 alternativas malas. Si el modelo duda genuinamente
-    entre 100 continuaciones validas, k=40 corta opciones buenas.
+    ITS FLAW, WHICH THE NEXT EXERCISE FIXES
+    ---------------------------------------
+    `k` is FIXED. If the model is dead sure about the next token (after "Once upon a", "time"
+    takes 99%), k=40 lets in 39 bad alternatives. If the model genuinely hesitates between 100
+    valid continuations, k=40 cuts off good options.
 
-    Eso lo resuelve top-p, con un numero variable de candidatos.
+    That is what top-p solves, with a variable number of candidates.
 
     Args:
         logits: `(B, vocab_size)`.
-        k: cuantos candidatos dejar. Si es <= 0 o >= vocab_size, no filtra nada.
+        k: how many candidates to keep. If it is <= 0 or >= vocab_size, it filters nothing.
 
     Returns:
-        Los logits con todo menos los k mayores puestos a -inf.
+        The logits with everything but the k largest set to -inf.
     """
-    raise NotImplementedError("TODO: modulo 14, ejercicio 2 - top_k_filter")
+    raise NotImplementedError("TODO: module 14, exercise 2 - top_k_filter")
 
 
 def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
-    """Nucleus sampling: se queda con los tokens que acumulan una masa `p`.
+    """Nucleus sampling: keeps the tokens that accumulate a mass of `p`.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Seis lineas, y la 5 es la que cuesta ver.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Six lines, and number 5 is the one that is hard to see.
 
-        1. El caso borde:
+        1. The edge case:
 
                if p >= 1.0:
                    return logits
 
-        2. Ordena de mayor a menor, guardando de donde venia cada uno:
+        2. Sort from largest to smallest, keeping where each one came from:
 
-               ordenados, indices = torch.sort(logits, descending=True, dim=-1)
+               sorted_logits, indices = torch.sort(logits, descending=True, dim=-1)
 
-        3. Las probabilidades y su acumulada:
+        3. The probabilities and their cumulative sum:
 
-               probs = F.softmax(ordenados, dim=-1)
-               acumulada = torch.cumsum(probs, dim=-1)
+               probs = F.softmax(sorted_logits, dim=-1)
+               cumulative = torch.cumsum(probs, dim=-1)
 
-        4. Marca lo que sobra:
+        4. Mark what is left over:
 
-               quitar = acumulada - probs > p
+               remove = cumulative - probs > p
 
-        5. El mas probable SIEMPRE se queda:
+        5. The most likely one ALWAYS stays:
 
-               quitar[..., 0] = False
+               remove[..., 0] = False
 
-        6. Devuelve las marcas al orden original y filtra:
+        6. Put the marks back in the original order and filter:
 
-               a_quitar = quitar.scatter(-1, indices, quitar)
-               return logits.masked_fill(a_quitar, float("-inf"))
+               to_remove = remove.scatter(-1, indices, remove)
+               return logits.masked_fill(to_remove, float("-inf"))
 
-    EL EJEMPLO, SEGUIDO A MANO
-    --------------------------
-    Con probs = [0.60, 0.25, 0.10, 0.03, 0.02] y p = 0.9. La columna que decide es la acumulada
-    ANTES de incluir el token actual, o sea `acumulada - probs`:
+    THE EXAMPLE, FOLLOWED BY HAND
+    -----------------------------
+    With probs = [0.60, 0.25, 0.10, 0.03, 0.02] and p = 0.9. The column that decides is the
+    cumulative BEFORE including the current token, that is `cumulative - probs`:
 
-        prob    acumulada    acumulada - prob    ¿> 0.9?
-        0.60      0.60             0.00            no    -> entra
-        0.25      0.85             0.60            no    -> entra
-        0.10      0.95             0.85            no    -> entra   <- el que CRUZA
-        0.03      0.98             0.95            SI    -> fuera
-        0.02      1.00             0.98            SI    -> fuera
+        prob    cumulative    cumulative - prob    > 0.9?
+        0.60      0.60             0.00             no    -> in
+        0.25      0.85             0.60             no    -> in
+        0.10      0.95             0.85             no    -> in   <- the one that CROSSES
+        0.03      0.98             0.95             YES   -> out
+        0.02      1.00             0.98             YES   -> out
 
-    Se queda con 3 candidatos, que suman 0.95.
+    It keeps 3 candidates, which add up to 0.95.
 
-    Con probs = [0.2]*5 se quedaria con los 5. EL NUMERO DE CANDIDATOS SE ADAPTA A LO SEGURO
-    QUE ESTE EL MODELO, y eso es lo que lo hace mejor que top-k en la practica.
+    With probs = [0.2]*5 it would keep all 5. THE NUMBER OF CANDIDATES ADAPTS TO HOW SURE THE
+    MODEL IS, and that is what makes it better than top-k in practice.
 
-    EL `- probs` DEL PASO 4 ES UN OFF-BY-ONE FÁCIL DE EQUIVOCAR
-    -----------------------------------------------------------
-    La definicion de Holtzman es "el conjunto mas pequenyo cuya probabilidad acumulada EXCEDE
-    p". Fijate en el ejemplo: 0.60 + 0.25 = 0.85, que NO excede 0.9. Hace falta el tercero.
+    THE `- probs` OF STEP 4 IS AN EASY OFF-BY-ONE TO GET WRONG
+    ----------------------------------------------------------
+    Holtzman's definition is "the smallest set whose cumulative probability EXCEEDS p". Look at
+    the example: 0.60 + 0.25 = 0.85, which does NOT exceed 0.9. You need the third one.
 
-    Si compararas `acumulada > p` a secas, el token que cruza el umbral se quedaria fuera y
-    cortarias uno de menos. Es un error de un solo candidato que no revienta nada y que solo se
-    detecta contando.
+    If you compared `cumulative > p` plainly, the token that crosses the threshold would be
+    left out and you would cut one too few. It is a one-candidate error that breaks nothing and
+    is only detected by counting.
 
-    EL PASO 5 NO ES OPCIONAL
-    ------------------------
-    Con p=0.5 y un token de probabilidad 0.9, la acumulada-antes del primer token es 0.00, que
-    no supera 0.5... pero el segundo tiene acumulada-antes 0.90, y todos los demas tambien.
-    Peor: si el primer token tuviera probabilidad 0.95 y p fuera 0.5, sin esa linea te podrias
-    quedar SIN NINGUN candidato y `torch.multinomial` reventaria con un error incomprensible.
-    Hay un test que lo comprueba.
+    STEP 5 IS NOT OPTIONAL
+    ----------------------
+    With p=0.5 and a token of probability 0.9, the cumulative-before of the first token is
+    0.00, which does not exceed 0.5... but the second one has a cumulative-before of 0.90, and
+    so do all the others. Worse: if the first token had probability 0.95 and p were 0.5,
+    without that line you could end up with NO candidates at all and `torch.multinomial` would
+    blow up with an incomprehensible error. There is a test that checks it.
 
-    EL PASO 6 ES EL QUE MÁS CUESTA VER
-    ----------------------------------
-    Has ordenado los logits, asi que tus marcas de "quitar" estan en orden de PROBABILIDAD, no
-    en orden de TOKEN. Hay que devolverlas a su sitio.
+    STEP 6 IS THE HARDEST ONE TO SEE
+    --------------------------------
+    You sorted the logits, so your "remove" marks are in order of PROBABILITY, not in order of
+    TOKEN. They have to be put back in place.
 
-    `quitar.scatter(-1, indices, quitar)` hace exactamente eso: para cada posicion `j` del
-    tensor ordenado, escribe `quitar[j]` en la posicion `indices[j]` del resultado. Y `indices`
-    es justo lo que devolvio `torch.sort`: de donde venia cada elemento.
+    `remove.scatter(-1, indices, remove)` does exactly that: for every position `j` of the
+    sorted tensor, it writes `remove[j]` at position `indices[j]` of the result. And `indices`
+    is precisely what `torch.sort` returned: where each element came from.
 
-    Si te lo saltas, estaras poniendo a -inf tokens elegidos casi al azar, y el resultado sera
-    texto malo sin ningun error visible.
+    If you skip it, you will be setting to -inf tokens chosen almost at random, and the result
+    will be bad text with no visible error.
 
     Args:
         logits: `(B, vocab_size)`.
-        p: la masa a conservar. Tipico: 0.9 o 0.95. Si es >= 1.0, no filtra nada.
+        p: the mass to keep. Typical: 0.9 or 0.95. If it is >= 1.0, it filters nothing.
 
     Returns:
-        Los logits con los tokens de la cola puestos a -inf.
+        The logits with the tail tokens set to -inf.
     """
-    raise NotImplementedError("TODO: modulo 14, ejercicio 3 - top_p_filter")
+    raise NotImplementedError("TODO: module 14, exercise 3 - top_p_filter")
 
 
 class KVCache:
-    """Guarda las claves y valores ya calculados para no recalcularlos.
+    """Saves the keys and values already computed so they are not recomputed.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cinco metodos, todos de una o dos lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Five methods, all of one or two lines.
 
         def __init__(self, n_layers):
             self.n_layers = n_layers
@@ -294,7 +295,7 @@ class KVCache:
             else:
                 self.keys[layer] = torch.cat([self.keys[layer], k], dim=-2)
                 self.values[layer] = torch.cat([self.values[layer], v], dim=-2)
-            return self.keys[layer], self.values[layer]      # las COMPLETAS
+            return self.keys[layer], self.values[layer]      # the COMPLETE ones
 
         @property
         def seq_len(self):
@@ -311,63 +312,63 @@ class KVCache:
                 if t is not None
             )
 
-    EL `dim=-2`, QUE NO ES CAPRICHO
-    -------------------------------
-    Con la forma `(B, n_heads, T, head_dim)`, la dimension de tiempo es la penultima. `dim=-2`
-    la senyala contando desde el final. `dim=2` te funcionaria aqui exactamente igual, y se
-    rompe en silencio el dia que alguien anyada o quite una dimension. Cuenta desde donde la
-    forma es estable.
+    THE `dim=-2`, WHICH IS NOT A WHIM
+    ---------------------------------
+    With the shape `(B, n_heads, T, head_dim)`, the time dimension is the second-to-last.
+    `dim=-2` points at it counting from the end. `dim=2` would work exactly the same here, and
+    breaks silently the day someone adds or removes a dimension. Count from where the shape is
+    stable.
 
-    QUE `update` DEVUELVA LAS TABLAS **COMPLETAS** ES EL PUNTO
-    ----------------------------------------------------------
-    Le pasas las K y V del token NUEVO (T=1) y te devuelve las de TODOS los tokens vistos. La
-    atencion necesita las completas: la query del token nuevo tiene que poder mirar a todos los
-    anteriores. Lo unico que se ahorra es volver a CALCULARLAS.
+    THAT `update` RETURNS THE **COMPLETE** TABLES IS THE POINT
+    ---------------------------------------------------------
+    You pass it the K and V of the NEW token (T=1) and it gives you back those of ALL the
+    tokens seen. Attention needs the complete ones: the new token's query has to be able to
+    look at all the previous ones. The only thing you save is COMPUTING them again.
 
-    EL PROBLEMA QUE RESUELVE
-    ------------------------
-    Al generar el token 100, la version ingenua vuelve a pasar los 100 tokens por el modelo
-    entero, aunque los 99 primeros no han cambiado ni un bit. Generar N tokens cuesta O(N²) en
-    vez de O(N).
+    THE PROBLEM IT SOLVES
+    ---------------------
+    When generating token 100, the naive version passes all 100 tokens through the whole model
+    again, even though the first 99 have not changed a single bit. Generating N tokens costs
+    O(N²) instead of O(N).
 
-    POR QUÉ SE CACHEAN K Y V PERO NO Q
-    ----------------------------------
-    Las queries NO se pueden cachear: cada token nuevo necesita hacer su propia pregunta, y esa
-    pregunta no existia antes. Lo que se reutiliza son las respuestas (K) y los contenidos (V)
-    de los tokens anteriores, que ya estaban calculados y no cambian. De ahi el nombre: KV
-    cache, no QKV cache.
+    WHY K AND V ARE CACHED BUT NOT Q
+    --------------------------------
+    The queries CANNOT be cached: every new token needs to ask its own question, and that
+    question did not exist before. What gets reused are the answers (K) and the contents (V) of
+    the previous tokens, which were already computed and do not change. Hence the name: KV
+    cache, not QKV cache.
 
-    LA MEMORIA QUE OCUPA
-    --------------------
-        2 * n_layers * T * d_model * bytes_por_numero
+    THE MEMORY IT TAKES
+    -------------------
+        2 * n_layers * T * d_model * bytes_per_number
 
-    Nuestro modelo con 512 tokens en fp16: 3,9 MB. O sea, nada.
+    Our model with 512 tokens in fp16: 3.9 MB. That is, nothing.
 
-    Un modelo de 70B con contexto de 100.000 tokens: decenas de gigabytes, MAS que los propios
-    pesos del modelo. Por eso existen tecnicas como grouped-query attention, que comparte las K
-    y V entre varias cabezas precisamente para que esta tabla quepa.
+    A 70B model with a 100,000-token context: tens of gigabytes, MORE than the model weights
+    themselves. That is why techniques like grouped-query attention exist, which share the K
+    and V across several heads precisely so this table fits.
 
-    Args (de `__init__`):
-        n_layers: cuantas capas tiene el modelo.
+    Args (of `__init__`):
+        n_layers: how many layers the model has.
     """
 
     def __init__(self, n_layers: int) -> None:
-        raise NotImplementedError("TODO: modulo 14, ejercicio 4 - KVCache.__init__")
+        raise NotImplementedError("TODO: module 14, exercise 4 - KVCache.__init__")
 
     def update(
         self, layer: int, k: torch.Tensor, v: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        raise NotImplementedError("TODO: modulo 14, ejercicio 4 - KVCache.update")
+        raise NotImplementedError("TODO: module 14, exercise 4 - KVCache.update")
 
     @property
     def seq_len(self) -> int:
-        raise NotImplementedError("TODO: modulo 14, ejercicio 4 - KVCache.seq_len")
+        raise NotImplementedError("TODO: module 14, exercise 4 - KVCache.seq_len")
 
     def reset(self) -> None:
-        raise NotImplementedError("TODO: modulo 14, ejercicio 4 - KVCache.reset")
+        raise NotImplementedError("TODO: module 14, exercise 4 - KVCache.reset")
 
     def memory_bytes(self) -> int:
-        raise NotImplementedError("TODO: modulo 14, ejercicio 4 - KVCache.memory_bytes")
+        raise NotImplementedError("TODO: module 14, exercise 4 - KVCache.memory_bytes")
 
 
 @torch.no_grad()
@@ -381,127 +382,131 @@ def generate_with_cache(
     repetition_penalty: float = 1.0,
     eos_token: int | None = None,
 ) -> torch.Tensor:
-    """El bucle de generacion, con cache y con todos los filtros.
+    """The generation loop, with a cache and with all the filters.
 
-    Es el mismo bucle autorregresivo del modulo 00 —contexto, distribucion, muestrear, anyadir,
-    repetir— ahora con un modelo de verdad.
+    It is the same autoregressive loop from module 00 —context, distribution, sample, append,
+    repeat— now with a real model.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-        1. Las comprobaciones y la preparacion:
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+        1. The checks and the setup:
 
                model.eval()
                ctx = model.cfg.context_length
                if idx.shape[1] >= ctx:
                    raise ValueError(
-                       f"el prompt ya ocupa {idx.shape[1]} de {ctx} tokens de contexto"
+                       f"the prompt already takes {idx.shape[1]} of {ctx} context tokens"
                    )
                cache = KVCache(model.cfg.n_layers)
 
-        2. PREFILL: el prompt entero de golpe, para llenar la cache:
+        2. PREFILL: the whole prompt at once, to fill the cache:
 
                logits, _ = model(idx, use_cache=True, cache=cache)
 
-        3. El bucle, `max_new_tokens` veces:
+        3. The loop, `max_new_tokens` times:
 
                for _ in range(max_new_tokens):
                    if idx.shape[1] >= ctx:
-                       break                          # ver mas abajo por que se PARA
+                       break                          # see below why it STOPS
 
-                   siguiente = logits[:, -1, :].float()      # solo la ultima posicion
+                   next_logits = logits[:, -1, :].float()   # only the last position
 
-                   # los filtros, EN ESTE ORDEN
+                   # the filters, IN THIS ORDER
                    if repetition_penalty != 1.0:
-                       siguiente = apply_repetition_penalty(siguiente, idx, repetition_penalty)
+                       next_logits = apply_repetition_penalty(
+                           next_logits, idx, repetition_penalty
+                       )
                    if temperature != 1.0:
-                       siguiente = siguiente / max(temperature, 1e-8)
+                       next_logits = next_logits / max(temperature, 1e-8)
                    if top_k is not None:
-                       siguiente = top_k_filter(siguiente, top_k)
+                       next_logits = top_k_filter(next_logits, top_k)
                    if top_p is not None:
-                       siguiente = top_p_filter(siguiente, top_p)
+                       next_logits = top_p_filter(next_logits, top_p)
 
-                   # elegir
+                   # choose
                    if temperature == 0:
-                       nuevo = siguiente.argmax(dim=-1, keepdim=True)
+                       new = next_logits.argmax(dim=-1, keepdim=True)
                    else:
-                       nuevo = torch.multinomial(F.softmax(siguiente, dim=-1), num_samples=1)
+                       new = torch.multinomial(F.softmax(next_logits, dim=-1), num_samples=1)
 
-                   idx = torch.cat([idx, nuevo], dim=1)
+                   idx = torch.cat([idx, new], dim=1)
 
-                   if eos_token is not None and bool((nuevo == eos_token).all()):
+                   if eos_token is not None and bool((new == eos_token).all()):
                        break
 
-                   # DECODE: solo el token nuevo
-                   logits, _ = model(nuevo, use_cache=True, cache=cache)
+                   # DECODE: only the new token
+                   logits, _ = model(new, use_cache=True, cache=cache)
 
         4. `return idx`
 
-    LAS DOS FASES, QUE ES LO QUE HAY QUE ENTENDER
-    ---------------------------------------------
-    **Prefill**: el prompt entero pasa de golpe. Es un unico forward sobre `(B, T_prompt)` y
-    llena la cache con las K y V de todos esos tokens.
+    THE TWO PHASES, WHICH IS WHAT YOU HAVE TO UNDERSTAND
+    ----------------------------------------------------
+    **Prefill**: the whole prompt goes through at once. It is a single forward over
+    `(B, T_prompt)` and it fills the cache with the K and V of all those tokens.
 
-    **Decode**: a partir de ahi, cada vuelta pasa SOLO el token nuevo, `(B, 1)`. La cache aporta
-    todo lo anterior. Este es el ahorro entero.
+    **Decode**: from then on, each turn passes ONLY the new token, `(B, 1)`. The cache provides
+    everything before. This is the entire saving.
 
-    Fijate en el orden dentro del bucle: los `logits` con los que empiezas la vuelta N son los
-    que produjo el forward del final de la vuelta N-1 (o el prefill, la primera vez). Por eso el
-    `model(...)` va al FINAL y no al principio.
+    Note the order inside the loop: the `logits` you start turn N with are the ones produced by
+    the forward at the end of turn N-1 (or by the prefill, the first time). That is why the
+    `model(...)` goes at the END and not at the beginning.
 
-    EL ORDEN DE LOS FILTROS IMPORTA
-    -------------------------------
-        1. penalizacion de repeticion   <- sobre los logits crudos
-        2. temperatura                  <- dividir
+    THE ORDER OF THE FILTERS MATTERS
+    --------------------------------
+        1. repetition penalty   <- on the raw logits
+        2. temperature          <- divide
         3. top-k
         4. top-p
 
-    La temperatura va ANTES de los filtros porque cambia las probabilidades que mira top-p. No
-    cambia el RANKING —dividir por una constante positiva no reordena nada— pero si cambia las
-    masas acumuladas, y con ellas cuantos candidatos sobreviven. Con temperature=0.7 el nucleo
-    de top-p es mas pequenyo que con 1.0.
+    The temperature goes BEFORE the filters because it changes the probabilities top-p looks
+    at. It does not change the RANKING —dividing by a positive constant does not reorder
+    anything— but it does change the accumulated masses, and with them how many candidates
+    survive. With temperature=0.7 the top-p nucleus is smaller than with 1.0.
 
-    EL `.float()` DE LOS LOGITS
-    ---------------------------
-    Bajo AMP los logits llegan en fp16, y `torch.multinomial` sobre fp16 puede dar resultados
-    raros con probabilidades muy pequenyas (hay poca resolucion cerca de cero). Convertir a fp32
-    antes de muestrear es barato y evita el problema.
+    THE `.float()` ON THE LOGITS
+    ----------------------------
+    Under AMP the logits arrive in fp16, and `torch.multinomial` on fp16 can give odd results
+    with very small probabilities (there is little resolution near zero). Converting to fp32
+    before sampling is cheap and avoids the problem.
 
-    EL LÍMITE DE CONTEXTO: AQUÍ SE **PARA**, NO SE RECORTA
+    THE CONTEXT LIMIT: HERE IT **STOPS**, IT DOES NOT CROP
     ------------------------------------------------------
-    `model.generate` (el ingenuo) recorta el contexto y sigue. Este no puede, y no es pereza.
+    `model.generate` (the naive one) crops the context and carries on. This one cannot, and it
+    is not laziness.
 
-    Recortar con cache significaria descartar las entradas antiguas Y REMAPEAR las posiciones de
-    RoPE de todo lo que queda, porque los tokens supervivientes pasarian a ocupar posiciones
-    distintas de las que tenian cuando se calcularon sus K. Eso se llama sliding window
-    attention y da para un modulo entero.
+    Cropping with a cache would mean discarding the old entries AND REMAPPING the RoPE
+    positions of everything that is left, because the surviving tokens would end up in
+    different positions from the ones they had when their K were computed. That is called
+    sliding window attention and it is worth a module of its own.
 
-    Parar es lo honesto: la alternativa silenciosa seria generar texto incorrecto sin avisar.
+    Stopping is the honest thing: the silent alternative would be generating incorrect text
+    without warning.
 
-    Y el `ValueError` de arriba, cuando el prompt YA llega al limite: mejor un error claro que
-    un `break` inmediato que devuelve el prompt intacto sin explicar por que.
+    And the `ValueError` above, for when the prompt ALREADY reaches the limit: better a clear
+    error than an immediate `break` that returns the prompt untouched without explaining why.
 
-    LA COMPROBACIÓN OBLIGATORIA
-    ---------------------------
-    Con `temperature=0` (greedy, determinista), esta funcion tiene que dar EXACTAMENTE la misma
-    salida que la generacion sin cache. No parecida: identica, token a token. Hay un test que lo
-    verifica, y es la unica forma de saber que la cache no esta corrompiendo nada.
+    THE MANDATORY CHECK
+    -------------------
+    With `temperature=0` (greedy, deterministic), this function has to give EXACTLY the same
+    output as generation without the cache. Not similar: identical, token by token. There is a
+    test that verifies it, and it is the only way to know the cache is not corrupting anything.
 
-    Si difiere a partir de cierto token, mira primero el `pos_offset` de RoPE: el token nuevo
-    tiene que rotarse con la posicion que le toca, no con la 0.
+    If it differs from a certain token on, look first at RoPE's `pos_offset`: the new token has
+    to be rotated with the position it belongs to, not with 0.
 
     Args:
-        model: el GPT entrenado. Su forward acepta `use_cache` y `cache`.
-        idx: `(B, T)`, el prompt.
-        max_new_tokens: cuantos tokens generar como mucho.
-        temperature: 0 para greedy. 1.0 no altera nada. <1 afila, >1 aplana.
-        top_k, top_p: los filtros, o None para no aplicarlos.
-        repetition_penalty: 1.0 no hace nada.
-        eos_token: si aparece, se para.
+        model: the trained GPT. Its forward accepts `use_cache` and `cache`.
+        idx: `(B, T)`, the prompt.
+        max_new_tokens: how many tokens to generate at most.
+        temperature: 0 for greedy. 1.0 changes nothing. <1 sharpens, >1 flattens.
+        top_k, top_p: the filters, or None to skip them.
+        repetition_penalty: 1.0 does nothing.
+        eos_token: if it appears, generation stops.
 
     Returns:
-        `(B, T + n)` con el prompt y lo generado, con n <= max_new_tokens.
+        `(B, T + n)` with the prompt and what was generated, with n <= max_new_tokens.
 
     Raises:
-        ValueError: si el prompt ya llena el contexto del modelo.
+        ValueError: if the prompt already fills the model's context.
     """
-    raise NotImplementedError("TODO: modulo 14, ejercicio 5 - generate_with_cache")
+    raise NotImplementedError("TODO: module 14, exercise 5 - generate_with_cache")
