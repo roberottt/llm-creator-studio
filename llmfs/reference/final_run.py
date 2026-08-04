@@ -1,4 +1,4 @@
-"""Referencia del modulo 13: la tirada real."""
+"""Reference for module 13: the real run."""
 
 from __future__ import annotations
 
@@ -16,88 +16,89 @@ def overfit_single_batch(
     lr: float = 1e-3,
     optimizer_factory: Callable[..., Any] | None = None,
 ) -> list[float]:
-    """Entrena UN SOLO batch hasta memorizarlo. El test que caza casi cualquier bug.
+    """Train on ONE SINGLE batch until it memorizes it. The test that catches almost any bug.
 
-    LA IDEA. Un modelo con millones de parametros tiene capacidad de sobra para memorizar
-    cuatro secuencias. Si le das el mismo batch una y otra vez, la perdida TIENE que bajar
-    practicamente a cero.
+    THE IDEA. A model with millions of parameters has more than enough capacity to memorize
+    four sequences. If you feed it the same batch over and over, the loss HAS to drop to
+    practically zero.
 
-    Si no baja, hay un bug, y lo sabes en 30 segundos en vez de en cuatro horas.
+    If it does not drop, there is a bug, and you know it in 30 seconds instead of four hours.
 
-    QUE CAZA
-        - gradientes que no llegan a alguna parte del modelo (un `detach()` de mas)
-        - el `zero_grad()` olvidado
-        - un learning rate absurdo
-        - la mascara mal puesta (aunque este caso baja DEMASIADO deprisa, ojo)
-        - una capa que no esta conectada al grafo
-        - el optimizador construido sobre los parametros equivocados
+    WHAT IT CATCHES
+        - gradients that do not reach some part of the model (one `detach()` too many)
+        - the forgotten `zero_grad()`
+        - an absurd learning rate
+        - a badly placed mask (though in that case it drops TOO fast, watch out)
+        - a layer that is not connected to the graph
+        - the optimizer built over the wrong parameters
 
-    QUE NO CAZA
-        Nada relacionado con generalizacion: los datos, el tamanyo del modelo, el
-        regularizador. Un modelo que memoriza un batch puede seguir siendo inutil.
+    WHAT IT DOES NOT CATCH
+        Anything about generalization: the data, the model size, the regularizer. A model
+        that memorizes a batch can still be useless.
 
-    ES LA PRIMERA COMPROBACION QUE HAY QUE HACER, siempre, antes de lanzar cualquier
-    entrenamiento largo. Karpathy lo lleva anyos repitiendo y sigue siendo el consejo con
-    mejor relacion entre coste y beneficio de todo el deep learning.
+    IT IS THE FIRST CHECK TO RUN, always, before launching any long training run. Karpathy
+    has been repeating it for years and it is still the best cost-to-benefit advice in all
+    of deep learning.
 
     Returns:
-        El historial de perdidas, una por paso.
+        The loss history, one per step.
     """
     factory = optimizer_factory or (lambda params: torch.optim.AdamW(params, lr=lr))
     opt = factory(model.parameters())
 
     model.train()
-    historial: list[float] = []
+    history: list[float] = []
     for _ in range(steps):
-        _, perdida = model(x, y)
+        _, loss = model(x, y)
         opt.zero_grad(set_to_none=True)
-        perdida.backward()
+        loss.backward()
         opt.step()
-        historial.append(float(perdida.detach()))
+        history.append(float(loss.detach()))
 
-    return historial
+    return history
 
 
 def format_eta(seconds: float) -> str:
-    """Formatea una duracion en algo legible de un vistazo.
+    """Format a duration into something readable at a glance.
 
         45      -> "45s"
         125     -> "2m 5s"
         3725    -> "1h 2m"
         90000   -> "1d 1h"
 
-    Parece cosmetico y no lo es: vas a mirar este numero muchas veces durante una tirada de
-    horas, y "1h 2m" se lee al instante mientras que "3725 s" hay que dividirlo mentalmente.
+    It looks cosmetic and it is not: you are going to look at this number many times during
+    a run that lasts hours, and "1h 2m" reads instantly while "3725 s" has to be divided in
+    your head.
 
-    Los valores negativos o no finitos devuelven "?", que es lo honesto cuando todavia no
-    hay datos suficientes para estimar.
+    Negative or non-finite values return "?", which is the honest answer when there is not
+    enough data to estimate yet.
     """
     if not math.isfinite(seconds) or seconds < 0:
         return "?"
 
-    segundos = int(seconds)
-    if segundos < 60:
-        return f"{segundos}s"
-    if segundos < 3600:
-        return f"{segundos // 60}m {segundos % 60}s"
-    if segundos < 86400:
-        return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
-    return f"{segundos // 86400}d {(segundos % 86400) // 3600}h"
+    secs = int(seconds)
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m {secs % 60}s"
+    if secs < 86400:
+        return f"{secs // 3600}h {(secs % 3600) // 60}m"
+    return f"{secs // 86400}d {(secs % 86400) // 3600}h"
 
 
 def estimate_remaining(
     step: int, max_steps: int, elapsed_seconds: float, warmup_steps: int = 10
 ) -> float:
-    """Segundos que faltan, a partir del ritmo medido hasta ahora.
+    """Seconds remaining, based on the throughput measured so far.
 
-    Los primeros pasos son mas lentos (compilacion de kernels, caches frias), asi que
-    incluirlos en la media da estimaciones pesimistas. Con `warmup_steps` se ignoran.
+    The first steps are slower (kernel compilation, cold caches), so including them in the
+    average gives pessimistic estimates. `warmup_steps` ignores them.
 
-    Devuelve `inf` mientras no haya datos suficientes, y `format_eta` lo convierte en "?".
-    Es mas honesto que dar un numero inventado.
+    Returns `inf` while there is not enough data, and `format_eta` turns that into "?". That
+    is more honest than making a number up.
     """
     if step <= warmup_steps or elapsed_seconds <= 0:
         return float("inf")
 
-    por_paso = elapsed_seconds / step
-    return por_paso * max(0, max_steps - step)
+    per_step = elapsed_seconds / step
+    return per_step * max(0, max_steps - step)

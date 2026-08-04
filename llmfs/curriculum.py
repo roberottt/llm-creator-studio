@@ -1,12 +1,12 @@
-"""El curriculo: que modulos hay, que ejercicios tiene cada uno y en que orden.
+"""The curriculum: which modules exist, what exercises each one has, and in what order.
 
-Esta es la unica fuente de verdad del curso. La CLI (`status`, `next`, `check`, `demo`,
-`hint`) y el bridge (la red de seguridad) leen de aqui. Si anyades un ejercicio, se anyade
-en este fichero y todo lo demas se entera solo.
+This is the single source of truth for the course. The CLI (`status`, `next`, `check`,
+`demo`, `hint`) and the bridge (the safety net) read from here. If you add an exercise,
+you add it in this file and everything else finds out on its own.
 
-Los tiempos (`est_minutes`) son estimaciones de trabajo con las manos en el teclado para
-alguien que ya programa, SIN contar el tiempo de GPU. No incluyen leer la teoria dos veces
-porque la primera no te enteraste, que pasa y es normal.
+The times (`est_minutes`) are estimates of hands-on-keyboard work for someone who already
+programs, NOT counting GPU time. They do not include reading the theory twice because you
+did not get it the first time, which happens and is normal.
 """
 
 from __future__ import annotations
@@ -19,19 +19,19 @@ from llmfs.paths import modules_dir
 
 @dataclass(frozen=True)
 class Exercise:
-    """Un ejercicio: una funcion o clase que tienes que implementar en `ejercicios.py`."""
+    """An exercise: a function or class you have to implement in `exercises.py`."""
 
-    #: Nombre exacto del simbolo en `ejercicios.py`. Es la clave que usa el bridge.
+    #: Exact name of the symbol in `exercises.py`. It is the key the bridge uses.
     name: str
-    #: Que hace, en una linea.
+    #: What it does, in one line.
     title: str
-    #: `True` si es una clase (`nn.Module` u otra) en lugar de una funcion.
+    #: `True` if it is a class (`nn.Module` or otherwise) instead of a function.
     is_class: bool = False
 
 
 @dataclass(frozen=True)
 class Module:
-    """Un modulo del curso."""
+    """A course module."""
 
     number: int
     slug: str
@@ -41,12 +41,12 @@ class Module:
     est_minutes: int
     exercises: tuple[Exercise, ...] = field(default_factory=tuple)
     has_demo: bool = True
-    #: Papers y enlaces que se citan en el TEORIA.md.
+    #: Papers and links cited in THEORY.md.
     references: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def id(self) -> str:
-        """Identificador de directorio, p.ej. `06_atencion`."""
+        """Directory identifier, e.g. `06_attention`."""
         return f"{self.number:02d}_{self.slug}"
 
     @property
@@ -59,7 +59,7 @@ class Module:
 
     @property
     def exercises_file(self) -> Path:
-        return self.path / "ejercicios.py"
+        return self.path / "exercises.py"
 
     @property
     def demo_file(self) -> Path:
@@ -67,80 +67,80 @@ class Module:
 
     @property
     def theory_file(self) -> Path:
-        return self.path / "TEORIA.md"
+        return self.path / "THEORY.md"
 
     @property
     def solution_file(self) -> Path:
-        return self.path / "SOLUCION.md"
+        return self.path / "SOLUTION.md"
 
     def exercise(self, name_or_index: str | int) -> Exercise:
-        """Busca un ejercicio por nombre o por posicion (1-indexada, como se muestra)."""
+        """Look up an exercise by name or by position (1-indexed, as displayed)."""
         if isinstance(name_or_index, int):
             if not 1 <= name_or_index <= len(self.exercises):
                 raise KeyError(
-                    f"El modulo {self.id} tiene {len(self.exercises)} ejercicios; "
-                    f"has pedido el {name_or_index}."
+                    f"Module {self.id} has {len(self.exercises)} exercises; "
+                    f"you asked for number {name_or_index}."
                 )
             return self.exercises[name_or_index - 1]
         for ex in self.exercises:
             if ex.name == name_or_index:
                 return ex
-        raise KeyError(f"No hay ningun ejercicio {name_or_index!r} en {self.id}.")
+        raise KeyError(f"There is no exercise {name_or_index!r} in {self.id}.")
 
 
-PART_0 = "0 - Antes de empezar"
-PART_I = "I - Fundamentos"
-PART_II = "II - Arquitectura"
-PART_III = "III - Entrenamiento"
-PART_IV = "IV - Uso y evaluacion"
+PART_0 = "0 - Before you start"
+PART_I = "I - Foundations"
+PART_II = "II - Architecture"
+PART_III = "III - Training"
+PART_IV = "IV - Use and evaluation"
 
 
 CURRICULUM: tuple[Module, ...] = (
-    # ------------------------------------------------------------------ Parte 0
+    # ------------------------------------------------------------------ Part 0
     Module(
         number=0,
-        slug="que_es_un_llm",
-        title="Que es un LLM, en realidad",
+        slug="what_is_an_llm",
+        title="What an LLM actually is",
         part=PART_0,
-        summary="Sin jerga y sin transformers: construyes un generador de texto en 20 lineas.",
+        summary="No jargon, no transformers: you build a text generator in 20 lines.",
         est_minutes=60,
         exercises=(
-            Exercise("next_token_probs", "Convertir conteos en probabilidades que sumen 1"),
-            Exercise("sample_next_token", "Elegir el siguiente caracter segun esas probabilidades"),
-            Exercise("generate_naive", "Encadenar predicciones para generar texto"),
+            Exercise("next_token_probs", "Turn counts into probabilities that sum to 1"),
+            Exercise("sample_next_token", "Pick the next character according to those probabilities"),
+            Exercise("generate_naive", "Chain predictions together to generate text"),
         ),
         references=(
             ("Shannon 1948, A Mathematical Theory of Communication", "https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf"),
         ),
     ),
-    # ------------------------------------------------------------------ Parte I
+    # ------------------------------------------------------------------ Part I
     Module(
         number=1,
-        slug="entorno",
-        title="Entorno y hardware",
+        slug="environment",
+        title="Environment and hardware",
         part=PART_I,
-        summary="uv, PyTorch, CUDA/MPS, y cuantos tokens/s da realmente tu GPU.",
+        summary="uv, PyTorch, CUDA/MPS, and how many tokens/s your GPU really delivers.",
         est_minutes=45,
         exercises=(
-            Exercise("measure_matmul_tflops", "Medir los TFLOPS reales de un matmul grande"),
-            Exercise("transformer_flops_per_token", "FLOPs por token de un transformer (6N + atencion)"),
-            Exercise("estimate_tokens_per_second", "Tokens/s teoricos a partir de TFLOPS y MFU"),
+            Exercise("measure_matmul_tflops", "Measure the real TFLOPS of a large matmul"),
+            Exercise("transformer_flops_per_token", "FLOPs per token of a transformer (6N + attention)"),
+            Exercise("estimate_tokens_per_second", "Theoretical tokens/s from TFLOPS and MFU"),
         ),
         references=(
-            ("Kaplan et al. 2020 (apendice de FLOPs)", "https://arxiv.org/abs/2001.08361"),
+            ("Kaplan et al. 2020 (FLOPs appendix)", "https://arxiv.org/abs/2001.08361"),
         ),
     ),
     Module(
         number=2,
         slug="autograd",
-        title="Autodiferenciacion desde cero",
+        title="Autodifferentiation from scratch",
         part=PART_I,
-        summary="Un motor escalar estilo micrograd. Backprop deja de ser magia.",
+        summary="A scalar engine in the style of micrograd. Backprop stops being magic.",
         est_minutes=180,
         exercises=(
-            Exercise("Value", "Escalar con grafo de computo y regla de la cadena", is_class=True),
-            Exercise("topological_order", "Orden topologico del grafo para el backward"),
-            Exercise("train_scalar_mlp", "Entrenar un MLP usando solo tu motor"),
+            Exercise("Value", "A scalar with a compute graph and the chain rule", is_class=True),
+            Exercise("topological_order", "Topological order of the graph for the backward pass"),
+            Exercise("train_scalar_mlp", "Train an MLP using only your engine"),
         ),
         references=(
             ("Karpathy, micrograd", "https://github.com/karpathy/micrograd"),
@@ -149,17 +149,17 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=3,
-        slug="tokenizacion",
-        title="Tokenizacion y BPE",
+        slug="tokenization",
+        title="Tokenization and BPE",
         part=PART_I,
-        summary="De caracteres a BPE propio de 4096 tokens entrenado sobre TinyStories.",
+        summary="From characters to your own 4096-token BPE trained on TinyStories.",
         est_minutes=240,
         exercises=(
-            Exercise("get_stats", "Contar pares adyacentes"),
-            Exercise("merge", "Fusionar un par en un id nuevo"),
-            Exercise("train_bpe", "Entrenar los merges hasta vocab_size"),
-            Exercise("bpe_encode", "Texto -> ids aplicando merges en orden"),
-            Exercise("bpe_decode", "ids -> texto con bytes fallback"),
+            Exercise("get_stats", "Count adjacent pairs"),
+            Exercise("merge", "Merge a pair into a new id"),
+            Exercise("train_bpe", "Train the merges up to vocab_size"),
+            Exercise("bpe_encode", "Text -> ids by applying merges in order"),
+            Exercise("bpe_decode", "ids -> text with a bytes fallback"),
         ),
         references=(
             ("Sennrich et al. 2016, Neural MT of Rare Words with Subword Units", "https://arxiv.org/abs/1508.07909"),
@@ -168,31 +168,31 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=4,
-        slug="datos",
-        title="Datos: de texto a memmap",
+        slug="data",
+        title="Data: from text to memmap",
         part=PART_I,
-        summary="Descarga, tokenizacion paralela, uint16 en disco y dataloader de ventanas.",
+        summary="Download, parallel tokenization, uint16 on disk and a windowed dataloader.",
         est_minutes=120,
         exercises=(
-            Exercise("pack_tokens_uint16", "Empaquetar ids en un array uint16 validado"),
-            Exercise("train_val_split", "Partir el corpus sin filtrar informacion"),
-            Exercise("get_batch", "Muestrear ventanas (x, y) desplazadas un token"),
+            Exercise("pack_tokens_uint16", "Pack ids into a validated uint16 array"),
+            Exercise("train_val_split", "Split the corpus without leaking information"),
+            Exercise("get_batch", "Sample (x, y) windows shifted by one token"),
         ),
     ),
-    # ------------------------------------------------------------------ Parte II
+    # ------------------------------------------------------------------ Part II
     Module(
         number=5,
         slug="baselines",
-        title="Baselines: bigrama y MLP de Bengio",
+        title="Baselines: bigram and Bengio's MLP",
         part=PART_II,
-        summary="Cross-entropy, perplejidad y cual es el suelo de un modelo trivial.",
+        summary="Cross-entropy, perplexity, and what the floor of a trivial model looks like.",
         est_minutes=120,
         exercises=(
-            Exercise("uniform_baseline_loss", "La perdida de adivinar al azar: ln(V)"),
-            Exercise("bigram_counts", "Matriz de conteos V x V"),
-            Exercise("bigram_nll", "Log-verosimilitud negativa con suavizado"),
-            Exercise("NeuralBigram", "El bigrama como una sola capa de embedding", is_class=True),
-            Exercise("BengioMLP", "MLP con ventana de contexto (Bengio 2003)", is_class=True),
+            Exercise("uniform_baseline_loss", "The loss of guessing at random: ln(V)"),
+            Exercise("bigram_counts", "A V x V count matrix"),
+            Exercise("bigram_nll", "Negative log-likelihood with smoothing"),
+            Exercise("NeuralBigram", "The bigram as a single embedding layer", is_class=True),
+            Exercise("BengioMLP", "MLP with a context window (Bengio 2003)", is_class=True),
         ),
         references=(
             ("Bengio et al. 2003, A Neural Probabilistic Language Model", "https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf"),
@@ -200,15 +200,15 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=6,
-        slug="atencion",
+        slug="attention",
         title="Self-attention",
         part=PART_II,
-        summary="Q/K/V, mascara causal, escalado por sqrt(d_k) y multi-head.",
+        summary="Q/K/V, causal mask, scaling by sqrt(d_k), and multi-head.",
         est_minutes=240,
         exercises=(
-            Exercise("causal_mask", "Mascara triangular que impide mirar al futuro"),
+            Exercise("causal_mask", "Triangular mask that blocks looking into the future"),
             Exercise("single_head_attention", "softmax(QK^T/sqrt(d_k) + mask) V"),
-            Exercise("MultiHeadAttention", "Multi-head con proyeccion de salida", is_class=True),
+            Exercise("MultiHeadAttention", "Multi-head with an output projection", is_class=True),
         ),
         references=(
             ("Vaswani et al. 2017, Attention Is All You Need", "https://arxiv.org/abs/1706.03762"),
@@ -217,15 +217,15 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=7,
-        slug="normalizacion",
-        title="Normalizacion y residuales",
+        slug="normalization",
+        title="Normalization and residuals",
         part=PART_II,
-        summary="LayerNorm -> RMSNorm, pre-norm vs post-norm, y por que el gradiente sobrevive.",
+        summary="LayerNorm -> RMSNorm, pre-norm vs post-norm, and why the gradient survives.",
         est_minutes=90,
         exercises=(
-            Exercise("layer_norm", "Normalizar por media y varianza, con gamma y beta"),
-            Exercise("RMSNorm", "Solo escala por la raiz del cuadrado medio", is_class=True),
-            Exercise("prenorm_residual", "x + f(norm(x)) frente a norm(x + f(x))"),
+            Exercise("layer_norm", "Normalize by mean and variance, with gamma and beta"),
+            Exercise("RMSNorm", "Scale only by the root mean square", is_class=True),
+            Exercise("prenorm_residual", "x + f(norm(x)) versus norm(x + f(x))"),
         ),
         references=(
             ("Ba et al. 2016, Layer Normalization", "https://arxiv.org/abs/1607.06450"),
@@ -235,15 +235,15 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=8,
-        slug="mlp_y_activaciones",
+        slug="mlp_and_activations",
         title="FFN, GELU y SwiGLU",
         part=PART_II,
-        summary="El ratio 4x, por que SwiGLU usa 2/3 del hidden, y donde estan los parametros.",
+        summary="The 4x ratio, why SwiGLU uses 2/3 of the hidden size, and where the parameters live.",
         est_minutes=90,
         exercises=(
-            Exercise("gelu", "GELU con la aproximacion tanh"),
-            Exercise("swiglu_hidden_dim", "Calcular d_ff = round(2/3 * 4d) al multiplo de 64"),
-            Exercise("SwiGLU", "FFN con puerta: (Swish(xW1) * xW3) W2", is_class=True),
+            Exercise("gelu", "GELU with the tanh approximation"),
+            Exercise("swiglu_hidden_dim", "Compute d_ff = round(2/3 * 4d) to the nearest multiple of 64"),
+            Exercise("SwiGLU", "Gated FFN: (Swish(xW1) * xW3) W2", is_class=True),
         ),
         references=(
             ("Hendrycks & Gimpel 2016, Gaussian Error Linear Units", "https://arxiv.org/abs/1606.08415"),
@@ -252,15 +252,15 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=9,
-        slug="posicion",
-        title="Informacion posicional y RoPE",
+        slug="position",
+        title="Positional information and RoPE",
         part=PART_II,
-        summary="Aprendidas -> sinusoidales -> RoPE, y que pasa al extrapolar el contexto.",
+        summary="Learned -> sinusoidal -> RoPE, and what happens when you extrapolate the context.",
         est_minutes=150,
         exercises=(
-            Exercise("sinusoidal_embeddings", "La tabla seno/coseno del paper original"),
-            Exercise("rope_frequencies", "Tablas cos/sin para theta^(-2i/d)"),
-            Exercise("apply_rope", "Rotar pares de dimensiones de Q y K"),
+            Exercise("sinusoidal_embeddings", "The sine/cosine table from the original paper"),
+            Exercise("rope_frequencies", "cos/sin tables for theta^(-2i/d)"),
+            Exercise("apply_rope", "Rotate pairs of dimensions of Q and K"),
         ),
         references=(
             ("Su et al. 2021, RoFormer: Rotary Position Embedding", "https://arxiv.org/abs/2104.09864"),
@@ -269,35 +269,35 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=10,
-        slug="el_gpt_completo",
-        title="El GPT completo",
+        slug="the_full_gpt",
+        title="The full GPT",
         part=PART_II,
-        summary="Block, GPT, weight tying, init escalada por profundidad y el conteo exacto.",
+        summary="Block, GPT, weight tying, depth-scaled init, and the exact parameter count.",
         est_minutes=180,
         exercises=(
-            Exercise("expected_param_count", "La formula de parametros derivada a mano"),
-            Exercise("count_parameters", "Conteo real desglosado por componente"),
-            Exercise("TransformerBlock", "Atencion + FFN con pre-norm y residuales", is_class=True),
-            Exercise("GPT", "El modelo entero, con tying e init escalada", is_class=True),
+            Exercise("expected_param_count", "The parameter formula derived by hand"),
+            Exercise("count_parameters", "Real count broken down by component"),
+            Exercise("TransformerBlock", "Attention + FFN with pre-norm and residuals", is_class=True),
+            Exercise("GPT", "The whole model, with tying and scaled init", is_class=True),
         ),
         references=(
             ("Radford et al. 2019, Language Models are Unsupervised Multitask Learners (GPT-2)", "https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf"),
             ("Press & Wolf 2017, Using the Output Embedding to Improve Language Models", "https://arxiv.org/abs/1608.05859"),
         ),
     ),
-    # ------------------------------------------------------------------ Parte III
+    # ------------------------------------------------------------------ Part III
     Module(
         number=11,
-        slug="bucle_de_entrenamiento",
-        title="El bucle de entrenamiento",
+        slug="training_loop",
+        title="The training loop",
         part=PART_III,
-        summary="AdamW propio, warmup+cosine, clipping, acumulacion, AMP y checkpoints.",
+        summary="Your own AdamW, warmup+cosine, clipping, accumulation, AMP and checkpoints.",
         est_minutes=240,
         exercises=(
-            Exercise("AdamWScratch", "AdamW desde cero, con correccion de sesgo", is_class=True),
-            Exercise("lr_at_step", "Warmup lineal + decaimiento coseno hasta el 10%"),
-            Exercise("clip_grad_norm", "Recorte por norma global"),
-            Exercise("build_param_groups", "Sin weight decay en normas ni sesgos"),
+            Exercise("AdamWScratch", "AdamW from scratch, with bias correction", is_class=True),
+            Exercise("lr_at_step", "Linear warmup + cosine decay down to 10%"),
+            Exercise("clip_grad_norm", "Clipping by global norm"),
+            Exercise("build_param_groups", "No weight decay on norms or biases"),
         ),
         references=(
             ("Loshchilov & Hutter 2019, Decoupled Weight Decay Regularization", "https://arxiv.org/abs/1711.05101"),
@@ -306,51 +306,51 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=12,
-        slug="eficiencia_y_escalado",
-        title="Eficiencia y leyes de escala",
+        slug="efficiency_and_scaling",
+        title="Efficiency and scaling laws",
         part=PART_III,
-        summary="MFU, memoria, KV cache, Chinchilla y por que 9M parametros y 500M tokens.",
+        summary="MFU, memory, KV cache, Chinchilla, and why 9M parameters and 500M tokens.",
         est_minutes=120,
         exercises=(
-            Exercise("model_flops_per_token", "FLOPs por token separando matmuls y atencion"),
-            Exercise("compute_mfu", "Model FLOPs Utilization frente al pico del hardware"),
-            Exercise("chinchilla_optimal_allocation", "Reparto optimo de un presupuesto de computo"),
+            Exercise("model_flops_per_token", "FLOPs per token, separating matmuls from attention"),
+            Exercise("compute_mfu", "Model FLOPs Utilization against the hardware peak"),
+            Exercise("chinchilla_optimal_allocation", "Optimal split of a compute budget"),
         ),
         references=(
             ("Kaplan et al. 2020, Scaling Laws for Neural Language Models", "https://arxiv.org/abs/2001.08361"),
             ("Hoffmann et al. 2022, Training Compute-Optimal LLMs (Chinchilla)", "https://arxiv.org/abs/2203.15556"),
-            ("Chowdhery et al. 2022, PaLM (definicion de MFU)", "https://arxiv.org/abs/2204.02311"),
+            ("Chowdhery et al. 2022, PaLM (definition of MFU)", "https://arxiv.org/abs/2204.02311"),
         ),
     ),
     Module(
         number=13,
-        slug="entrenamiento_final",
-        title="La tirada real",
+        slug="final_training",
+        title="The real run",
         part=PART_III,
-        summary="TinyStories de principio a fin: reanudable, con muestras periodicas y ETA.",
+        summary="TinyStories end to end: resumable, with periodic samples and an ETA.",
         est_minutes=60,
         exercises=(
-            Exercise("overfit_single_batch", "Memorizar un batch hasta perdida ~0: el test que caza bugs"),
-            Exercise("format_eta", "ETA honesta a partir del ritmo medido"),
+            Exercise("overfit_single_batch", "Memorize one batch down to ~0 loss: the test that catches bugs"),
+            Exercise("format_eta", "An honest ETA from the measured throughput"),
         ),
         references=(
             ("Eldan & Li 2023, TinyStories", "https://arxiv.org/abs/2305.07759"),
         ),
     ),
-    # ------------------------------------------------------------------ Parte IV
+    # ------------------------------------------------------------------ Part IV
     Module(
         number=14,
-        slug="inferencia",
-        title="Inferencia y muestreo",
+        slug="inference",
+        title="Inference and sampling",
         part=PART_IV,
-        summary="Temperatura, top-k, top-p, penalizacion de repeticion y KV cache.",
+        summary="Temperature, top-k, top-p, repetition penalty and KV cache.",
         est_minutes=180,
         exercises=(
-            Exercise("apply_repetition_penalty", "Penalizar tokens ya generados"),
-            Exercise("top_k_filter", "Quedarse con los k logits mayores"),
-            Exercise("top_p_filter", "Nucleo de masa acumulada p"),
-            Exercise("KVCache", "Cache de claves y valores por capa", is_class=True),
-            Exercise("generate_with_cache", "Generacion incremental con la cache"),
+            Exercise("apply_repetition_penalty", "Penalize already generated tokens"),
+            Exercise("top_k_filter", "Keep the k largest logits"),
+            Exercise("top_p_filter", "Nucleus of cumulative mass p"),
+            Exercise("KVCache", "Per-layer cache of keys and values", is_class=True),
+            Exercise("generate_with_cache", "Incremental generation with the cache"),
         ),
         references=(
             ("Holtzman et al. 2020, The Curious Case of Neural Text Degeneration", "https://arxiv.org/abs/1904.09751"),
@@ -358,18 +358,18 @@ CURRICULUM: tuple[Module, ...] = (
     ),
     Module(
         number=15,
-        slug="evaluacion",
-        title="Evaluacion",
+        slug="evaluation",
+        title="Evaluation",
         part=PART_IV,
-        summary="Perplejidad, bits por byte y la bateria cualitativa del paper TinyStories.",
+        summary="Perplexity, bits per byte, and the qualitative battery from the TinyStories paper.",
         est_minutes=120,
         exercises=(
-            Exercise("perplexity_from_loss", "Perplejidad a partir de la perdida media"),
-            Exercise("bits_per_byte", "Metrica comparable entre tokenizadores distintos"),
-            Exercise("run_prompt_battery", "Generar completions de los prompts fijos"),
+            Exercise("perplexity_from_loss", "Perplexity from the mean loss"),
+            Exercise("bits_per_byte", "A metric comparable across different tokenizers"),
+            Exercise("run_prompt_battery", "Generate completions for the fixed prompts"),
         ),
         references=(
-            ("Eldan & Li 2023, TinyStories (seccion de evaluacion)", "https://arxiv.org/abs/2305.07759"),
+            ("Eldan & Li 2023, TinyStories (evaluation section)", "https://arxiv.org/abs/2305.07759"),
         ),
     ),
     Module(
@@ -377,13 +377,13 @@ CURRICULUM: tuple[Module, ...] = (
         slug="finetuning",
         title="Post-training: SFT y LoRA",
         part=PART_IV,
-        summary="Chat template, perdida solo en la respuesta, y LoRA implementado a mano.",
+        summary="Chat template, loss on the answer only, and LoRA implemented by hand.",
         est_minutes=180,
         exercises=(
-            Exercise("build_chat_template", "Serializar mensajes a texto con marcadores"),
-            Exercise("mask_prompt_tokens", "Ignorar el prompt en la perdida (-100)"),
-            Exercise("LoRALinear", "W + (alpha/r) B A con A,B de rango bajo", is_class=True),
-            Exercise("merge_lora_weights", "Fundir los adaptadores en los pesos base"),
+            Exercise("build_chat_template", "Serialize messages to text with markers"),
+            Exercise("mask_prompt_tokens", "Ignore the prompt in the loss (-100)"),
+            Exercise("LoRALinear", "W + (alpha/r) B A with low-rank A, B", is_class=True),
+            Exercise("merge_lora_weights", "Fold the adapters into the base weights"),
         ),
         references=(
             ("Hu et al. 2021, LoRA", "https://arxiv.org/abs/2106.09685"),
@@ -393,14 +393,14 @@ CURRICULUM: tuple[Module, ...] = (
     Module(
         number=17,
         slug="extra",
-        title="Extras y limites honestos",
+        title="Extras and honest limits",
         part=PART_IV,
-        summary="Cuantizacion int8, servir con FastAPI, y que separa esto de un modelo frontier.",
+        summary="int8 quantization, serving with FastAPI, and what separates this from a frontier model.",
         est_minutes=120,
         exercises=(
-            Exercise("quantize_int8_symmetric", "Pesos a int8 con escala por canal"),
-            Exercise("dequantize_int8", "Vuelta a float y error de reconstruccion"),
-            Exercise("quantization_error", "Medir el danyo: error relativo y perplejidad"),
+            Exercise("quantize_int8_symmetric", "Weights to int8 with a per-channel scale"),
+            Exercise("dequantize_int8", "Back to float, and the reconstruction error"),
+            Exercise("quantization_error", "Measure the damage: relative error and perplexity"),
         ),
     ),
 )
@@ -417,32 +417,32 @@ def all_modules() -> tuple[Module, ...]:
 
 
 def get_module(ref: str | int) -> Module:
-    """Resuelve un modulo desde `5`, `"5"`, `"05"` o `"05_atencion"`.
+    """Resolve a module from `5`, `"5"`, `"05"` or `"06_attention"`.
 
     Raises:
-        KeyError: con la lista de modulos validos, para que el error sea util.
+        KeyError: with the list of valid modules, so the error is actually useful.
     """
     if isinstance(ref, int):
         if ref in _BY_NUMBER:
             return _BY_NUMBER[ref]
-        raise KeyError(f"No existe el modulo {ref}. Van del 0 al {len(CURRICULUM) - 1}.")
+        raise KeyError(f"There is no module {ref}. They run from 0 to {len(CURRICULUM) - 1}.")
 
     ref = str(ref).strip()
     if ref in _BY_ID:
         return _BY_ID[ref]
     if ref.isdigit() and int(ref) in _BY_NUMBER:
         return _BY_NUMBER[int(ref)]
-    # Busqueda por prefijo del slug, para poder escribir `llmfs check aten`.
+    # Prefix search on the slug, so you can type `llmfs check atten`.
     matches = [m for m in CURRICULUM if m.slug.startswith(ref.lower())]
     if len(matches) == 1:
         return matches[0]
     raise KeyError(
-        f"No se reconoce el modulo {ref!r}. Validos: " + ", ".join(m.id for m in CURRICULUM)
+        f"Module {ref!r} not recognized. Valid ones: " + ", ".join(m.id for m in CURRICULUM)
     )
 
 
 def parts() -> dict[str, list[Module]]:
-    """Modulos agrupados por parte, en orden."""
+    """Modules grouped by part, in order."""
     grouped: dict[str, list[Module]] = {}
     for module in CURRICULUM:
         grouped.setdefault(module.part, []).append(module)

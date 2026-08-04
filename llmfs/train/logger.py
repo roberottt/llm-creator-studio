@@ -1,8 +1,8 @@
-"""Registro del entrenamiento: CSV, muestras de texto y graficas.
+"""Training logs: CSV, text samples and plots.
 
-Durante una tirada de horas necesitas dos cosas: numeros que puedas graficar despues, y
-muestras de texto para VER como aprende el modelo a escribir. Lo segundo es lo que hace
-que valga la pena mirar el log.
+During a run that lasts hours you need two things: numbers you can plot afterwards, and
+text samples so you can SEE the model learning to write. The second is what makes the log
+worth looking at.
 """
 
 from __future__ import annotations
@@ -14,132 +14,132 @@ from pathlib import Path
 from typing import Any
 
 
-class EntrenamientoLogger:
-    """Escribe el CSV de metricas y el log de muestras de texto.
+class TrainingLogger:
+    """Writes the metrics CSV and the text-sample log.
 
-    El CSV se abre en modo append y se hace `flush()` en cada fila. Cuesta un poco mas,
-    pero si el proceso muere no pierdes el historial, y puedes graficar la curva mientras
-    entrena desde otra terminal.
+    The CSV is opened in append mode and `flush()`ed on every row. It costs a little more,
+    but if the process dies you do not lose the history, and you can plot the curve while
+    it trains from another terminal.
     """
 
-    COLUMNAS = [
+    COLUMNS = [
         "step",
         "tokens",
         "train_loss",
         "val_loss",
         "lr",
         "grad_norm",
-        "tokens_por_segundo",
+        "tokens_per_second",
         "mfu",
-        "segundos",
+        "seconds",
     ]
 
-    def __init__(self, run_dir: str | Path, reanudando: bool = False) -> None:
+    def __init__(self, run_dir: str | Path, resuming: bool = False) -> None:
         self.run_dir = Path(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.csv_path = self.run_dir / "metrics.csv"
         self.samples_path = self.run_dir / "samples.md"
-        self.inicio = time.perf_counter()
+        self.started = time.perf_counter()
 
-        nuevo = not self.csv_path.exists() or not reanudando
-        self._csv = self.csv_path.open("a" if reanudando else "w", newline="", encoding="utf-8")
-        self._writer = csv.DictWriter(self._csv, fieldnames=self.COLUMNAS)
-        if nuevo:
+        fresh = not self.csv_path.exists() or not resuming
+        self._csv = self.csv_path.open("a" if resuming else "w", newline="", encoding="utf-8")
+        self._writer = csv.DictWriter(self._csv, fieldnames=self.COLUMNS)
+        if fresh:
             self._writer.writeheader()
             self._csv.flush()
 
-        if not reanudando:
+        if not resuming:
             self.samples_path.write_text(
-                f"# Muestras del entrenamiento\n\n"
-                f"Empezado el {datetime.now():%Y-%m-%d %H:%M}.\n\n"
-                f"Lee esto de arriba abajo cuando termine: es el modelo aprendiendo a\n"
-                f"escribir, paso a paso.\n",
+                f"# Training samples\n\n"
+                f"Started on {datetime.now():%Y-%m-%d %H:%M}.\n\n"
+                f"Read this top to bottom when it finishes: it is the model learning to\n"
+                f"write, step by step.\n",
                 encoding="utf-8",
             )
 
-    def log(self, **campos: Any) -> None:
-        fila = {c: campos.get(c, "") for c in self.COLUMNAS}
-        fila["segundos"] = round(time.perf_counter() - self.inicio, 2)
-        self._writer.writerow(fila)
+    def log(self, **fields: Any) -> None:
+        row = {c: fields.get(c, "") for c in self.COLUMNS}
+        row["seconds"] = round(time.perf_counter() - self.started, 2)
+        self._writer.writerow(row)
         self._csv.flush()
 
-    def log_muestra(self, step: int, prompt: str, texto: str, val_loss: float | None = None) -> None:
-        """Anyade una muestra de texto generado al fichero de muestras."""
+    def log_sample(self, step: int, prompt: str, text: str, val_loss: float | None = None) -> None:
+        """Append a generated text sample to the samples file."""
         with self.samples_path.open("a", encoding="utf-8") as f:
-            cabecera = f"\n## Paso {step:,}"
+            header = f"\n## Step {step:,}"
             if val_loss is not None:
-                cabecera += f" — pérdida de validación {val_loss:.4f}"
-            f.write(f"{cabecera}\n\n**Prompt:** `{prompt}`\n\n```\n{texto}\n```\n")
+                header += f" — validation loss {val_loss:.4f}"
+            f.write(f"{header}\n\n**Prompt:** `{prompt}`\n\n```\n{text}\n```\n")
 
-    def cerrar(self) -> None:
+    def close(self) -> None:
         if not self._csv.closed:
             self._csv.close()
 
-    def __enter__(self) -> "EntrenamientoLogger":
+    def __enter__(self) -> "TrainingLogger":
         return self
 
     def __exit__(self, *args: Any) -> None:
-        self.cerrar()
+        self.close()
 
-    # ------------------------------------------------------------------ graficas
+    # ------------------------------------------------------------------ plots
 
-    def grafica(self, destino: str | Path | None = None) -> Path | None:
-        """Dibuja las curvas de perdida y de learning rate a partir del CSV."""
+    def plot(self, target: str | Path | None = None) -> Path | None:
+        """Draw the loss and learning-rate curves from the CSV."""
         import matplotlib
 
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        filas = self.leer_csv()
-        if not filas:
+        rows = self.read_csv()
+        if not rows:
             return None
 
-        pasos_tr = [f["step"] for f in filas if f.get("train_loss") is not None]
-        perdidas_tr = [f["train_loss"] for f in filas if f.get("train_loss") is not None]
-        pasos_val = [f["step"] for f in filas if f.get("val_loss") is not None]
-        perdidas_val = [f["val_loss"] for f in filas if f.get("val_loss") is not None]
+        steps_tr = [r["step"] for r in rows if r.get("train_loss") is not None]
+        losses_tr = [r["train_loss"] for r in rows if r.get("train_loss") is not None]
+        steps_val = [r["step"] for r in rows if r.get("val_loss") is not None]
+        losses_val = [r["val_loss"] for r in rows if r.get("val_loss") is not None]
 
-        fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+        fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-        izq.plot(pasos_tr, perdidas_tr, lw=1, alpha=0.7, label="entrenamiento")
-        if perdidas_val:
-            izq.plot(pasos_val, perdidas_val, marker="o", ms=3, label="validacion")
-        izq.set_xlabel("paso")
-        izq.set_ylabel("perdida (nats)")
-        izq.set_title("Curva de perdida")
-        izq.grid(alpha=0.3)
-        izq.legend()
+        left.plot(steps_tr, losses_tr, lw=1, alpha=0.7, label="train")
+        if losses_val:
+            left.plot(steps_val, losses_val, marker="o", ms=3, label="validation")
+        left.set_xlabel("step")
+        left.set_ylabel("loss (nats)")
+        left.set_title("Loss curve")
+        left.grid(alpha=0.3)
+        left.legend()
 
-        lrs = [(f["step"], f["lr"]) for f in filas if f.get("lr") is not None]
+        lrs = [(r["step"], r["lr"]) for r in rows if r.get("lr") is not None]
         if lrs:
-            der.plot([s for s, _ in lrs], [v for _, v in lrs], color="tab:orange")
-        der.set_xlabel("paso")
-        der.set_ylabel("learning rate")
-        der.set_title("Planificador (warmup + coseno)")
-        der.grid(alpha=0.3)
+            right.plot([s for s, _ in lrs], [v for _, v in lrs], color="tab:orange")
+        right.set_xlabel("step")
+        right.set_ylabel("learning rate")
+        right.set_title("Scheduler (warmup + cosine)")
+        right.grid(alpha=0.3)
 
         fig.tight_layout()
-        destino = Path(destino) if destino else self.run_dir / "curvas.png"
-        fig.savefig(destino, dpi=120)
+        target = Path(target) if target else self.run_dir / "curves.png"
+        fig.savefig(target, dpi=120)
         plt.close(fig)
-        return destino
+        return target
 
-    def leer_csv(self) -> list[dict[str, Any]]:
-        """Lee el CSV convirtiendo a float lo que se pueda."""
+    def read_csv(self) -> list[dict[str, Any]]:
+        """Read the CSV, converting to float whatever can be converted."""
         if not self.csv_path.exists():
             return []
-        filas: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         with self.csv_path.open(encoding="utf-8") as f:
-            for cruda in csv.DictReader(f):
-                fila: dict[str, Any] = {}
-                for k, v in cruda.items():
+            for raw in csv.DictReader(f):
+                row: dict[str, Any] = {}
+                for k, v in raw.items():
                     if v == "" or v is None:
-                        fila[k] = None
+                        row[k] = None
                     else:
                         try:
-                            fila[k] = float(v)
+                            row[k] = float(v)
                         except ValueError:
-                            fila[k] = v
-                filas.append(fila)
-        return filas
+                            row[k] = v
+                rows.append(row)
+        return rows

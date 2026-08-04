@@ -1,18 +1,18 @@
-"""El bucle de entrenamiento y todo lo que lo rodea.
+"""The training loop and everything around it.
 
-Se construye en los modulos 11-13. Igual que el resto del paquete, las piezas se piden al
-bridge: cuando tus ejercicios estan bien, el modelo final entrena con TU codigo.
+Built in modules 11-13. Like the rest of the package, the pieces are requested from the
+bridge: once your exercises are right, the final model trains with YOUR code.
 """
 
-from llmfs.train.checkpoint import guardar_checkpoint, cargar_checkpoint, ultimo_checkpoint
-from llmfs.train.logger import EntrenamientoLogger
-from llmfs.train.loop import Entrenador, TrainState
+from llmfs.train.checkpoint import save_checkpoint, load_checkpoint, latest_checkpoint
+from llmfs.train.logger import TrainingLogger
+from llmfs.train.loop import Trainer, TrainState
 
 __all__ = [
-    "Entrenador",
+    "Trainer",
     "TrainState",
-    "EntrenamientoLogger",
-    "guardar_checkpoint",
-    "cargar_checkpoint",
-    "ultimo_checkpoint",
+    "TrainingLogger",
+    "save_checkpoint",
+    "load_checkpoint",
+    "latest_checkpoint",
 ]

@@ -1,7 +1,7 @@
-"""Referencia del modulo 04: los modelos contra los que hay que ganar.
+"""Reference for module 05: the models you have to beat.
 
-Antes de escribir un transformer conviene saber cual es el suelo. Si tu modelo de 9M
-parametros no bate a una tabla de conteos de bigramas, tienes un bug, no un modelo.
+Before writing a transformer it is worth knowing where the floor is. If your 9M-parameter
+model does not beat a table of bigram counts, you have a bug, not a model.
 """
 
 from __future__ import annotations
@@ -15,53 +15,53 @@ import torch.nn.functional as F
 
 
 def uniform_baseline_loss(vocab_size: int) -> float:
-    """Perdida de un modelo que reparte la probabilidad por igual entre todos los tokens.
+    """Loss of a model that spreads probability equally across every token.
 
-    Si `P(token) = 1/V` para todos, la log-verosimilitud negativa es
-    `-ln(1/V) = ln(V)`. Con `V = 4096` da 8,317 nats.
+    If `P(token) = 1/V` for all of them, the negative log-likelihood is
+    `-ln(1/V) = ln(V)`. With `V = 4096` that gives 8.317 nats.
 
-    Es el numero mas util del entrenamiento: en el paso 0, con los pesos recien
-    inicializados, la perdida tiene que valer casi exactamente esto. Si sale mucho mas
-    alta, la inicializacion esta mal. Si sale mas baja, hay fuga de informacion.
+    It is the most useful number in training: at step 0, with freshly initialized weights,
+    the loss has to be almost exactly this. If it comes out much higher, the initialization
+    is wrong. If it comes out lower, there is an information leak.
     """
     if vocab_size < 1:
-        raise ValueError("vocab_size debe ser positivo")
+        raise ValueError("vocab_size must be positive")
     return math.log(vocab_size)
 
 
 def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
-    """Matriz `V x V` con cuantas veces el token `j` sigue al token `i`.
+    """A `V x V` matrix of how many times token `j` follows token `i`.
 
     Returns:
-        Tensor `int64` de forma `(vocab_size, vocab_size)`.
+        An `int64` tensor of shape `(vocab_size, vocab_size)`.
     """
     counts = torch.zeros(vocab_size, vocab_size, dtype=torch.int64)
     tokens = torch.as_tensor(ids, dtype=torch.int64)
     if tokens.numel() < 2:
         return counts
-    # index_put_ con accumulate suma en las posiciones repetidas en vez de pisarlas.
+    # index_put_ with accumulate adds at repeated positions instead of overwriting them.
     counts.index_put_((tokens[:-1], tokens[1:]), torch.ones(tokens.numel() - 1, dtype=torch.int64),
                       accumulate=True)
     return counts
 
 
 def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> float:
-    """Log-verosimilitud negativa media de `ids` bajo el bigrama de `counts`.
+    """Mean negative log-likelihood of `ids` under the bigram in `counts`.
 
-    Con suavizado de Laplace:
+    With Laplace smoothing:
 
     $$P(b \\mid a) = \\frac{C_{ab} + \\alpha}{\\sum_{b'} C_{ab'} + \\alpha V}$$
 
-    El suavizado no es un detalle cosmetico: sin el, cualquier par que no aparezca en
-    entrenamiento tiene probabilidad 0, su logaritmo es `-inf` y la perplejidad de todo
-    el conjunto de validacion se va a infinito por un solo par no visto.
+    The smoothing is not a cosmetic detail: without it, any pair that does not appear in
+    training has probability 0, its logarithm is `-inf`, and the perplexity of the whole
+    validation set goes to infinity because of a single unseen pair.
 
     Returns:
-        Perdida media en nats por token.
+        Mean loss in nats per token.
     """
     tokens = torch.as_tensor(ids, dtype=torch.int64)
     if tokens.numel() < 2:
-        raise ValueError("hacen falta al menos 2 tokens para evaluar un bigrama")
+        raise ValueError("at least 2 tokens are needed to evaluate a bigram")
 
     vocab_size = counts.shape[0]
     smoothed = counts.double() + alpha
@@ -72,13 +72,13 @@ def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> 
 
 
 class NeuralBigram(nn.Module):
-    """El bigrama por conteo, escrito como red neuronal.
+    """The count-based bigram, written as a neural network.
 
-    Una `nn.Embedding(V, V)` donde la fila `i` son directamente los logits del token que
-    sigue a `i`. Entrenada con cross-entropy converge a los conteos normalizados: es el
-    mismo modelo, aprendido por descenso de gradiente en vez de contando.
+    An `nn.Embedding(V, V)` where row `i` is directly the logits of the token that follows
+    `i`. Trained with cross-entropy it converges to the normalized counts: it is the same
+    model, learned by gradient descent instead of by counting.
 
-    Submodulos (los tests copian pesos por nombre):
+    Submodules (the tests copy weights by name):
         token_embedding: nn.Embedding(vocab_size, vocab_size)
     """
 
@@ -93,10 +93,11 @@ class NeuralBigram(nn.Module):
         """
         Args:
             idx: `(B, T)` int64.
-            targets: `(B, T)` int64 o `None`.
+            targets: `(B, T)` int64 or `None`.
 
         Returns:
-            `(logits, loss)` con logits `(B, T, V)`. `loss` es `None` si no hay targets.
+            `(logits, loss)` with logits `(B, T, V)`. `loss` is `None` if there are no
+            targets.
         """
         logits = self.token_embedding(idx)
         if targets is None:
@@ -106,16 +107,16 @@ class NeuralBigram(nn.Module):
 
 
 class BengioMLP(nn.Module):
-    """El modelo de Bengio et al. 2003, el abuelo de todo esto.
+    """The model from Bengio et al. 2003, the grandparent of all this.
 
-    Concatena los embeddings de los `block_size` tokens anteriores y los pasa por un MLP.
-    Dos ideas que siguen vigentes veinte anyos despues: representar las palabras como
-    vectores densos aprendidos, y modelar la probabilidad del siguiente token con una red.
+    It concatenates the embeddings of the previous `block_size` tokens and runs them
+    through an MLP. Two ideas still standing twenty years later: representing words as
+    learned dense vectors, and modelling the next-token probability with a network.
 
-    Su limitacion es justo lo que la atencion viene a resolver: el contexto es de tamanyo
-    fijo y la concatenacion hace que el numero de parametros crezca linealmente con el.
+    Its limitation is exactly what attention comes to solve: the context has a fixed size
+    and the concatenation makes the parameter count grow linearly with it.
 
-    Submodulos:
+    Submodules:
         embedding: nn.Embedding(vocab_size, d_embed)
         hidden:    nn.Linear(block_size * d_embed, n_hidden)
         output:    nn.Linear(n_hidden, vocab_size)
@@ -135,11 +136,11 @@ class BengioMLP(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Args:
-            idx: `(B, block_size)` int64, la ventana de contexto.
-            targets: `(B,)` int64, el token a predecir.
+            idx: `(B, block_size)` int64, the context window.
+            targets: `(B,)` int64, the token to predict.
 
         Returns:
-            `(logits, loss)` con logits `(B, V)`.
+            `(logits, loss)` with logits `(B, V)`.
         """
         batch = idx.shape[0]
         emb = self.embedding(idx)                    # (B, block_size, d_embed)

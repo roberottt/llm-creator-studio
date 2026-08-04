@@ -1,12 +1,12 @@
-"""Guardar y reanudar entrenamientos.
+"""Saving and resuming training runs.
 
-Una tirada de cuatro horas se interrumpe: se va la luz, cierras el portatil sin querer, o
-simplemente quieres apagar el ordenador. Sin checkpoints eso significa empezar de cero.
+A four-hour run gets interrupted: the power goes out, you close the laptop by accident, or
+you just want to turn the machine off. Without checkpoints that means starting over.
 
-Lo importante de un checkpoint reanudable es que NO basta con guardar los pesos. Hay que
-guardar tambien el estado del optimizador (los momentos de Adam), el del GradScaler y el
-numero de paso. Si reanudas solo con los pesos, Adam arranca con sus momentos a cero y el
-modelo pega un bandazo justo al reanudar: se ve como un pico en la curva de perdida.
+The important thing about a resumable checkpoint is that saving the weights is NOT enough.
+You also have to save the optimizer state (Adam's moments), the GradScaler's state and the
+step number. If you resume with the weights alone, Adam starts with its moments at zero and
+the model lurches right at the restart: it shows up as a spike in the loss curve.
 """
 
 from __future__ import annotations
@@ -20,22 +20,22 @@ import torch
 from llmfs.config import RunConfig
 
 
-def guardar_checkpoint(
+def save_checkpoint(
     path: str | Path,
     model: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     scaler: Any,
     step: int,
-    tokens_vistos: int,
+    tokens_seen: int,
     best_val_loss: float,
     cfg: RunConfig,
     extra: dict[str, Any] | None = None,
 ) -> None:
-    """Guarda todo lo necesario para reanudar exactamente donde estabas.
+    """Save everything needed to resume exactly where you were.
 
-    Se escribe primero en un fichero temporal y se renombra al final. Asi, si el proceso
-    muere a mitad de la escritura, el checkpoint anterior sigue intacto. Un checkpoint a
-    medias es peor que no tener checkpoint.
+    It writes to a temporary file first and renames at the end. That way, if the process
+    dies mid-write, the previous checkpoint is still intact. A half-written checkpoint is
+    worse than no checkpoint.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,32 +45,32 @@ def guardar_checkpoint(
         "optimizer": optimizer.state_dict(),
         "scaler": scaler.state_dict() if scaler is not None else None,
         "step": step,
-        "tokens_vistos": tokens_vistos,
+        "tokens_seen": tokens_seen,
         "best_val_loss": best_val_loss,
         "config": asdict(cfg),
         "extra": extra or {},
     }
 
-    temporal = path.with_suffix(path.suffix + ".tmp")
-    torch.save(payload, temporal)
-    temporal.replace(path)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    torch.save(payload, temporary)
+    temporary.replace(path)
 
 
-def cargar_checkpoint(
+def load_checkpoint(
     path: str | Path,
     model: torch.nn.Module | None = None,
     optimizer: torch.optim.Optimizer | None = None,
     scaler: Any = None,
     map_location: str | torch.device = "cpu",
 ) -> dict[str, Any]:
-    """Carga un checkpoint y, si le pasas los objetos, restaura su estado.
+    """Load a checkpoint and, if you pass the objects in, restore their state.
 
-    `map_location="cpu"` por defecto: asi un checkpoint guardado en CUDA se puede cargar en
-    una maquina sin GPU. El modelo ya se mueve al dispositivo despues.
+    `map_location="cpu"` by default: that way a checkpoint saved on CUDA can be loaded on a
+    machine with no GPU. The model gets moved to the device afterwards anyway.
     """
     path = Path(path)
     if not path.exists():
-        raise FileNotFoundError(f"No existe el checkpoint {path}")
+        raise FileNotFoundError(f"Checkpoint {path} does not exist")
 
     payload = torch.load(path, map_location=map_location, weights_only=False)
 
@@ -84,10 +84,10 @@ def cargar_checkpoint(
     return payload
 
 
-def ultimo_checkpoint(directorio: str | Path) -> Path | None:
-    """El checkpoint mas reciente de un directorio, o `None` si no hay ninguno."""
-    directorio = Path(directorio)
-    if not directorio.exists():
+def latest_checkpoint(directory: str | Path) -> Path | None:
+    """The most recent checkpoint in a directory, or `None` if there is none."""
+    directory = Path(directory)
+    if not directory.exists():
         return None
-    candidatos = sorted(directorio.glob("*.pt"), key=lambda p: p.stat().st_mtime)
-    return candidatos[-1] if candidatos else None
+    candidates = sorted(directory.glob("*.pt"), key=lambda p: p.stat().st_mtime)
+    return candidates[-1] if candidates else None

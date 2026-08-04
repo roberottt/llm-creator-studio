@@ -94,7 +94,7 @@ def test_los_configs_reales_del_repo_cargan():
 
 
 def test_el_config_de_9m_cuadra_con_el_desglose_documentado():
-    """El conteo que promete el modulo 09. Si esto cambia, el TEORIA.md miente."""
+    """El conteo que promete el modulo 09. Si esto cambia, el THEORY.md miente."""
     from llmfs.paths import configs_dir
 
     cfg = RunConfig.from_yaml(configs_dir() / "tinystories_9m.yaml")

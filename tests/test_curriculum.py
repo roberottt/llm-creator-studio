@@ -52,15 +52,15 @@ def test_el_total_de_ejercicios_cuadra():
     assert total_exercises() == sum(len(m.exercises) for m in all_modules())
 
 
-@pytest.mark.parametrize("ref", [6, "6", "06", "06_atencion", "aten"])
+@pytest.mark.parametrize("ref", [6, "6", "06", "06_attention", "aten"])
 def test_get_module_acepta_varias_formas(ref):
-    assert get_module(ref).id == "06_atencion"
+    assert get_module(ref).id == "06_attention"
 
 
 def test_get_module_falla_con_mensaje_util():
     with pytest.raises(KeyError) as exc:
         get_module("no_existe")
-    assert "06_atencion" in str(exc.value), "el error deberia listar los modulos validos"
+    assert "06_attention" in str(exc.value), "el error deberia listar los modulos validos"
 
 
 def test_las_partes_estan_en_orden():
@@ -74,7 +74,7 @@ def test_las_partes_estan_en_orden():
 
 
 def test_los_indices_de_ejercicio_son_1_indexados():
-    module = get_module("06_atencion")
+    module = get_module("06_attention")
     assert module.exercise(1) is module.exercises[0]
     assert module.exercise("causal_mask").name == "causal_mask"
     with pytest.raises(KeyError):

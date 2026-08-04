@@ -1,11 +1,11 @@
-"""Referencia del modulo 00: un modelo de lenguaje de juguete, sin redes neuronales.
+"""Reference for module 00: a toy language model, with no neural networks.
 
-Aqui no hay torch, ni matrices, ni gradientes. Solo diccionarios y una division. El
-objetivo es que veas con tus propios ojos que un modelo de lenguaje es, literalmente,
-una cosa que dice "despues de esto, viene esto otro con esta probabilidad".
+There is no torch here, no matrices, no gradients. Just dictionaries and one division. The
+goal is for you to see with your own eyes that a language model is, literally, a thing that
+says "after this, this other thing comes with this probability".
 
-Todo lo que hagamos en los 17 modulos siguientes es la misma idea, con mejores formas de
-estimar esas probabilidades.
+Everything we do in the next 17 modules is the same idea, with better ways of estimating
+those probabilities.
 """
 
 from __future__ import annotations
@@ -13,17 +13,17 @@ from __future__ import annotations
 import random
 from typing import Mapping, Sequence
 
-#: Una tabla de conteos: para cada contexto, cuantas veces le siguio cada caracter.
-#: Por ejemplo `{"a": {"b": 3, "c": 1}}` significa "tras la 'a' vino 'b' tres veces y
-#: 'c' una vez".
+#: A count table: for each context, how many times each character followed it.
+#: For example `{"a": {"b": 3, "c": 1}}` means "after 'a' came 'b' three times and
+#: 'c' once".
 CountTable = dict[str, dict[str, int]]
 
 
 def build_count_table(text: str, context_size: int = 1) -> CountTable:
-    """Recorre el texto y apunta que caracter sigue a cada contexto.
+    """Walk the text and record which character follows each context.
 
-    No es un ejercicio: es el andamio para que puedas concentrarte en los tres que si
-    lo son. Con `context_size=1` cuenta pares de caracteres; con 2, trios; etc.
+    This is not an exercise: it is the scaffolding so you can focus on the three that are.
+    With `context_size=1` it counts pairs of characters; with 2, triples; and so on.
     """
     table: CountTable = {}
     for i in range(len(text) - context_size):
@@ -35,45 +35,44 @@ def build_count_table(text: str, context_size: int = 1) -> CountTable:
 
 
 def next_token_probs(counts: Mapping[str, int]) -> dict[str, float]:
-    """Convierte conteos en probabilidades.
+    """Turn counts into probabilities.
 
-    Dividir cada conteo entre el total. Eso es todo. El resultado suma 1, que es la
-    definicion de una distribucion de probabilidad.
+    Divide each count by the total. That is all. The result sums to 1, which is the
+    definition of a probability distribution.
 
-    Ejemplo:
+    Example:
         {"b": 3, "c": 1}  ->  {"b": 0.75, "c": 0.25}
     """
     total = sum(counts.values())
     if total == 0:
-        raise ValueError("no se puede normalizar una tabla de conteos vacia")
+        raise ValueError("cannot normalize an empty count table")
     return {token: count / total for token, count in counts.items()}
 
 
 def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = None) -> str:
-    """Elige un token al azar, respetando sus probabilidades.
+    """Pick a token at random, respecting its probability.
 
-    El metodo es el de la ruleta: se saca un numero aleatorio entre 0 y 1, y se va
-    acumulando probabilidad hasta pasarse. El token en el que te pasas es el elegido.
+    The method is the roulette wheel: draw a random number between 0 and 1, and accumulate
+    probability until you go past it. The token you go past on is the chosen one.
 
         probs = {"b": 0.75, "c": 0.25}
-        r = 0.61  ->  acumulado tras "b" es 0.75 > 0.61  ->  sale "b"
-        r = 0.92  ->  acumulado tras "b" es 0.75 < 0.92
-                      acumulado tras "c" es 1.00 > 0.92  ->  sale "c"
+        r = 0.61  ->  running total after "b" is 0.75 > 0.61  ->  "b" comes out
+        r = 0.92  ->  running total after "b" is 0.75 < 0.92
+                      running total after "c" is 1.00 > 0.92  ->  "c" comes out
 
-    Se recorre `probs` en su orden de insercion, para que con la misma semilla siempre
-    salga lo mismo.
+    `probs` is walked in insertion order, so the same seed always gives the same result.
     """
     rng = rng or random.Random()
     r = rng.random()
-    acumulado = 0.0
-    ultimo = ""
+    running = 0.0
+    last = ""
     for token, p in probs.items():
-        acumulado += p
-        ultimo = token
-        if r < acumulado:
+        running += p
+        last = token
+        if r < running:
             return token
-    # Solo se llega aqui por error de redondeo en coma flotante (acumulado = 0.9999...).
-    return ultimo
+    # We only get here from floating-point rounding error (running = 0.9999...).
+    return last
 
 
 def generate_naive(
@@ -82,38 +81,37 @@ def generate_naive(
     length: int = 200,
     rng: random.Random | None = None,
 ) -> str:
-    """Genera texto encadenando predicciones.
+    """Generate text by chaining predictions together.
 
-    El bucle es el mismo que usara tu GPT de 9M en el modulo 14:
+    The loop is the same one your 9M GPT will use in module 14:
 
-        1. mirar el contexto actual
-        2. obtener una distribucion sobre el siguiente token
-        3. muestrear uno
-        4. anyadirlo al texto y volver al paso 1
+        1. look at the current context
+        2. get a distribution over the next token
+        3. sample one
+        4. append it to the text and go back to step 1
 
-    A esto se le llama generacion **autorregresiva**: cada prediccion se convierte en
-    parte de la entrada de la siguiente. Es la razon por la que generar es lento
-    (no se puede paralelizar en el tiempo) y por la que un error temprano contamina
-    todo lo que viene detras.
+    This is called **autoregressive** generation: each prediction becomes part of the input
+    to the next one. It is the reason generation is slow (it cannot be parallelized over
+    time) and the reason an early mistake contaminates everything that comes after it.
 
     Args:
-        table: tabla de conteos de `build_count_table`.
-        start: contexto inicial. Su longitud fija el `context_size`.
-        length: cuantos caracteres generar en total, incluido `start`.
-        rng: generador aleatorio, para reproducibilidad.
+        table: count table from `build_count_table`.
+        start: initial context. Its length fixes the `context_size`.
+        length: how many characters to generate in total, including `start`.
+        rng: random generator, for reproducibility.
 
     Returns:
-        El texto generado. Se corta antes si aparece un contexto nunca visto.
+        The generated text. It stops early if an unseen context comes up.
     """
     rng = rng or random.Random()
     context_size = len(start)
-    salida = list(start)
+    out = list(start)
 
     for _ in range(max(0, length - len(start))):
-        contexto = "".join(salida[-context_size:])
-        counts = table.get(contexto)
+        context = "".join(out[-context_size:])
+        counts = table.get(context)
         if not counts:
-            break  # contexto desconocido: el modelo no sabe seguir
-        salida.append(sample_next_token(next_token_probs(counts), rng))
+            break  # unknown context: the model does not know how to continue
+        out.append(sample_next_token(next_token_probs(counts), rng))
 
-    return "".join(salida)
+    return "".join(out)

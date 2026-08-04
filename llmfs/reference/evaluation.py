@@ -1,4 +1,4 @@
-"""Referencia del modulo 15: evaluacion."""
+"""Reference for module 15: evaluation."""
 
 from __future__ import annotations
 
@@ -7,27 +7,27 @@ from typing import Any, Callable, Sequence
 
 import torch
 
-#: Los prompts de la bateria cualitativa del paper TinyStories. Estan elegidos para probar
-#: cosas distintas: continuacion narrativa, coherencia causal, uso de un objeto mencionado
-#: antes, y cierre de historia.
+#: The prompts from the TinyStories paper's qualitative battery. They are chosen to test
+#: different things: narrative continuation, causal coherence, use of an object mentioned
+#: earlier, and story closure.
 PROMPTS_TINYSTORIES: tuple[tuple[str, str], ...] = (
-    ("Once upon a time, there was a little girl named Lily. She", "continuacion basica"),
-    ("Tom and Jane went to the park. They saw a big dog. The dog", "coherencia causal"),
-    ("Sara had a red ball. She threw the ball and it", "seguimiento de objeto"),
-    ("The cat was very hungry. It looked for food and finally", "resolucion"),
-    ("One day, a boy found a shiny key. He used the key to", "uso de un objeto"),
-    ("The sun was going down. The children said goodbye and", "cierre de historia"),
+    ("Once upon a time, there was a little girl named Lily. She", "basic continuation"),
+    ("Tom and Jane went to the park. They saw a big dog. The dog", "causal coherence"),
+    ("Sara had a red ball. She threw the ball and it", "object tracking"),
+    ("The cat was very hungry. It looked for food and finally", "resolution"),
+    ("One day, a boy found a shiny key. He used the key to", "use of an object"),
+    ("The sun was going down. The children said goodbye and", "story closure"),
 )
 
 
 def perplexity_from_loss(loss: float) -> float:
-    """Perplejidad a partir de la perdida media en nats: `exp(loss)`.
+    """Perplexity from the mean loss in nats: `exp(loss)`.
 
-    Interpretacion: entre cuantas opciones equiprobables esta dudando el modelo,
-    efectivamente. Perplejidad 10 significa que en promedio esta tan indeciso como si
-    eligiera al azar entre 10 palabras.
+    Interpretation: how many equally likely options the model is effectively torn between.
+    A perplexity of 10 means that on average it is as undecided as if it were choosing at
+    random among 10 words.
 
-    Con vocabulario de 4096 y un modelo sin entrenar, la perplejidad es 4096.
+    With a 4096-token vocabulary and an untrained model, the perplexity is 4096.
     """
     if not math.isfinite(loss):
         return float("inf")
@@ -35,34 +35,34 @@ def perplexity_from_loss(loss: float) -> float:
 
 
 def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
-    """Bits por byte: la metrica que SI se puede comparar entre tokenizadores distintos.
+    """Bits per byte: the metric you CAN compare across different tokenizers.
 
-    EL PROBLEMA CON LA PERPLEJIDAD. Depende del tokenizador. Si tu vocabulario parte las
-    palabras en trozos mas pequenyos, cada token individual es mas facil de predecir y tu
-    perplejidad sale mejor sin que el modelo sea mejor. Comparar perplejidades entre
-    modelos con tokenizadores distintos no significa absolutamente nada, y se hace
-    constantemente.
+    THE PROBLEM WITH PERPLEXITY. It depends on the tokenizer. If your vocabulary splits
+    words into smaller pieces, each individual token is easier to predict and your
+    perplexity comes out better without the model being better. Comparing perplexities
+    across models with different tokenizers means absolutely nothing, and it is done
+    constantly.
 
-    LA SOLUCION. Normalizar por BYTES de texto original en vez de por tokens. Los bytes no
-    dependen de como trocees.
+    THE SOLUTION. Normalize by BYTES of original text instead of by tokens. Bytes do not
+    depend on how you chop things up.
 
-        bits_por_byte = (perdida_total_en_nats / ln(2)) / n_bytes
+        bits_per_byte = (total_loss_in_nats / ln(2)) / n_bytes
 
-    El `/ ln(2)` convierte nats a bits.
+    The `/ ln(2)` converts nats to bits.
 
-    INTERPRETACION. Es literalmente cuantos bits necesitarias para transmitir el texto
-    usando el modelo como compresor. Un modelo que da 1,0 bits/byte comprime el texto a la
-    octava parte. Los mejores modelos de lenguaje rondan 0,6-0,8 bits/byte sobre texto en
-    ingles; gzip anda por 2,5.
+    INTERPRETATION. It is literally how many bits you would need to transmit the text using
+    the model as a compressor. A model at 1.0 bits/byte compresses the text to an eighth.
+    The best language models are around 0.6-0.8 bits/byte on English text; gzip is around
+    2.5.
 
     Args:
-        total_loss_nats: la SUMA de las perdidas, no la media.
-        n_tokens: cuantos tokens se han evaluado (no se usa en el calculo, pero se pide
-            para dejar claro que la perdida es total y no media).
-        n_bytes: cuantos bytes tenia el texto original.
+        total_loss_nats: the SUM of the losses, not the mean.
+        n_tokens: how many tokens were evaluated (not used in the computation, but asked for
+            to make it clear the loss is a total and not a mean).
+        n_bytes: how many bytes the original text had.
     """
     if n_bytes <= 0:
-        raise ValueError("n_bytes tiene que ser positivo")
+        raise ValueError("n_bytes has to be positive")
     return total_loss_nats / math.log(2) / n_bytes
 
 
@@ -76,55 +76,55 @@ def evaluate_perplexity(
     device: Any = None,
     get_batch: Callable[..., Any] | None = None,
 ) -> dict[str, float]:
-    """Perdida media y perplejidad sobre un conjunto de datos.
+    """Mean loss and perplexity over a dataset.
 
-    No es un ejercicio; lo usa el informe del modulo 15.
+    Not an exercise; it is used by module 15's report.
     """
     from llmfs.bridge import resolve
 
-    get_batch = get_batch or resolve("04_datos", "get_batch")
+    get_batch = get_batch or resolve("04_data", "get_batch")
     model.eval()
 
     total, n = 0.0, 0
     for _ in range(iters):
         x, y = get_batch(data, batch_size, context_length, device=device)
-        _, perdida = model(x, y)
-        total += float(perdida.detach())
+        _, loss = model(x, y)
+        total += float(loss.detach())
         n += 1
 
-    media = total / max(1, n)
-    return {"loss": media, "perplexity": perplexity_from_loss(media), "iters": n}
+    mean = total / max(1, n)
+    return {"loss": mean, "perplexity": perplexity_from_loss(mean), "iters": n}
 
 
 def run_prompt_battery(
     generate_fn: Callable[[str], str],
     prompts: Sequence[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
-    """Genera una completion para cada prompt de la bateria.
+    """Generate one completion for each prompt in the battery.
 
-    `generate_fn(prompt) -> texto` encapsula el modelo y el tokenizador, para que esta
-    funcion no sepa nada de ninguno de los dos.
+    `generate_fn(prompt) -> text` wraps the model and the tokenizer, so this function knows
+    nothing about either of them.
 
     Returns:
-        Una lista de dicts con `prompt`, `que_prueba` y `completion`.
+        A list of dicts with `prompt`, `tests` and `completion`.
     """
     prompts = prompts or PROMPTS_TINYSTORIES
     return [
-        {"prompt": prompt, "que_prueba": etiqueta, "completion": generate_fn(prompt)}
-        for prompt, etiqueta in prompts
+        {"prompt": prompt, "tests": label, "completion": generate_fn(prompt)}
+        for prompt, label in prompts
     ]
 
 
 def write_eval_report(
     path: Any,
-    metricas: dict[str, Any],
-    bateria: list[dict[str, str]],
-    config_resumen: str = "",
+    metrics: dict[str, Any],
+    battery: list[dict[str, str]],
+    config_summary: str = "",
 ) -> Any:
-    """Escribe el informe de evaluacion en markdown.
+    """Write the evaluation report in markdown.
 
-    No es un ejercicio: es el andamio para que la parte interesante (leer las completions)
-    sea comoda.
+    Not an exercise: it is the scaffolding that makes the interesting part (reading the
+    completions) comfortable.
     """
     from datetime import datetime
     from pathlib import Path
@@ -132,39 +132,39 @@ def write_eval_report(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    lineas = [
-        "# Informe de evaluación",
+    lines = [
+        "# Evaluation report",
         "",
-        f"Generado el {datetime.now():%Y-%m-%d %H:%M}.",
-        "",
-    ]
-    if config_resumen:
-        lineas += ["```", config_resumen, "```", ""]
-
-    lineas += ["## Métricas", "", "| métrica | valor |", "|---|---|"]
-    for clave, valor in metricas.items():
-        formateado = f"{valor:.4f}" if isinstance(valor, float) else str(valor)
-        lineas.append(f"| {clave} | {formateado} |")
-
-    lineas += [
-        "",
-        "## Batería cualitativa",
-        "",
-        "Los prompts vienen del paper de TinyStories. La evaluación es tuya: léelos y",
-        "juzga gramática, coherencia y si la historia tiene sentido.",
+        f"Generated on {datetime.now():%Y-%m-%d %H:%M}.",
         "",
     ]
-    for i, caso in enumerate(bateria, start=1):
-        lineas += [
-            f"### {i}. {caso['que_prueba']}",
+    if config_summary:
+        lines += ["```", config_summary, "```", ""]
+
+    lines += ["## Metrics", "", "| metric | value |", "|---|---|"]
+    for key, value in metrics.items():
+        formatted = f"{value:.4f}" if isinstance(value, float) else str(value)
+        lines.append(f"| {key} | {formatted} |")
+
+    lines += [
+        "",
+        "## Qualitative battery",
+        "",
+        "The prompts come from the TinyStories paper. The evaluation is yours: read them",
+        "and judge grammar, coherence, and whether the story makes sense.",
+        "",
+    ]
+    for i, case in enumerate(battery, start=1):
+        lines += [
+            f"### {i}. {case['tests']}",
             "",
-            f"**Prompt:** `{caso['prompt']}`",
+            f"**Prompt:** `{case['prompt']}`",
             "",
             "```",
-            caso["completion"],
+            case["completion"],
             "```",
             "",
         ]
 
-    path.write_text("\n".join(lineas), encoding="utf-8")
+    path.write_text("\n".join(lines), encoding="utf-8")
     return path

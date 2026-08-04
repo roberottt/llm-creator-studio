@@ -22,10 +22,10 @@ test-fast:  ## Suite sin los tests lentos
 	$(RUN) pytest -m "not slow"
 
 test-reference:  ## SALUD DEL CURSO: tests contra llmfs/reference/. Siempre verde; si no, es un bug del repo.
-	LLMFS_TEST_REFERENCE=1 $(RUN) pytest modulos/
+	LLMFS_TEST_REFERENCE=1 $(RUN) pytest modules/
 
-test-soluciones:  ## Pega el codigo de cada SOLUCION.md y corre sus tests. Tarda un par de minutos.
-	$(RUN) python scripts/verificar_soluciones.py
+test-soluciones:  ## Pega el codigo de cada SOLUTION.md y corre sus tests. Tarda un par de minutos.
+	$(RUN) python scripts/verify_solutions.py
 
 status:  ## Tabla de progreso del curriculo
 	$(RUN) python -m llmfs status

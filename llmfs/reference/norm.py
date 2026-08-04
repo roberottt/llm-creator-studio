@@ -1,4 +1,4 @@
-"""Referencia del modulo 07: normalizacion y conexiones residuales."""
+"""Reference for module 07: normalization and residual connections."""
 
 from __future__ import annotations
 
@@ -14,18 +14,18 @@ def layer_norm(
     bias: torch.Tensor | None = None,
     eps: float = 1e-5,
 ) -> torch.Tensor:
-    """LayerNorm: centra en 0, escala a varianza 1, y luego aplica gamma y beta.
+    """LayerNorm: center at 0, scale to variance 1, then apply gamma and beta.
 
     $$y = \\frac{x - \\mu}{\\sqrt{\\sigma^2 + \\epsilon}} \\cdot \\gamma + \\beta$$
 
-    La media y la varianza se calculan sobre la ULTIMA dimension (las features de cada
-    token), por separado para cada token. Nada que ver con BatchNorm, que normaliza a lo
-    largo del batch: LayerNorm trata cada token de forma independiente, y por eso funciona
-    igual con batch de 1 que de 1000 y no necesita estadisticas acumuladas.
+    The mean and the variance are computed over the LAST dimension (each token's
+    features), separately for each token. Nothing to do with BatchNorm, which normalizes
+    along the batch: LayerNorm treats each token independently, which is why it works the
+    same with a batch of 1 as with 1000 and needs no running statistics.
 
-    OJO con la varianza: se usa la POBLACIONAL (dividir entre n), no la muestral (entre
-    n-1). Es lo que hace `F.layer_norm`, y usar `torch.var` con su `unbiased=True` por
-    defecto da un resultado ligeramente distinto.
+    WATCH OUT with the variance: the POPULATION one is used (divide by n), not the sample
+    one (by n-1). That is what `F.layer_norm` does, and using `torch.var` with its default
+    `unbiased=True` gives a slightly different result.
     """
     mean = x.mean(dim=-1, keepdim=True)
     var = x.var(dim=-1, keepdim=True, unbiased=False)
@@ -39,21 +39,22 @@ def layer_norm(
 
 
 class RMSNorm(nn.Module):
-    """RMSNorm: como LayerNorm pero sin restar la media ni sumar sesgo.
+    """RMSNorm: like LayerNorm but without subtracting the mean or adding a bias.
 
     $$y = \\frac{x}{\\sqrt{\\frac{1}{d}\\sum_i x_i^2 + \\epsilon}} \\cdot \\gamma$$
 
-    Zhang y Sennrich (2019) observaron que casi todo el beneficio de LayerNorm viene de
-    reescalar, no de recentrar. Quitando la media se ahorra una pasada por los datos y un
-    tensor intermedio: entre un 7% y un 64% mas rapido segun el caso, y sin perdida de
-    calidad medible. Por eso lo usan Llama, Mistral y practicamente todo lo moderno.
+    Zhang and Sennrich (2019) observed that almost all of LayerNorm's benefit comes from
+    rescaling, not from recentering. Dropping the mean saves a pass over the data and an
+    intermediate tensor: between 7% and 64% faster depending on the case, with no
+    measurable loss of quality. That is why Llama, Mistral and practically everything
+    modern use it.
 
-    Detalle de implementacion importante: el calculo se hace en float32 aunque la entrada
-    venga en float16. Elevar al cuadrado valores de una activacion grande puede desbordar
-    el rango de fp16 (65504), y el resultado seria `inf`.
+    An important implementation detail: the computation is done in float32 even if the
+    input arrives in float16. Squaring the values of a large activation can overflow the
+    fp16 range (65504), and the result would be `inf`.
 
-    Submodulos:
-        weight: parametro de forma `(dim,)`, inicializado a unos.
+    Submodules:
+        weight: a parameter of shape `(dim,)`, initialized to ones.
     """
 
     def __init__(self, dim: int, eps: float = 1e-6) -> None:
@@ -75,20 +76,20 @@ def prenorm_residual(
 ) -> torch.Tensor:
     """Pre-norm: `x + fn(norm(x))`.
 
-    Compara con post-norm, que es `norm(x + fn(x))`. La diferencia parece cosmetica y
-    decide si una red profunda entrena o no.
+    Compare with post-norm, which is `norm(x + fn(x))`. The difference looks cosmetic and
+    it decides whether a deep network trains at all.
 
-    En pre-norm, el camino `x -> salida` incluye un `+x` sin nada por medio. Derivando,
-    ese sumando aporta un 1 al gradiente que llega intacto a las capas de abajo, capa tras
-    capa. Es una autopista para el gradiente.
+    In pre-norm, the path `x -> output` includes a `+x` with nothing in between.
+    Differentiating, that term contributes a 1 to the gradient which arrives intact at the
+    layers below, layer after layer. It is a highway for the gradient.
 
-    En post-norm, la normalizacion esta ENCIMA del camino residual, asi que el gradiente
-    la atraviesa en cada capa y se va reescalando. Con 6 capas se nota poco; con 40 hace
-    falta un warmup cuidadoso para que no explote o se muera.
+    In post-norm, the normalization sits ON TOP of the residual path, so the gradient goes
+    through it at every layer and keeps getting rescaled. With 6 layers you barely notice;
+    with 40 you need a careful warmup so it does not explode or die.
 
-    El precio de pre-norm es que la salida del bloque tiene una escala que crece con la
-    profundidad (cada capa suma algo a la corriente residual). Por eso los modelos
-    pre-norm llevan SIEMPRE una normalizacion final antes de la capa de salida.
+    The price of pre-norm is that the block's output has a scale that grows with depth
+    (every layer adds something to the residual stream). That is why pre-norm models ALWAYS
+    have a final normalization before the output layer.
     """
     return x + fn(norm(x))
 
@@ -98,8 +99,8 @@ def postnorm_residual(
     fn: Callable[[torch.Tensor], torch.Tensor],
     norm: Callable[[torch.Tensor], torch.Tensor],
 ) -> torch.Tensor:
-    """Post-norm: `norm(x + fn(x))`. Lo que hacia el paper original de 2017.
+    """Post-norm: `norm(x + fn(x))`. What the original 2017 paper did.
 
-    No es un ejercicio; esta aqui para que la demo pueda comparar ambas empiricamente.
+    Not an exercise; it is here so the demo can compare the two empirically.
     """
     return norm(x + fn(x))

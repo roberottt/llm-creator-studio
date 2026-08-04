@@ -1,14 +1,13 @@
-"""Estado del curriculo: ejecuta los tests de cada modulo y lo persiste.
+"""Curriculum state: runs each module's tests and persists the result.
 
-El estado no se declara a mano en ningun sitio: se calcula ejecutando los tests. Un
-modulo esta verde cuando sus tests pasan, y punto. El fichero `.llmfs_progress.json` es
-solo una cache para que `llmfs status` pueda responder al instante sin volver a correr
-toda la suite.
+The state is not declared by hand anywhere: it is computed by running the tests. A module
+is green when its tests pass, full stop. The `.llmfs_progress.json` file is only a cache so
+that `llmfs status` can answer instantly without running the whole suite again.
 
-Los tests se ejecutan en el mismo proceso (`pytest.main`) en lugar de con un subproceso
-por modulo. Motivo: importar torch cuesta ~1-2 s y 17 subprocesos serian medio minuto de
-espera solo en imports. A cambio hay que limpiar el estado del bridge entre modulos, que
-es lo que hace `bridge.clear_cache()`.
+The tests run in the same process (`pytest.main`) instead of one subprocess per module.
+Reason: importing torch costs ~1-2 s and 17 subprocesses would be half a minute of waiting
+on imports alone. The price is having to clear the bridge state between modules, which is
+what `bridge.clear_cache()` does.
 """
 
 from __future__ import annotations
@@ -34,10 +33,10 @@ ICONS: dict[State, str] = {
 }
 
 LABELS: dict[State, str] = {
-    "done": "completo",
-    "in_progress": "en progreso",
-    "todo": "sin empezar",
-    "no_tests": "sin tests",
+    "done": "complete",
+    "in_progress": "in progress",
+    "todo": "not started",
+    "no_tests": "no tests",
 }
 
 PROGRESS_VERSION = 2
@@ -45,7 +44,7 @@ PROGRESS_VERSION = 2
 
 @dataclass
 class ModuleStatus:
-    """Resultado de correr los tests de un modulo."""
+    """Result of running a module's tests."""
 
     module_id: str
     state: State = "no_tests"
@@ -55,11 +54,11 @@ class ModuleStatus:
     total: int = 0
     duration_s: float = 0.0
     updated_at: str = ""
-    #: Ejercicios resueltos con TU codigo, segun el bridge.
+    #: Exercises solved with YOUR code, according to the bridge.
     mine: list[str] = field(default_factory=list)
-    #: Ejercicios que ahora mismo caen a la referencia.
+    #: Exercises that currently fall back to the reference.
     borrowed: list[str] = field(default_factory=list)
-    #: Primer fallo, resumido, para que `status` pueda dar una pista sin abrir el log.
+    #: First failure, summarized, so `status` can give a hint without opening the log.
     first_failure: str = ""
 
     @property
@@ -78,7 +77,7 @@ class ModuleStatus:
 
 
 class _Collector:
-    """Plugin de pytest que recoge el resultado de cada test."""
+    """pytest plugin that collects the outcome of each test."""
 
     def __init__(self) -> None:
         self.outcomes: dict[str, str] = {}
@@ -89,7 +88,7 @@ class _Collector:
         if report.when == "call":
             self.outcomes[nodeid] = report.outcome
         elif report.when in {"setup", "teardown"} and report.outcome == "failed":
-            # Un error en setup cuenta como fallo del test.
+            # An error during setup counts as a test failure.
             self.outcomes[nodeid] = "failed"
         elif report.when == "setup" and report.outcome == "skipped":
             self.outcomes.setdefault(nodeid, "skipped")
@@ -99,7 +98,7 @@ class _Collector:
 
 
 def _summarize_failure(report: Any) -> str:
-    """Extrae la linea util de un fallo de pytest (el `assert` o la excepcion)."""
+    """Extract the useful line from a pytest failure (the `assert` or the exception)."""
     text = str(getattr(report, "longrepr", "") or "")
     interesting: list[str] = []
     for line in text.splitlines():
@@ -109,11 +108,11 @@ def _summarize_failure(report: Any) -> str:
     if interesting:
         return interesting[0][:200]
     node = report.nodeid.split("::")[-1]
-    return f"{node} ha fallado"
+    return f"{node} failed"
 
 
 def _bridge_split(module: Module) -> tuple[list[str], list[str]]:
-    """Que ejercicios del modulo usan tu codigo y cuales la referencia."""
+    """Which of the module's exercises use your code and which use the reference."""
     from llmfs import bridge
 
     mine: list[str] = []
@@ -121,19 +120,19 @@ def _bridge_split(module: Module) -> tuple[list[str], list[str]]:
     for ex in module.exercises:
         try:
             res = bridge.resolution(module, ex.name)
-        except Exception:  # noqa: BLE001 - la referencia puede no existir todavia
+        except Exception:  # noqa: BLE001 - the reference may not exist yet
             borrowed.append(ex.name)
             continue
-        (mine if res.source == "ejercicio" else borrowed).append(ex.name)
+        (mine if res.source == "exercise" else borrowed).append(ex.name)
     return mine, borrowed
 
 
 def run_module_tests(module: Module | str | int, quiet: bool = True) -> ModuleStatus:
-    """Ejecuta los tests de un modulo y devuelve su estado.
+    """Run a module's tests and return its state.
 
     Args:
-        module: modulo o referencia a el.
-        quiet: si `True`, se traga la salida de pytest. `llmfs check` la quiere ver.
+        module: the module, or a reference to it.
+        quiet: if `True`, swallow pytest's output. `llmfs check` wants to see it.
     """
     import pytest
 
@@ -167,9 +166,9 @@ def run_module_tests(module: Module | str | int, quiet: bool = True) -> ModuleSt
             pytest.main(args, plugins=[collector])
     except SystemExit:
         pass
-    except Exception as exc:  # noqa: BLE001 - un modulo roto no debe tumbar `status`
+    except Exception as exc:  # noqa: BLE001 - a broken module must not take down `status`
         status.state = "in_progress"
-        status.first_failure = f"pytest ha reventado: {exc.__class__.__name__}: {exc}"
+        status.first_failure = f"pytest blew up: {exc.__class__.__name__}: {exc}"
         return status
     status.duration_s = time.perf_counter() - started
 
@@ -191,8 +190,8 @@ def run_module_tests(module: Module | str | int, quiet: bool = True) -> ModuleSt
 
     bridge.clear_cache()
     status.mine, status.borrowed = _bridge_split(module)
-    # Si has implementado algo pero los tests aun no pasan, eso es "en progreso",
-    # no "sin empezar". Es informacion util: distingue "no lo he tocado" de "lo intento".
+    # If you have implemented something but the tests do not pass yet, that is "in
+    # progress", not "not started". Useful: it separates "untouched" from "trying".
     if status.state == "todo" and status.mine:
         status.state = "in_progress"
 
@@ -201,11 +200,11 @@ def run_module_tests(module: Module | str | int, quiet: bool = True) -> ModuleSt
 
 
 def run_all(modules: list[Module] | None = None, on_module: Any = None) -> dict[str, ModuleStatus]:
-    """Corre los tests de todos los modulos (o de los indicados).
+    """Run the tests of every module (or of the given ones).
 
     Args:
-        on_module: callback opcional `fn(module)` antes de cada modulo, para pintar
-            progreso mientras se ejecuta.
+        on_module: optional callback `fn(module)` before each module, to render progress
+            while it runs.
     """
     modules = modules if modules is not None else list(all_modules())
     results: dict[str, ModuleStatus] = {}
@@ -216,7 +215,7 @@ def run_all(modules: list[Module] | None = None, on_module: Any = None) -> dict[
     return results
 
 
-# ---------------------------------------------------------------------------- persistencia
+# ---------------------------------------------------------------------------- persistence
 
 
 def _now() -> str:
@@ -224,7 +223,7 @@ def _now() -> str:
 
 
 def save(results: dict[str, ModuleStatus]) -> None:
-    """Fusiona los resultados con lo ya guardado y escribe `.llmfs_progress.json`."""
+    """Merge the results with what is already stored and write `.llmfs_progress.json`."""
     stored = _read_raw()
     modules = stored.get("modules", {}) if stored.get("version") == PROGRESS_VERSION else {}
     for module_id, status in results.items():
@@ -248,7 +247,7 @@ def _read_raw() -> dict[str, Any]:
 
 
 def load() -> dict[str, ModuleStatus]:
-    """Lee la cache de progreso. Devuelve `{}` si no existe o es de otra version."""
+    """Read the progress cache. Returns `{}` if it does not exist or is another version."""
     raw = _read_raw()
     if raw.get("version") != PROGRESS_VERSION:
         return {}
@@ -265,11 +264,11 @@ def last_updated() -> str:
     return _read_raw().get("updated_at", "")
 
 
-# ---------------------------------------------------------------------------- consultas
+# ---------------------------------------------------------------------------- queries
 
 
 def next_module(results: dict[str, ModuleStatus]) -> Module | None:
-    """El primer modulo del curriculo que no esta completo."""
+    """The first module of the curriculum that is not complete."""
     for module in all_modules():
         status = results.get(module.id)
         if status is None or status.state != "done":
@@ -278,13 +277,13 @@ def next_module(results: dict[str, ModuleStatus]) -> Module | None:
 
 
 def get_hint_level(module_id: str, exercise: str) -> int:
-    """Ultimo nivel de pista mostrado para un ejercicio (0 si ninguno)."""
+    """Last hint level shown for an exercise (0 if none)."""
     raw = _read_raw()
     return int((raw.get("hints") or {}).get(f"{module_id}:{exercise}", 0))
 
 
 def set_hint_level(module_id: str, exercise: str, level: int) -> None:
-    """Recuerda hasta que nivel de pista has llegado, para que la siguiente sea mas explicita."""
+    """Remember which hint level you reached, so the next one is more explicit."""
     raw = _read_raw()
     if raw.get("version") != PROGRESS_VERSION:
         raw = {"version": PROGRESS_VERSION, "modules": {}}

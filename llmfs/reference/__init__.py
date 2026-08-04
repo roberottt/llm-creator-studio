@@ -1,26 +1,26 @@
-"""Implementaciones de referencia: la red de seguridad del curso.
+"""Reference implementations: the safety net of the course.
 
-Aqui esta TODO resuelto y correcto. Dos usos:
+Everything here is solved and correct. Two uses:
 
-1. **Red de seguridad.** `llmfs.bridge` tira de este paquete cuando tu ejercicio del
-   modulo N todavia no esta, para que los modulos N+1 en adelante sigan funcionando.
-2. **Oraculo de los tests.** Los `test_NN.py` comparan tu implementacion contra estas
-   con `torch.allclose`, no contra "no ha petado".
+1. **Safety net.** `llmfs.bridge` pulls from this package when your exercise from module N
+   is not there yet, so that modules N+1 onwards keep working.
+2. **Oracle for the tests.** The `test_NN.py` files compare your implementation against
+   these with `torch.allclose`, not against "it did not crash".
 
-Estilo: se prioriza la legibilidad sobre la velocidad. Son implementaciones directas de
-la formula del TEORIA.md correspondiente, con las mismas variables. No busques trucos de
-rendimiento aqui; los que importan estan en `llmfs/model/` y `llmfs/train/`.
+Style: readability wins over speed. These are direct implementations of the formula in the
+corresponding THEORY.md, using the same variable names. Do not look for performance tricks
+here; the ones that matter live in `llmfs/model/` and `llmfs/train/`.
 
-Si vas a mirar este codigo antes de intentar el ejercicio, mira antes `llmfs hint NN`.
-Las pistas estan escritas para desbloquearte sin quemarte el ejercicio.
+If you are about to look at this code before attempting the exercise, look at
+`llmfs hint NN` first. The hints are written to unblock you without burning the exercise.
 
-Todos los simbolos del curriculo se reexportan aqui con su nombre, que es la clave que
-usa el bridge. El fichero en el que vivan es un detalle de organizacion.
+Every symbol in the curriculum is re-exported here under its own name, which is the key the
+bridge uses. Which file it lives in is an organizational detail.
 """
 
 from __future__ import annotations
 
-# --- modulo 00: que es un LLM --------------------------------------------------------
+# --- module 00: what an LLM is --------------------------------------------------------
 from llmfs.reference.intro import (
     build_count_table,
     generate_naive,
@@ -28,7 +28,7 @@ from llmfs.reference.intro import (
     sample_next_token,
 )
 
-# --- modulo 01: entorno y hardware ---------------------------------------------------
+# --- module 01: environment and hardware ----------------------------------------------
 from llmfs.reference.hardware import (
     estimate_tokens_per_second,
     matmul_flops,
@@ -36,7 +36,7 @@ from llmfs.reference.hardware import (
     transformer_flops_per_token,
 )
 
-# --- modulo 01: autograd -------------------------------------------------------------
+# --- module 02: autograd --------------------------------------------------------------
 from llmfs.reference.autograd import (
     MLP,
     Layer,
@@ -46,7 +46,7 @@ from llmfs.reference.autograd import (
     train_scalar_mlp,
 )
 
-# --- modulo 02: tokenizacion ---------------------------------------------------------
+# --- module 03: tokenization ----------------------------------------------------------
 from llmfs.reference.tokenizer import (
     GPT4_SPLIT_PATTERN,
     bpe_decode,
@@ -57,20 +57,20 @@ from llmfs.reference.tokenizer import (
     train_bpe,
 )
 
-# --- modulo 03: datos ----------------------------------------------------------------
+# --- module 04: data ------------------------------------------------------------------
 from llmfs.reference.data import get_batch, pack_tokens_uint16, train_val_split
 
-# --- modulo 06: atencion -------------------------------------------------------------
+# --- module 06: attention -------------------------------------------------------------
 from llmfs.reference.attention import MultiHeadAttention, causal_mask, single_head_attention
 
-# --- modulo 07: normalizacion --------------------------------------------------------
+# --- module 07: normalization ---------------------------------------------------------
 from llmfs.reference.norm import RMSNorm, layer_norm, postnorm_residual, prenorm_residual
 
-# --- modulo 08: mlp y activaciones ---------------------------------------------------
+# --- module 08: mlp and activations ---------------------------------------------------
 from llmfs.reference.mlp import MLP as FeedForwardMLP
 from llmfs.reference.mlp import SwiGLU, gelu, swiglu_hidden_dim
 
-# --- modulo 09: posicion -------------------------------------------------------------
+# --- module 09: position --------------------------------------------------------------
 from llmfs.reference.position import (
     LearnedPositionalEmbedding,
     apply_rope,
@@ -79,7 +79,7 @@ from llmfs.reference.position import (
     sinusoidal_embeddings,
 )
 
-# --- modulo 10: el gpt completo ------------------------------------------------------
+# --- module 10: the full gpt ----------------------------------------------------------
 from llmfs.reference.gpt import (
     GPT,
     TransformerBlock,
@@ -89,7 +89,7 @@ from llmfs.reference.gpt import (
     make_norm,
 )
 
-# --- modulo 11: bucle de entrenamiento ------------------------------------------------
+# --- module 11: training loop ---------------------------------------------------------
 from llmfs.reference.training import (
     AdamWScratch,
     build_param_groups,
@@ -97,17 +97,17 @@ from llmfs.reference.training import (
     lr_at_step,
 )
 
-# --- modulo 12: eficiencia y escalado -------------------------------------------------
+# --- module 12: efficiency and scaling ------------------------------------------------
 from llmfs.reference.scaling import (
     chinchilla_optimal_allocation,
     compute_mfu,
     model_flops_per_token,
 )
 
-# --- modulo 13: la tirada real --------------------------------------------------------
+# --- module 13: the real run ----------------------------------------------------------
 from llmfs.reference.final_run import estimate_remaining, format_eta, overfit_single_batch
 
-# --- modulo 14: inferencia ------------------------------------------------------------
+# --- module 14: inference -------------------------------------------------------------
 from llmfs.reference.inference import (
     KVCache,
     apply_repetition_penalty,
@@ -116,7 +116,7 @@ from llmfs.reference.inference import (
     top_p_filter,
 )
 
-# --- modulo 15: evaluacion ------------------------------------------------------------
+# --- module 15: evaluation ------------------------------------------------------------
 from llmfs.reference.evaluation import (
     PROMPTS_TINYSTORIES,
     bits_per_byte,
@@ -126,7 +126,7 @@ from llmfs.reference.evaluation import (
     write_eval_report,
 )
 
-# --- modulo 16: post-training ---------------------------------------------------------
+# --- module 16: post-training ---------------------------------------------------------
 from llmfs.reference.finetune import (
     CHAT_MARKERS,
     LoRALinear,
@@ -137,14 +137,14 @@ from llmfs.reference.finetune import (
     merge_lora_weights,
 )
 
-# --- modulo 17: extras ----------------------------------------------------------------
+# --- module 17: extras ----------------------------------------------------------------
 from llmfs.reference.quantization import (
     dequantize_int8,
     quantization_error,
     quantize_int8_symmetric,
 )
 
-# --- modulo 05: baselines ------------------------------------------------------------
+# --- module 05: baselines -------------------------------------------------------------
 from llmfs.reference.baselines import (
     BengioMLP,
     NeuralBigram,

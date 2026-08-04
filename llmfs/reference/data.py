@@ -1,4 +1,4 @@
-"""Referencia del modulo 03: de una lista de ids a batches en la GPU."""
+"""Reference for module 04: from a list of ids to batches on the GPU."""
 
 from __future__ import annotations
 
@@ -7,53 +7,54 @@ from typing import Sequence
 import numpy as np
 import torch
 
-#: uint16 llega hasta 65.535. Con vocab_size=4096 sobra de largo, y ocupa la mitad que
-#: uint32: 500M tokens son 1 GB en vez de 2 GB.
+#: uint16 goes up to 65,535. With vocab_size=4096 that is plenty, and it takes half the
+#: space of uint32: 500M tokens are 1 GB instead of 2 GB.
 MAX_UINT16 = 2**16
 
 
 def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
-    """Empaqueta ids en un array `uint16`, validando que quepan.
+    """Pack ids into a `uint16` array, validating that they fit.
 
-    La validacion no es paranoia: si un id se sale de rango, numpy hace *wrap around* en
-    silencio (65536 se convierte en 0) y acabas entrenando con datos corruptos que no
-    dan ningun error visible. El modelo simplemente aprende peor y no sabes por que.
+    The validation is not paranoia: if an id goes out of range, numpy silently *wraps
+    around* (65536 becomes 0) and you end up training on corrupted data with no visible
+    error. The model simply learns worse and you do not know why.
 
     Raises:
-        ValueError: si `vocab_size` no cabe en uint16 o si algun id se sale del vocabulario.
+        ValueError: if `vocab_size` does not fit in uint16 or if some id is outside the
+            vocabulary.
     """
     if vocab_size > MAX_UINT16:
         raise ValueError(
-            f"vocab_size={vocab_size} no cabe en uint16. Usa uint32 (y el doble de disco)."
+            f"vocab_size={vocab_size} does not fit in uint16. Use uint32 (and twice the disk)."
         )
 
     array = np.asarray(ids, dtype=np.int64)
     if array.size and (array.min() < 0 or array.max() >= vocab_size):
         raise ValueError(
-            f"ids fuera del vocabulario [0, {vocab_size}): "
-            f"minimo={array.min()}, maximo={array.max()}"
+            f"ids outside the vocabulary [0, {vocab_size}): "
+            f"min={array.min()}, max={array.max()}"
         )
     return array.astype(np.uint16)
 
 
 def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
-    """Parte el corpus en entrenamiento y validacion.
+    """Split the corpus into training and validation.
 
-    El corte es **contiguo y por el final**, no aleatorio. Motivo: con una ventana
-    deslizante, dos muestras que se solapan comparten casi todos sus tokens. Si barajaras
-    a nivel de token, el conjunto de validacion contendria trozos de secuencias vistas en
-    entrenamiento y la perplejidad saldria optimista. Cortar por el final garantiza que
-    validacion son historias que el modelo no ha visto nunca.
+    The cut is **contiguous and from the end**, not random. Reason: with a sliding window,
+    two overlapping samples share almost all of their tokens. If you shuffled at the token
+    level, the validation set would contain pieces of sequences seen during training and
+    the perplexity would come out optimistic. Cutting from the end guarantees that
+    validation is made of stories the model has never seen.
 
     Returns:
-        `(train, val)` como vistas del array original (no copia nada).
+        `(train, val)` as views of the original array (nothing is copied).
     """
     if not 0.0 < val_fraction < 1.0:
-        raise ValueError(f"val_fraction debe estar en (0, 1), no {val_fraction}")
+        raise ValueError(f"val_fraction must be in (0, 1), not {val_fraction}")
 
     n_val = max(1, int(len(tokens) * val_fraction))
     if n_val >= len(tokens):
-        raise ValueError("val_fraction deja el conjunto de entrenamiento vacio")
+        raise ValueError("val_fraction leaves the training set empty")
     return tokens[:-n_val], tokens[-n_val:]
 
 
@@ -64,40 +65,40 @@ def get_batch(
     device: torch.device | str | None = None,
     rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Muestrea un batch de ventanas contiguas.
+    """Sample a batch of contiguous windows.
 
-    Se eligen `batch_size` posiciones de inicio al azar y de cada una se toman
-    `context_length + 1` tokens: los primeros `context_length` son la entrada y los
-    ultimos `context_length` (desplazados uno) son el objetivo. Es decir, la tarea es
-    "predice el siguiente token" en cada posicion a la vez.
+    `batch_size` starting positions are picked at random and `context_length + 1` tokens
+    are taken from each: the first `context_length` are the input and the last
+    `context_length` (shifted by one) are the target. In other words, the task is "predict
+    the next token" at every position at once.
 
         data  = [ 5, 8, 2, 9, 1, ...]
         x     = [ 5, 8, 2, 9]
         y     = [ 8, 2, 9, 1]
 
-    Con `T` posiciones se obtienen `T` predicciones por muestra, no una. Por eso el
-    entrenamiento de un modelo de lenguaje es tan eficiente en datos.
+    With `T` positions you get `T` predictions per sample, not one. That is why training a
+    language model is so data-efficient.
 
     Args:
-        data: array 1-D de tokens (tipicamente un `np.memmap` uint16).
-        device: si es CUDA se usa `pin_memory` + `non_blocking` para solapar la copia
-            con el calculo.
-        rng: generador de numpy. Fijalo para tener batches reproducibles.
+        data: 1-D array of tokens (typically a uint16 `np.memmap`).
+        device: if it is CUDA, `pin_memory` + `non_blocking` are used to overlap the copy
+            with the computation.
+        rng: numpy generator. Fix it to get reproducible batches.
 
     Returns:
-        `(x, y)`, ambos `int64` de forma `(batch_size, context_length)`.
+        `(x, y)`, both `int64` with shape `(batch_size, context_length)`.
     """
     rng = rng or np.random.default_rng()
     max_start = len(data) - context_length - 1
     if max_start < 1:
         raise ValueError(
-            f"El corpus ({len(data)} tokens) es mas corto que el contexto "
+            f"The corpus ({len(data)} tokens) is shorter than the context "
             f"({context_length} + 1)."
         )
 
     starts = rng.integers(0, max_start, size=batch_size)
-    # astype(int64) tambien materializa el memmap: sin la copia, torch se quedaria
-    # apuntando a memoria mapeada de disco y cada acceso seria una lectura.
+    # astype(int64) also materializes the memmap: without the copy, torch would be left
+    # pointing at disk-mapped memory and every access would be a read.
     x_np = np.stack([data[i : i + context_length] for i in starts]).astype(np.int64)
     y_np = np.stack([data[i + 1 : i + 1 + context_length] for i in starts]).astype(np.int64)
 

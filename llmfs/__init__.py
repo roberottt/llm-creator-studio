@@ -1,27 +1,27 @@
-"""llmfs - el paquete del curso "LLM desde cero".
+"""llmfs - the package behind the "LLM from scratch" course.
 
-Aqui vive el codigo "de produccion": el que realmente entrena el modelo final.
-Se divide en tres capas que conviene no confundir:
+This is where the "production" code lives: the code that actually trains the final model.
+It splits into three layers that are worth keeping straight:
 
-1. `llmfs.reference`  -> implementaciones canonicas, completas y correctas de cada pieza.
-                         Escritas para leerse y para servir de red de seguridad.
-2. `llmfs.bridge`     -> el resolvedor. Para cada pieza intenta usar TU ejercicio de
-                         `modulos/NN_*/ejercicios.py`; si no esta implementado o falla el
-                         smoke test, cae automaticamente a `llmfs.reference` y te avisa.
-3. el resto           -> modelo, entrenamiento, inferencia y evaluacion, construidos sobre
-                         las piezas que devuelve el bridge. Es decir: cuando tu ejercicio
-                         del modulo 06 esta bien, el modelo final entrena con TU RMSNorm.
+1. `llmfs.reference`  -> canonical, complete and correct implementations of every piece.
+                         Written to be read, and to act as a safety net.
+2. `llmfs.bridge`     -> the resolver. For each piece it tries to use YOUR exercise from
+                         `modules/NN_*/exercises.py`; if it is not implemented or fails the
+                         smoke test, it falls back to `llmfs.reference` and tells you.
+3. everything else    -> model, training, inference and evaluation, built on top of the
+                         pieces the bridge hands back. In other words: once your exercise
+                         from module 06 is right, the final model trains with YOUR RMSNorm.
 
-IMPORTANTE: este modulo NO importa torch. La CLI tiene que arrancar rapido, y torch tarda
-del orden de un segundo en cargar. Los submodulos que lo necesitan lo importan ellos.
+IMPORTANT: this module does NOT import torch. The CLI has to start fast, and torch takes
+about a second to load. The submodules that need it import it themselves.
 """
 
 from __future__ import annotations
 
 import os
 
-# Debe fijarse ANTES de que se importe torch para que el backend MPS enrute a CPU los ops
-# que todavia no tiene implementados en lugar de reventar con NotImplementedError.
+# This must be set BEFORE torch is imported so that the MPS backend routes the ops it does
+# not implement yet to the CPU instead of blowing up with NotImplementedError.
 os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 __version__ = "0.1.0"

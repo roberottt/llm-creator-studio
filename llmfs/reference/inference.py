@@ -1,4 +1,4 @@
-"""Referencia del modulo 14: muestreo y KV cache."""
+"""Reference for module 14: sampling and the KV cache."""
 
 from __future__ import annotations
 
@@ -11,92 +11,92 @@ import torch.nn.functional as F
 def apply_repetition_penalty(
     logits: torch.Tensor, generated: torch.Tensor, penalty: float = 1.1
 ) -> torch.Tensor:
-    """Penaliza los tokens que ya han salido, para romper bucles.
+    """Penalize tokens that have already appeared, to break loops.
 
-    El detalle que casi todo el mundo implementa mal: hay que DIVIDIR si el logit es
-    positivo y MULTIPLICAR si es negativo.
+    The detail almost everyone gets wrong: you have to DIVIDE if the logit is positive and
+    MULTIPLY if it is negative.
 
-        logit > 0  ->  logit / penalty     lo acerca a cero
-        logit < 0  ->  logit * penalty     lo aleja de cero, hacia abajo
+        logit > 0  ->  logit / penalty     moves it towards zero
+        logit < 0  ->  logit * penalty     moves it away from zero, downwards
 
-    Si dividieras siempre, un logit de -5 pasaria a -4,5, o sea que el token se volveria
-    MAS probable: justo lo contrario de penalizarlo.
+    If you always divided, a logit of -5 would become -4.5, which makes the token MORE
+    likely: exactly the opposite of penalizing it.
 
-    Con `penalty=1.0` no hace nada. Valores tipicos: 1.05 a 1.2.
+    With `penalty=1.0` it does nothing. Typical values: 1.05 to 1.2.
     """
     if penalty == 1.0:
         return logits
 
-    salida = logits.clone()
-    for fila in range(logits.shape[0]):
-        vistos = torch.unique(generated[fila])
-        valores = salida[fila, vistos]
-        salida[fila, vistos] = torch.where(valores > 0, valores / penalty, valores * penalty)
-    return salida
+    out = logits.clone()
+    for row in range(logits.shape[0]):
+        seen = torch.unique(generated[row])
+        values = out[row, seen]
+        out[row, seen] = torch.where(values > 0, values / penalty, values * penalty)
+    return out
 
 
 def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
-    """Deja solo los `k` logits mayores y pone el resto a -inf.
+    """Keep only the `k` largest logits and set the rest to -inf.
 
-    Corta la cola larga de la distribucion. Con vocabulario de 4096, hay miles de tokens
-    con probabilidad diminuta pero no nula; sumadas, esa cola puede llevarse un 20% de la
-    masa, y de vez en cuando sale una de ellas y descarrila la frase.
+    This cuts off the long tail of the distribution. With a 4096-token vocabulary there are
+    thousands of tokens with tiny but non-zero probability; added up, that tail can carry
+    20% of the mass, and every so often one of them comes out and derails the sentence.
 
-    `k <= 0` o `k >= vocab_size` no filtra nada.
+    `k <= 0` or `k >= vocab_size` filters nothing.
     """
     if k <= 0 or k >= logits.shape[-1]:
         return logits
 
-    umbral = torch.topk(logits, k, dim=-1).values[..., -1:]
-    return logits.masked_fill(logits < umbral, float("-inf"))
+    threshold = torch.topk(logits, k, dim=-1).values[..., -1:]
+    return logits.masked_fill(logits < threshold, float("-inf"))
 
 
 def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
-    """Nucleus sampling: se queda con los tokens que acumulan una masa `p`.
+    """Nucleus sampling: keep the tokens that accumulate a mass of `p`.
 
-    A diferencia de top-k, el numero de candidatos es VARIABLE:
+    Unlike top-k, the number of candidates is VARIABLE:
 
-    - si el modelo esta muy seguro, un solo token puede acumular el 90% y se queda solo el
-    - si duda entre muchos, se quedan muchos
+    - if the model is very sure, a single token can hold 90% and it is kept alone
+    - if it is torn between many, many are kept
 
-    Eso es lo que lo hace mejor que top-k en la practica (Holtzman et al. 2020): se adapta
-    a lo seguro que este el modelo en cada posicion.
+    That is what makes it better than top-k in practice (Holtzman et al. 2020): it adapts to
+    how sure the model is at each position.
 
-    El detalle que importa: el primer token SIEMPRE se conserva, aunque el solo ya supere
-    `p`. Si no, con p=0.5 y un token de probabilidad 0.9 te quedarias sin candidatos.
+    The detail that matters: the first token is ALWAYS kept, even if on its own it already
+    exceeds `p`. Otherwise, with p=0.5 and a token of probability 0.9 you would be left with
+    no candidates at all.
     """
     if p >= 1.0:
         return logits
 
-    ordenados, indices = torch.sort(logits, descending=True, dim=-1)
-    acumulada = torch.cumsum(F.softmax(ordenados, dim=-1), dim=-1)
+    sorted_logits, indices = torch.sort(logits, descending=True, dim=-1)
+    cumulative = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
 
-    quitar = acumulada - F.softmax(ordenados, dim=-1) > p
-    quitar[..., 0] = False  # el mas probable siempre se queda
+    drop = cumulative - F.softmax(sorted_logits, dim=-1) > p
+    drop[..., 0] = False  # the most likely one is always kept
 
-    a_quitar = quitar.scatter(-1, indices, quitar)
-    return logits.masked_fill(a_quitar, float("-inf"))
+    to_drop = drop.scatter(-1, indices, drop)
+    return logits.masked_fill(to_drop, float("-inf"))
 
 
 class KVCache:
-    """Guarda las claves y valores ya calculados para no recalcularlos.
+    """Stores the keys and values already computed, so they are not recomputed.
 
-    EL PROBLEMA. Al generar el token 100, la version ingenua vuelve a pasar los 100 tokens
-    por el modelo, aunque los 99 primeros no han cambiado. Generar N tokens cuesta
-    O(N^2) en vez de O(N).
+    THE PROBLEM. When generating token 100, the naive version runs all 100 tokens through
+    the model again, even though the first 99 have not changed. Generating N tokens costs
+    O(N^2) instead of O(N).
 
-    LA SOLUCION. Guardar las claves y valores de cada capa y, en cada paso, procesar SOLO
-    el token nuevo, concatenando sus K y V a lo guardado.
+    THE SOLUTION. Store each layer's keys and values and, at every step, process ONLY the
+    new token, concatenating its K and V onto what is stored.
 
-    LO QUE NO SE PUEDE CACHEAR: las queries. Cada token nuevo necesita su propia query para
-    preguntar; lo que se reutiliza son las respuestas (K) y los contenidos (V) de los
-    anteriores.
+    WHAT CANNOT BE CACHED: the queries. Each new token needs its own query to ask with; what
+    gets reused are the answers (K) and the contents (V) of the previous ones.
 
-    LA MEMORIA:  2 * n_layers * T * d_model * bytes
+    THE MEMORY:  2 * n_layers * T * d_model * bytes
 
-    Para nuestro modelo con 512 tokens en fp16 son 3,9 MB. Para un modelo de 70B con
-    contexto de 100.000, decenas de gigabytes, y de ahi que existan tecnicas como
-    grouped-query attention.
+    For our model with 512 tokens in fp16 that is 3.9 MB. For a 70B model with a
+    100,000-token context, tens of gigabytes, which is why techniques like grouped-query
+    attention exist.
     """
 
     def __init__(self, n_layers: int) -> None:
@@ -107,27 +107,27 @@ class KVCache:
     def update(
         self, layer: int, k: torch.Tensor, v: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Anyade las K y V del token nuevo y devuelve la secuencia completa.
+        """Append the new token's K and V and return the full sequence.
 
         Args:
-            layer: el indice de capa.
-            k, v: `(B, n_heads, T_nuevo, head_dim)`.
+            layer: the layer index.
+            k, v: `(B, n_heads, T_new, head_dim)`.
 
         Returns:
-            `(K, V)` completas, `(B, n_heads, T_total, head_dim)`.
+            The full `(K, V)`, `(B, n_heads, T_total, head_dim)`.
         """
         if self.keys[layer] is None:
             self.keys[layer] = k
             self.values[layer] = v
         else:
-            # dim=-2 es la dimension de tiempo con la forma (B, heads, T, head_dim)
+            # dim=-2 is the time dimension with the shape (B, heads, T, head_dim)
             self.keys[layer] = torch.cat([self.keys[layer], k], dim=-2)
             self.values[layer] = torch.cat([self.values[layer], v], dim=-2)
         return self.keys[layer], self.values[layer]
 
     @property
     def seq_len(self) -> int:
-        """Cuantos tokens hay guardados."""
+        """How many tokens are stored."""
         return 0 if self.keys[0] is None else self.keys[0].shape[-2]
 
     def reset(self) -> None:
@@ -153,65 +153,65 @@ def generate_with_cache(
     repetition_penalty: float = 1.0,
     eos_token: int | None = None,
 ) -> torch.Tensor:
-    """Genera texto usando la KV cache.
+    """Generate text using the KV cache.
 
-    El bucle tiene dos fases:
+    The loop has two phases:
 
-    1. **Prefill**: se pasa el prompt entero de golpe y se llena la cache.
-    2. **Decode**: en cada paso se pasa SOLO el ultimo token, se lee la cache, y se anyade
-       el token nuevo.
+    1. **Prefill**: the whole prompt is passed in at once and the cache is filled.
+    2. **Decode**: at each step ONLY the last token is passed in, the cache is read, and the
+       new token is appended.
 
-    El orden de los filtros importa y es este: penalizacion -> temperatura -> top-k ->
-    top-p. La penalizacion va primero porque opera sobre los logits crudos; la temperatura
-    antes que los filtros porque cambia las probabilidades acumuladas que mira top-p.
+    The order of the filters matters, and it is this one: penalty -> temperature -> top-k ->
+    top-p. The penalty goes first because it operates on the raw logits; the temperature
+    goes before the filters because it changes the cumulative probabilities top-p looks at.
 
-    LIMITE DE CONTEXTO. Esta implementacion PARA al llegar al contexto maximo del modelo,
-    en vez de recortar como hace `model.generate`.
+    CONTEXT LIMIT. This implementation STOPS when it reaches the model's maximum context,
+    instead of truncating the way `model.generate` does.
 
-    No es pereza: recortar con cache es genuinamente mas complicado. Habria que descartar
-    las entradas antiguas Y remapear las posiciones de RoPE de todo lo que queda, porque
-    los tokens que sobreviven pasarian a ocupar posiciones distintas. Se llama sliding
-    window attention y da para un modulo entero.
+    This is not laziness: truncating with a cache is genuinely more complicated. You would
+    have to drop the old entries AND remap the RoPE positions of everything that remains,
+    because the surviving tokens would end up at different positions. It is called sliding
+    window attention and it is worth a whole module.
 
-    Parar es lo honesto: la alternativa silenciosa seria generar texto incorrecto sin
-    avisar.
+    Stopping is the honest option: the silent alternative would be generating incorrect text
+    without any warning.
     """
     model.eval()
     cache = KVCache(model.cfg.n_layers)
-    contexto_max = model.cfg.context_length
+    max_context = model.cfg.context_length
 
-    if idx.shape[1] >= contexto_max:
+    if idx.shape[1] >= max_context:
         raise ValueError(
-            f"el prompt ya tiene {idx.shape[1]} tokens y el contexto del modelo es "
-            f"{contexto_max}: no queda sitio para generar"
+            f"the prompt already has {idx.shape[1]} tokens and the model's context is "
+            f"{max_context}: there is no room left to generate"
         )
 
     logits, _ = model(idx, use_cache=True, cache=cache)
 
     for _ in range(max_new_tokens):
-        if idx.shape[1] >= contexto_max:
+        if idx.shape[1] >= max_context:
             break
-        siguiente = logits[:, -1, :].float()
+        next_logits = logits[:, -1, :].float()
 
         if repetition_penalty != 1.0:
-            siguiente = apply_repetition_penalty(siguiente, idx, repetition_penalty)
+            next_logits = apply_repetition_penalty(next_logits, idx, repetition_penalty)
         if temperature != 1.0:
-            siguiente = siguiente / max(temperature, 1e-8)
+            next_logits = next_logits / max(temperature, 1e-8)
         if top_k is not None:
-            siguiente = top_k_filter(siguiente, top_k)
+            next_logits = top_k_filter(next_logits, top_k)
         if top_p is not None:
-            siguiente = top_p_filter(siguiente, top_p)
+            next_logits = top_p_filter(next_logits, top_p)
 
         if temperature == 0.0:
-            nuevo = siguiente.argmax(dim=-1, keepdim=True)
+            new_token = next_logits.argmax(dim=-1, keepdim=True)
         else:
-            nuevo = torch.multinomial(F.softmax(siguiente, dim=-1), num_samples=1)
+            new_token = torch.multinomial(F.softmax(next_logits, dim=-1), num_samples=1)
 
-        idx = torch.cat([idx, nuevo], dim=1)
-        if eos_token is not None and bool((nuevo == eos_token).all()):
+        idx = torch.cat([idx, new_token], dim=1)
+        if eos_token is not None and bool((new_token == eos_token).all()):
             break
 
-        # Solo el token nuevo: la cache tiene el resto.
-        logits, _ = model(nuevo, use_cache=True, cache=cache)
+        # Only the new token: the cache holds the rest.
+        logits, _ = model(new_token, use_cache=True, cache=cache)
 
     return idx

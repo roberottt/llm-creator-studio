@@ -1,7 +1,7 @@
-"""Referencia del modulo 06: self-attention.
+"""Reference for module 06: self-attention.
 
-La pieza central del Transformer. Cada token mira a los anteriores, decide a cuales hacer
-caso, y se lleva una mezcla ponderada de lo que aportan.
+The centerpiece of the Transformer. Each token looks at the previous ones, decides which
+to pay attention to, and takes away a weighted mixture of what they contribute.
 """
 
 from __future__ import annotations
@@ -15,19 +15,19 @@ import torch.nn.functional as F
 
 
 def causal_mask(seq_len: int, device: torch.device | str | None = None) -> torch.Tensor:
-    """Mascara triangular que impide mirar hacia el futuro.
+    """Triangular mask that blocks looking into the future.
 
-    Convenio: `True` = SI se puede mirar. Es el mismo que usa
-    `F.scaled_dot_product_attention` con `attn_mask` booleana.
+    Convention: `True` = looking IS allowed. It is the same one
+    `F.scaled_dot_product_attention` uses with a boolean `attn_mask`.
 
-    Para `seq_len=4`:
+    For `seq_len=4`:
 
-        [[ True, False, False, False],     el token 0 solo se ve a si mismo
-         [ True,  True, False, False],     el token 1 ve al 0 y a si mismo
+        [[ True, False, False, False],     token 0 only sees itself
+         [ True,  True, False, False],     token 1 sees token 0 and itself
          [ True,  True,  True, False],
          [ True,  True,  True,  True]]
 
-    La diagonal va incluida: un token si puede mirarse a si mismo.
+    The diagonal is included: a token can look at itself.
     """
     return torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()
 
@@ -38,25 +38,25 @@ def single_head_attention(
     v: torch.Tensor,
     mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Atencion de una cabeza: `softmax(Q K^T / sqrt(d_k) + mascara) V`.
+    """Single-head attention: `softmax(Q K^T / sqrt(d_k) + mask) V`.
 
     Args:
-        q: `(B, T, d_k)` las preguntas.
-        k: `(B, S, d_k)` las etiquetas.
-        v: `(B, S, d_v)` los contenidos.
-        mask: `(T, S)` o `(B, T, S)` booleana, `True` = permitido. `None` = sin mascara.
+        q: `(B, T, d_k)` the queries.
+        k: `(B, S, d_k)` the keys.
+        v: `(B, S, d_v)` the values.
+        mask: `(T, S)` or `(B, T, S)` boolean, `True` = allowed. `None` = no mask.
 
     Returns:
-        `(salida, pesos)` con salida `(B, T, d_v)` y pesos `(B, T, S)`. Los pesos se
-        devuelven porque son lo que dibuja el heatmap de la demo.
+        `(output, weights)` with output `(B, T, d_v)` and weights `(B, T, S)`. The weights
+        are returned because they are what the demo's heatmap draws.
     """
     d_k = q.shape[-1]
 
-    # (B, T, d_k) @ (B, d_k, S) -> (B, T, S). scores[b,i,j] = cuanto le interesa a i el j.
+    # (B, T, d_k) @ (B, d_k, S) -> (B, T, S). scores[b,i,j] = how interested i is in j.
     scores = q @ k.transpose(-2, -1) / math.sqrt(d_k)
 
     if mask is not None:
-        # -inf antes del softmax se convierte en probabilidad 0 despues.
+        # -inf before the softmax becomes probability 0 after it.
         scores = scores.masked_fill(~mask, float("-inf"))
 
     weights = F.softmax(scores, dim=-1)
@@ -64,18 +64,18 @@ def single_head_attention(
 
 
 class MultiHeadAttention(nn.Module):
-    """Varias atenciones en paralelo, cada una con sus propias proyecciones.
+    """Several attentions in parallel, each with its own projections.
 
-    Una sola cabeza tiene que resolver con un unico patron de atencion todas las
-    relaciones de la frase. Con varias, cada una puede especializarse: hay cabezas que
-    miran al token anterior, otras que buscan el sujeto del verbo, otras que copian.
+    A single head has to resolve every relationship in the sentence with one attention
+    pattern. With several, each can specialize: there are heads that look at the previous
+    token, others that hunt for the verb's subject, others that copy.
 
-    El truco de implementacion es que NO se hacen `n_heads` proyecciones separadas: se
-    hace una proyeccion grande de `d_model -> d_model` y se parte el resultado en
-    `n_heads` trozos de `head_dim`. Es matematicamente equivalente y muchisimo mas rapido,
-    porque es un matmul grande en vez de ocho pequenyos.
+    The implementation trick is that you do NOT make `n_heads` separate projections: you
+    make one big `d_model -> d_model` projection and split the result into `n_heads` chunks
+    of `head_dim`. It is mathematically equivalent and vastly faster, because it is one big
+    matmul instead of eight small ones.
 
-    Submodulos (los tests copian pesos por nombre):
+    Submodules (the tests copy weights by name):
         q_proj, k_proj, v_proj, out_proj: nn.Linear(d_model, d_model, bias=bias)
     """
 
@@ -89,14 +89,14 @@ class MultiHeadAttention(nn.Module):
     ) -> None:
         super().__init__()
         if d_model % n_heads != 0:
-            raise ValueError(f"d_model ({d_model}) no es divisible por n_heads ({n_heads})")
+            raise ValueError(f"d_model ({d_model}) is not divisible by n_heads ({n_heads})")
 
         self.d_model = d_model
         self.n_heads = n_heads
         self.head_dim = d_model // n_heads
         self.dropout = dropout
-        #: Si `True`, usa el kernel fusionado de PyTorch. Se activa en el modulo 12, donde
-        #: se mide cuanto gana. La salida es la misma; cambia la memoria y la velocidad.
+        #: If `True`, use PyTorch's fused kernel. It is switched on in module 12, where
+        #: the gain is measured. The output is the same; memory and speed change.
         self.use_sdpa = use_sdpa
 
         self.q_proj = nn.Linear(d_model, d_model, bias=bias)
@@ -114,8 +114,8 @@ class MultiHeadAttention(nn.Module):
     def _merge_heads(self, x: torch.Tensor) -> torch.Tensor:
         """`(B, n_heads, T, head_dim)` -> `(B, T, d_model)`."""
         batch, _, seq_len, _ = x.shape
-        # contiguous() hace falta porque transpose deja el tensor con strides raros y
-        # view() exige memoria contigua.
+        # contiguous() is needed because transpose leaves the tensor with odd strides and
+        # view() demands contiguous memory.
         return x.transpose(1, 2).contiguous().view(batch, seq_len, self.d_model)
 
     def forward(
@@ -132,17 +132,17 @@ class MultiHeadAttention(nn.Module):
         """
         Args:
             x: `(B, T, d_model)`.
-            mask: `(T, T)` booleana, `True` = permitido. Si es `None` se genera causal.
-            cos, sin: tablas de RoPE (modulo 09). Si se pasan, se rotan Q y K antes de
-                calcular las puntuaciones. `None` = sin informacion posicional aqui.
-            return_weights: devolver tambien los pesos de atencion, para visualizarlos.
-            cache: `KVCache` del modulo 14, o `None`.
-            layer_idx: que capa es, para indexar la cache.
-            pos_offset: cuantos tokens hay ya en la cache. Se usa para que RoPE rote el
-                token nuevo con el angulo de su posicion REAL, no de la 0.
+            mask: `(T, T)` boolean, `True` = allowed. If `None`, a causal one is built.
+            cos, sin: RoPE tables (module 09). If given, Q and K are rotated before the
+                scores are computed. `None` = no positional information here.
+            return_weights: also return the attention weights, for visualization.
+            cache: the `KVCache` from module 14, or `None`.
+            layer_idx: which layer this is, for indexing the cache.
+            pos_offset: how many tokens are already in the cache. Used so RoPE rotates the
+                new token by the angle of its REAL position, not position 0.
 
         Returns:
-            `(B, T, d_model)`, o la tupla `(salida, pesos)` si `return_weights`.
+            `(B, T, d_model)`, or the tuple `(output, weights)` if `return_weights`.
         """
         seq_len = x.shape[1]
 
@@ -151,12 +151,12 @@ class MultiHeadAttention(nn.Module):
         v = self._split_heads(self.v_proj(x))
 
         if cos is not None and sin is not None:
-            # Solo a Q y K, nunca a V: lo que debe depender de la posicion son las
-            # puntuaciones de atencion, no el contenido que se transporta.
+            # To Q and K only, never to V: what should depend on position is the attention
+            # scores, not the content being transported.
             #
-            # El recorte por `pos_offset` es lo que hace que la cache sea correcta: al
-            # generar el token 50 se le pasa solo el, pero tiene que rotarse con el angulo
-            # de la posicion 50, no de la 0.
+            # The slice by `pos_offset` is what makes the cache correct: when generating
+            # token 50 only that token is passed in, but it has to be rotated by the angle
+            # of position 50, not position 0.
             from llmfs.reference.position import apply_rope
 
             cos_t = cos[pos_offset : pos_offset + seq_len]
@@ -169,15 +169,15 @@ class MultiHeadAttention(nn.Module):
         total_len = k.shape[-2]
         if mask is None:
             if cache is not None:
-                # Con cache, el token nuevo puede mirar a TODO lo anterior mas a si mismo.
-                # No hace falta triangular nada: la propia cache solo contiene el pasado.
+                # With a cache, the new token can look at EVERYTHING before it plus
+                # itself. Nothing needs triangulating: the cache only holds the past.
                 mask = torch.ones(seq_len, total_len, dtype=torch.bool, device=x.device)
             else:
                 mask = causal_mask(seq_len, device=x.device)
 
         if self.use_sdpa and not return_weights:
-            # Kernel fusionado: no materializa la matriz T x T. En Turing usa el backend
-            # memory_efficient porque FlashAttention-2 pide sm_80+.
+            # Fused kernel: it does not materialize the T x T matrix. On Turing it uses
+            # the memory_efficient backend because FlashAttention-2 needs sm_80+.
             out = F.scaled_dot_product_attention(
                 q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0
             )

@@ -1,30 +1,30 @@
-"""El puente entre tus ejercicios y el codigo que de verdad entrena el modelo.
+"""The bridge between your exercises and the code that actually trains the model.
 
-Este es el mecanismo que hace que nunca te quedes bloqueado.
+This is the mechanism that makes sure you never get stuck.
 
-Cuando `llmfs/model/attention.py` necesita `MultiHeadAttention`, no la importa de ningun
-sitio fijo: se la pide al bridge. El bridge entonces:
+When `llmfs/model/attention.py` needs `MultiHeadAttention`, it does not import it from any
+fixed place: it asks the bridge for it. The bridge then:
 
-  1. Intenta cargar `modulos/05_atencion/ejercicios.py`.
-  2. Busca el simbolo `MultiHeadAttention`.
-  3. Le pasa un *smoke test* con tensores minusculos (ver `llmfs/probes.py`).
-  4. Si pasa -> se usa TU implementacion. El modelo de 9M entrena con tu codigo.
-  5. Si falla, no existe, o `ejercicios.py` ni siquiera compila -> se usa
-     `llmfs.reference`, y te avisa por stderr de que pieza esta sustituyendo.
+  1. Tries to load `modules/06_attention/exercises.py`.
+  2. Looks for the symbol `MultiHeadAttention`.
+  3. Runs a *smoke test* on it with tiny tensors (see `llmfs/probes.py`).
+  4. If it passes -> YOUR implementation is used. The 9M model trains with your code.
+  5. If it fails, does not exist, or `exercises.py` does not even compile -> it uses
+     `llmfs.reference`, and tells you on stderr which piece it is substituting.
 
-Consecuencias practicas:
+Practical consequences:
 
-- Puedes hacer los modulos en cualquier orden, o saltarte uno, y seguir entrenando.
-- El aviso por stderr es deliberado: la red de seguridad no debe ser invisible. Si crees
-  que estas entrenando con tu atencion y en realidad no, eso es peor que no tenerla.
-- El smoke test es minimo a proposito: comprueba "esto es usable", no "esto es correcto".
-  De la correccion se encargan los tests del modulo, que comparan contra referencia con
-  `torch.allclose`. Una implementacion puede pasar el probe y fallar el test.
+- You can do the modules in any order, or skip one, and keep training.
+- The stderr warning is deliberate: the safety net must not be invisible. Believing you
+  are training with your own attention when you are not is worse than having no net.
+- The smoke test is minimal on purpose: it checks "this is usable", not "this is correct".
+  Correctness is the job of the module tests, which compare against the reference with
+  `torch.allclose`. An implementation can pass the probe and still fail the test.
 
-Variables de entorno:
-    LLMFS_FORCE_REFERENCE=1   ignora tus ejercicios y usa siempre la referencia.
-                              Lo usa la suite de tests del propio paquete.
-    LLMFS_BRIDGE_VERBOSE=1    informa tambien cuando SI usa tu implementacion.
+Environment variables:
+    LLMFS_FORCE_REFERENCE=1   ignore your exercises and always use the reference.
+                              The package's own test suite uses this.
+    LLMFS_BRIDGE_VERBOSE=1    also report when it DOES use your implementation.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from typing import Any, Literal
 
 from llmfs.curriculum import Module, get_module
 
-Source = Literal["ejercicio", "referencia"]
+Source = Literal["exercise", "reference"]
 
 _impl_cache: dict[tuple[str, str], Any] = {}
 _module_cache: dict[str, ModuleType | None] = {}
@@ -59,35 +59,35 @@ def _verbose() -> bool:
     return os.environ.get("LLMFS_BRIDGE_VERBOSE", "").strip().lower() in {"1", "true", "yes"}
 
 
-# ---------------------------------------------------------------------------- carga
+# ---------------------------------------------------------------------------- loading
 
 
 def _module_ref(module_ref: str | int | Module | Path) -> Module:
-    """Acepta un Module, un id, un numero, o el `__file__` de un test."""
+    """Accepts a Module, an id, a number, or the `__file__` of a test."""
     if isinstance(module_ref, Module):
         return module_ref
     if isinstance(module_ref, Path) or (
         isinstance(module_ref, str) and ("/" in module_ref or module_ref.endswith(".py"))
     ):
-        # Viene de un test: `exercises(__file__)`. El id es el nombre del directorio.
+        # Comes from a test: `exercises(__file__)`. The id is the directory name.
         return get_module(Path(module_ref).resolve().parent.name)
     return get_module(module_ref)
 
 
 def exercises(module_ref: str | int | Module | Path) -> ModuleType | None:
-    """Carga `modulos/NN_*/ejercicios.py` y devuelve el modulo python.
+    """Load `modules/NN_*/exercises.py` and return the python module.
 
-    Devuelve `None` si el fichero no existe o no compila (y en ese caso escribe el
-    traceback en stderr, porque un `ejercicios.py` roto es algo que quieres ver).
+    Returns `None` if the file does not exist or does not compile (and in that case writes
+    the traceback to stderr, because a broken `exercises.py` is something you want to see).
 
-    Se carga con un nombre unico por modulo (`llmfs_ejercicios_05_atencion`) usando
-    `importlib`, en lugar de meter directorios en `sys.path`. Esto evita el clasico
-    choque de pytest cuando dos directorios distintos tienen un `ejercicios.py` cada uno.
+    It is loaded under a unique per-module name (`llmfs_exercises_06_attention`) using
+    `importlib`, instead of pushing directories onto `sys.path`. This avoids the classic
+    pytest clash when two different directories each hold an `exercises.py`.
 
-    Uso tipico desde un test:
+    Typical use from a test:
 
         from llmfs.bridge import exercises
-        ej = exercises(__file__)
+        ex = exercises(__file__)
     """
     module = _module_ref(module_ref)
     if module.id in _module_cache:
@@ -96,19 +96,19 @@ def exercises(module_ref: str | int | Module | Path) -> ModuleType | None:
     path = module.exercises_file
     loaded: ModuleType | None = None
     if path.exists():
-        unique_name = f"llmfs_ejercicios_{module.id}"
+        unique_name = f"llmfs_exercises_{module.id}"
         try:
             spec = importlib.util.spec_from_file_location(unique_name, path)
             if spec is None or spec.loader is None:
-                raise ImportError(f"No se ha podido crear el spec de {path}")
+                raise ImportError(f"Could not create the spec for {path}")
             loaded = importlib.util.module_from_spec(spec)
             sys.modules[unique_name] = loaded
             spec.loader.exec_module(loaded)
-        except Exception:  # noqa: BLE001 - un ejercicios.py roto no debe tumbar el repo
+        except Exception:  # noqa: BLE001 - a broken exercises.py must not take down the repo
             sys.modules.pop(unique_name, None)
             print(
-                f"\n[llmfs] {module.id}/ejercicios.py no se ha podido importar. "
-                f"Se usara la referencia para todo el modulo.\n"
+                f"\n[llmfs] {module.id}/exercises.py could not be imported. "
+                f"The reference will be used for the whole module.\n"
                 f"{'-' * 70}",
                 file=sys.stderr,
             )
@@ -121,26 +121,26 @@ def exercises(module_ref: str | int | Module | Path) -> ModuleType | None:
 
 
 def reference() -> ModuleType:
-    """El paquete `llmfs.reference`, donde vive todo ya implementado."""
+    """The `llmfs.reference` package, where everything already implemented lives."""
     return importlib.import_module("llmfs.reference")
 
 
-# ---------------------------------------------------------------------------- resolucion
+# ---------------------------------------------------------------------------- resolution
 
 
 @dataclass(frozen=True)
 class Resolution:
-    """De donde ha salido una pieza y por que."""
+    """Where a piece came from, and why."""
 
     module_id: str
     name: str
     source: Source
-    #: Motivo de la caida a referencia. Vacio si se ha usado el ejercicio.
+    #: Reason for falling back to the reference. Empty if the exercise was used.
     reason: str = ""
 
 
 def _is_stub_body(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    """`True` si el cuerpo es solo docstring + `raise NotImplementedError` (o `pass`)."""
+    """`True` if the body is only a docstring + `raise NotImplementedError` (or `pass`)."""
     body = list(node.body)
     if (
         body
@@ -148,7 +148,7 @@ def _is_stub_body(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
         and isinstance(body[0].value, ast.Constant)
         and isinstance(body[0].value.value, str)
     ):
-        body = body[1:]  # descarta el docstring
+        body = body[1:]  # drop the docstring
     if len(body) != 1:
         return False
     stmt = body[0]
@@ -163,23 +163,23 @@ def _is_stub_body(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
 
 
 def looks_unimplemented(impl: Any) -> bool:
-    """Detecta un ejercicio que todavia esta en su estado de plantilla.
+    """Detect an exercise that is still in its template state.
 
-    Se hace leyendo el AST en lugar de llamando a la funcion, por dos motivos:
+    This is done by reading the AST rather than calling the function, for two reasons:
 
-    - Llamarla no sirve: `def f(x, y): raise NotImplementedError` con argumentos falsos
-      lanza `TypeError` por la firma antes de llegar al cuerpo, asi que nunca veriamos
-      el `NotImplementedError`.
-    - Es puro: no ejecuta codigo del usuario y no tiene efectos secundarios.
+    - Calling it does not work: `def f(x, y): raise NotImplementedError` with fake
+      arguments raises `TypeError` on the signature before ever reaching the body, so we
+      would never see the `NotImplementedError`.
+    - It is pure: it does not execute user code and has no side effects.
 
-    Para una clase, basta con que UNO de sus metodos siga siendo una plantilla: una
-    `nn.Module` con `forward` sin implementar no es usable, tenga el `__init__` que tenga.
+    For a class, it is enough that ONE of its methods is still a template: an `nn.Module`
+    with an unimplemented `forward` is not usable, whatever its `__init__` looks like.
     """
     try:
         source = textwrap.dedent(inspect.getsource(impl))
         tree = ast.parse(source)
     except (OSError, TypeError, SyntaxError, IndentationError):
-        return False  # sin fuente disponible, asumimos que esta implementado
+        return False  # with no source available, assume it is implemented
 
     if not tree.body:
         return False
@@ -196,21 +196,22 @@ def looks_unimplemented(impl: Any) -> bool:
 
 
 def _probe(name: str, impl: Any) -> None:
-    """Comprueba que la implementacion es usable. Lanza si no lo es.
+    """Check that the implementation is usable. Raises if it is not.
 
-    Dos capas:
-      1. Analisis estatico: si sigue siendo la plantilla, fuera. Esto funciona para
-         TODOS los ejercicios sin necesidad de escribir nada.
-      2. Probe especifico, si esta registrado en `llmfs/probes.py`: lo llama con datos
-         minusculos y comprueba formas. Caza el caso de "escrito pero devuelve basura".
+    Two layers:
+      1. Static analysis: if it is still the template, out it goes. This works for ALL
+         exercises without having to write anything.
+      2. A specific probe, if one is registered in `llmfs/probes.py`: it calls the
+         implementation with tiny data and checks shapes. This catches the case of
+         "written, but returns garbage".
     """
     from llmfs.probes import PROBES
 
     if impl is None:
-        raise ValueError(f"{name} es None")
+        raise ValueError(f"{name} is None")
 
     if looks_unimplemented(impl):
-        raise NotImplementedError(f"{name} sigue siendo la plantilla del ejercicio")
+        raise NotImplementedError(f"{name} is still the exercise template")
 
     check = PROBES.get(name)
     if check is not None:
@@ -223,30 +224,30 @@ def _resolve_uncached(module: Module, name: str) -> tuple[Any, Resolution]:
     def use_reference(reason: str) -> tuple[Any, Resolution]:
         if not hasattr(ref, name):
             raise AttributeError(
-                f"BUG del curso: `{name}` no existe en llmfs.reference. "
-                f"La red de seguridad tiene un agujero; abre una incidencia."
+                f"COURSE BUG: `{name}` does not exist in llmfs.reference. "
+                f"The safety net has a hole in it; please open an issue."
             )
-        return getattr(ref, name), Resolution(module.id, name, "referencia", reason)
+        return getattr(ref, name), Resolution(module.id, name, "reference", reason)
 
     if _force_reference():
         return use_reference("LLMFS_FORCE_REFERENCE=1")
 
     user_module = exercises(module)
     if user_module is None:
-        return use_reference("ejercicios.py no existe o no compila")
+        return use_reference("exercises.py does not exist or does not compile")
 
     impl = getattr(user_module, name, None)
     if impl is None:
-        return use_reference(f"`{name}` no esta definido en ejercicios.py")
+        return use_reference(f"`{name}` is not defined in exercises.py")
 
     try:
         _probe(name, impl)
     except NotImplementedError:
-        return use_reference("todavia sin implementar (NotImplementedError)")
+        return use_reference("not implemented yet (NotImplementedError)")
     except Exception as exc:  # noqa: BLE001
         return use_reference(f"{exc.__class__.__name__}: {exc}")
 
-    return impl, Resolution(module.id, name, "ejercicio")
+    return impl, Resolution(module.id, name, "exercise")
 
 
 def _announce(res: Resolution) -> None:
@@ -254,25 +255,25 @@ def _announce(res: Resolution) -> None:
     if key in _announced:
         return
     _announced.add(key)
-    if res.source == "referencia":
+    if res.source == "reference":
         print(
-            f"[llmfs] {res.module_id}: usando la REFERENCIA para `{res.name}` "
+            f"[llmfs] {res.module_id}: using the REFERENCE for `{res.name}` "
             f"({res.reason}).",
             file=sys.stderr,
         )
     elif _verbose():
-        print(f"[llmfs] {res.module_id}: usando TU `{res.name}`.", file=sys.stderr)
+        print(f"[llmfs] {res.module_id}: using YOUR `{res.name}`.", file=sys.stderr)
 
 
 def resolve(module_ref: str | int | Module, name: str) -> Any:
-    """Devuelve la implementacion usable de `name`: la tuya si vale, si no la de referencia.
+    """Return the usable implementation of `name`: yours if it works, the reference if not.
 
     Args:
-        module_ref: modulo del curriculo que define el ejercicio (`"05_atencion"`, `5`...).
-        name: nombre del simbolo, tal y como aparece en `curriculum.py`.
+        module_ref: curriculum module that defines the exercise (`"06_attention"`, `6`...).
+        name: name of the symbol, exactly as it appears in `curriculum.py`.
 
     Returns:
-        La funcion o clase lista para usar.
+        The function or class, ready to use.
     """
     module = _module_ref(module_ref)
     key = (module.id, name)
@@ -286,9 +287,9 @@ def resolve(module_ref: str | int | Module, name: str) -> Any:
 
 
 def resolution(module_ref: str | int | Module, name: str) -> Resolution:
-    """Como `resolve`, pero devuelve el diagnostico en lugar de la implementacion.
+    """Like `resolve`, but returns the diagnosis instead of the implementation.
 
-    Lo usa `llmfs status` para pintar que piezas del modelo son tuyas.
+    `llmfs status` uses this to show which pieces of the model are yours.
     """
     module = _module_ref(module_ref)
     _, res = _resolve_uncached(module, name)
@@ -296,15 +297,15 @@ def resolution(module_ref: str | int | Module, name: str) -> Resolution:
 
 
 def module_resolutions(module_ref: str | int | Module) -> list[Resolution]:
-    """Diagnostico de todos los ejercicios de un modulo."""
+    """Diagnosis for every exercise in a module."""
     module = _module_ref(module_ref)
     return [resolution(module, ex.name) for ex in module.exercises]
 
 
 def clear_cache() -> None:
-    """Olvida lo resuelto. Necesario en tests que reescriben `ejercicios.py`."""
+    """Forget what has been resolved. Needed in tests that rewrite `exercises.py`."""
     _impl_cache.clear()
     _module_cache.clear()
     _announced.clear()
-    for key in [k for k in sys.modules if k.startswith("llmfs_ejercicios_")]:
+    for key in [k for k in sys.modules if k.startswith("llmfs_exercises_")]:
         del sys.modules[key]

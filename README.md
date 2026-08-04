@@ -16,14 +16,14 @@ uv run python -m llmfs next
 Cada módulo tiene cinco ficheros y el bucle es siempre el mismo:
 
 ```
-TEORIA.md      →  lees (10-15 min)
-ejercicios.py  →  implementas
+THEORY.md      →  lees (10-15 min)
+exercises.py  →  implementas
 llmfs check NN →  rojo → llmfs hint NN -e 1   →  verde → siguiente
 llmfs demo NN  →  ves el concepto en gráficas y números
-SOLUCION.md    →  la explicación, Y el código completo para copiar si te bloqueas
+SOLUTION.md    →  la explicación, Y el código completo para copiar si te bloqueas
 ```
 
-**Si te atascas de verdad, cada `SOLUCION.md` termina con el código entero**, listo para
+**Si te atascas de verdad, cada `SOLUTION.md` termina con el código entero**, listo para
 copiar y pegar. Un test verifica que ese código compila, usa solo nombres que tienes
 disponibles, y pasa los tests del módulo. Copiarlo no es hacer trampa: hacer trampa sería
 copiarlo sin haberlo intentado.
@@ -167,7 +167,7 @@ llmfs train --config tiny_char  # entrena de verdad
 
 ## Sobre la honestidad intelectual
 
-Cada `TEORIA.md` cierra con una sección **"Dónde está el debate"**, y no es de adorno. A lo
+Cada `THEORY.md` cierra con una sección **"Dónde está el debate"**, y no es de adorno. A lo
 largo del curso vas a leer que:
 
 - SwiGLU funciona mejor y **su propio autor escribe** que no tiene explicación.

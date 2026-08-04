@@ -1,6 +1,7 @@
-"""Referencia del modulo 10: el modelo completo.
+"""Reference for module 10: the complete model.
 
-Aqui se juntan todas las piezas de los modulos 06-09 en el GPT de 8.933.440 parametros.
+This is where all the pieces from modules 06-09 come together into the 8,933,440-parameter
+GPT.
 """
 
 from __future__ import annotations
@@ -19,35 +20,35 @@ from llmfs.reference.position import rope_frequencies, sinusoidal_embeddings
 
 
 def make_norm(cfg: ModelConfig) -> nn.Module:
-    """La capa de normalizacion que pida el config."""
+    """Whichever normalization layer the config asks for."""
     if cfg.norm == "rmsnorm":
         return RMSNorm(cfg.d_model)
     if cfg.norm == "layernorm":
         return nn.LayerNorm(cfg.d_model, bias=cfg.bias)
-    raise ValueError(f"norm desconocida: {cfg.norm}")
+    raise ValueError(f"unknown norm: {cfg.norm}")
 
 
 def make_ffn(cfg: ModelConfig) -> nn.Module:
-    """La red feed-forward que pida el config."""
+    """Whichever feed-forward network the config asks for."""
     if cfg.activation == "swiglu":
         return SwiGLU(cfg.d_model, cfg.d_ff, dropout=cfg.dropout, bias=cfg.bias)
     return MLP(cfg.d_model, cfg.d_ff, dropout=cfg.dropout, bias=cfg.bias)
 
 
 class TransformerBlock(nn.Module):
-    """Un bloque: atencion y FFN, cada uno con su normalizacion y su residual.
+    """One block: attention and FFN, each with its own normalization and residual.
 
-        x = x + atencion(norm1(x))
+        x = x + attention(norm1(x))
         x = x + ffn(norm2(x))
 
-    Es pre-norm: la normalizacion va DENTRO de la rama, no envolviendo a la suma. Asi el
-    camino residual `x -> x` queda libre de cualquier operacion, y el gradiente llega
-    intacto hasta la primera capa.
+    This is pre-norm: the normalization goes INSIDE the branch, not wrapped around the sum.
+    That leaves the residual path `x -> x` free of any operation, and the gradient reaches
+    the first layer intact.
 
-    Los dos residuales son independientes a proposito: cada sub-bloque puede aportar poco o
-    mucho a la corriente residual sin condicionar al otro.
+    The two residuals are independent on purpose: each sub-block can contribute a little or
+    a lot to the residual stream without constraining the other.
 
-    Submodulos:
+    Submodules:
         attn_norm, attn, ffn_norm, ffn
     """
 
@@ -84,32 +85,31 @@ class TransformerBlock(nn.Module):
 
 
 class GPT(nn.Module):
-    """El modelo completo.
+    """The complete model.
 
-    Estructura:
+    Structure:
 
-        tokens -> embeddings -> [bloque] x n_layers -> norm final -> logits
+        tokens -> embeddings -> [block] x n_layers -> final norm -> logits
 
-    Tres decisiones de disenyo que importan y que el modulo 10 desarrolla:
+    Three design decisions that matter, developed in module 10:
 
-    1. **Weight tying.** `lm_head.weight` ES el mismo tensor que `token_embedding.weight`.
-       La matriz que convierte un id en vector se reutiliza, transpuesta, para convertir un
-       vector en puntuaciones sobre el vocabulario. Ahorra 1,31 M de parametros (un 15% del
-       modelo) y ademas suele mejorar la calidad, porque cada peso recibe gradiente por dos
-       caminos.
+    1. **Weight tying.** `lm_head.weight` IS the same tensor as `token_embedding.weight`.
+       The matrix that turns an id into a vector is reused, transposed, to turn a vector
+       into scores over the vocabulary. It saves 1.31 M parameters (15% of the model) and
+       usually improves quality too, because each weight receives gradient along two paths.
 
-    2. **Inicializacion escalada por profundidad.** Las proyecciones que ESCRIBEN en la
-       corriente residual (`out_proj` de la atencion y `down_proj` del FFN) se inicializan
-       con desviacion `0.02 / sqrt(2 * n_layers)` en vez de `0.02`. Sin eso, la varianza de
-       la corriente residual crece linealmente con la profundidad, porque cada capa suma su
-       contribucion. El 2 es porque cada bloque escribe dos veces (atencion y FFN).
+    2. **Depth-scaled initialization.** The projections that WRITE into the residual stream
+       (attention's `out_proj` and the FFN's `down_proj`) are initialized with standard
+       deviation `0.02 / sqrt(2 * n_layers)` instead of `0.02`. Without that, the variance
+       of the residual stream grows linearly with depth, because every layer adds its
+       contribution. The 2 is because each block writes twice (attention and FFN).
 
-    3. **Norma final.** Obligatoria en pre-norm. Como la corriente residual nunca se
-       normaliza por el camino, llega a la salida con una escala arbitraria.
+    3. **Final norm.** Mandatory in pre-norm. Since the residual stream is never normalized
+       along the way, it reaches the output at an arbitrary scale.
 
-    Submodulos:
+    Submodules:
         token_embedding, blocks (ModuleList), norm_f, lm_head
-        pos_embedding solo si cfg.pos == "learned"
+        pos_embedding only if cfg.pos == "learned"
     """
 
     def __init__(self, cfg: ModelConfig) -> None:
@@ -131,8 +131,8 @@ class GPT(nn.Module):
 
         if cfg.pos == "rope":
             cos, sin = rope_frequencies(cfg.head_dim, cfg.context_length, cfg.rope_theta)
-            # persistent=False: se recalculan al construir, no hace falta guardarlas en el
-            # checkpoint ni que ocupen sitio en el fichero.
+            # persistent=False: they are recomputed on construction, so there is no need
+            # to store them in the checkpoint or have them take up space in the file.
             self.register_buffer("rope_cos", cos, persistent=False)
             self.register_buffer("rope_sin", sin, persistent=False)
         elif cfg.pos == "sinusoidal":
@@ -142,7 +142,7 @@ class GPT(nn.Module):
             )
 
         self.apply(self._init_weights)
-        # La init escalada se aplica DESPUES del apply general, para pisarla.
+        # The scaled init is applied AFTER the general apply, to override it.
         scale = 0.02 / math.sqrt(2 * cfg.n_layers)
         for name, param in self.named_parameters():
             if name.endswith(("out_proj.weight", "down_proj.weight", "fc_out.weight")):
@@ -165,30 +165,30 @@ class GPT(nn.Module):
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         """
         Args:
-            idx: `(B, T)` int64 con los ids de token.
-            targets: `(B, T)` int64, el token siguiente en cada posicion. `None` en
-                inferencia.
-            use_cache: si `True`, usa la KV cache del modulo 14.
-            cache: el objeto `KVCache`.
+            idx: `(B, T)` int64 with the token ids.
+            targets: `(B, T)` int64, the next token at each position. `None` at inference
+                time.
+            use_cache: if `True`, use the KV cache from module 14.
+            cache: the `KVCache` object.
 
         Returns:
-            `(logits, loss)`. Logits `(B, T, vocab_size)`; `loss` es `None` sin targets.
+            `(logits, loss)`. Logits `(B, T, vocab_size)`; `loss` is `None` with no targets.
         """
         batch, seq_len = idx.shape
         pos_offset = cache.seq_len if (use_cache and cache is not None) else 0
 
         if seq_len + pos_offset > self.cfg.context_length:
             raise ValueError(
-                f"secuencia de {seq_len + pos_offset} tokens, pero el contexto del modelo "
-                f"es {self.cfg.context_length}"
+                f"sequence of {seq_len + pos_offset} tokens, but the model's context "
+                f"is {self.cfg.context_length}"
             )
 
         x = self.token_embedding(idx)
-        posiciones = torch.arange(pos_offset, pos_offset + seq_len, device=idx.device)
+        positions = torch.arange(pos_offset, pos_offset + seq_len, device=idx.device)
         if self.pos_embedding is not None:
-            x = x + self.pos_embedding(posiciones)
+            x = x + self.pos_embedding(positions)
         elif self.cfg.pos == "sinusoidal":
-            x = x + self.pos_table[posiciones]
+            x = x + self.pos_table[positions]
         x = self.drop(x)
 
         cos = sin = None
@@ -225,15 +225,15 @@ class GPT(nn.Module):
         temperature: float = 1.0,
         top_k: int | None = None,
     ) -> torch.Tensor:
-        """Generacion ingenua: recalcula todo el contexto en cada token.
+        """Naive generation: it recomputes the whole context for every token.
 
-        Es correcta pero lenta: en el modulo 14 se implementa la KV cache, que evita
-        recalcular lo que ya estaba y da la misma salida N veces mas rapido.
+        It is correct but slow: module 14 implements the KV cache, which avoids recomputing
+        what was already there and gives the same output N times faster.
         """
         self.eval()
         for _ in range(max_new_tokens):
-            recorte = idx[:, -self.cfg.context_length :]
-            logits, _ = self(recorte)
+            window = idx[:, -self.cfg.context_length :]
+            logits, _ = self(window)
             logits = logits[:, -1, :] / max(temperature, 1e-8)
             if top_k is not None:
                 v, _ = torch.topk(logits, min(top_k, logits.shape[-1]))
@@ -243,42 +243,42 @@ class GPT(nn.Module):
         return idx
 
 
-# ---------------------------------------------------------------------------- conteo
+# ---------------------------------------------------------------------------- counting
 
 
 def expected_param_count(cfg: ModelConfig) -> int:
-    """El numero de parametros, calculado con la formula en vez de contando.
+    """The parameter count, computed from the formula instead of by counting.
 
-    Sirve para dos cosas: comprobar que el modelo que has montado es el que creias, y
-    poder disenyar una arquitectura ANTES de construirla.
+    It is good for two things: checking that the model you assembled is the one you thought
+    you assembled, and being able to design an architecture BEFORE building it.
 
-        embeddings     = vocab_size * d_model
-        atencion/capa  = 4 * d_model^2            (Wq, Wk, Wv, Wo, sin sesgo)
-        ffn/capa       = 3 * d_model * d_ff       (SwiGLU) o 2 * d_model * d_ff (MLP)
-        normas/capa    = 2 * d_model              (RMSNorm: solo escala)
-        norma final    = d_model
-        lm_head        = 0 si hay tying, si no vocab_size * d_model
+        embeddings      = vocab_size * d_model
+        attention/layer = 4 * d_model^2            (Wq, Wk, Wv, Wo, no bias)
+        ffn/layer       = 3 * d_model * d_ff       (SwiGLU) or 2 * d_model * d_ff (MLP)
+        norms/layer     = 2 * d_model              (RMSNorm: scale only)
+        final norm      = d_model
+        lm_head         = 0 with tying, otherwise vocab_size * d_model
 
-    Con el config final:
-        1.310.720 + 6 * (409.600 + 860.160 + 640) + 320 = 8.933.440
+    With the final config:
+        1,310,720 + 6 * (409,600 + 860,160 + 640) + 320 = 8,933,440
     """
     d, v, ff = cfg.d_model, cfg.vocab_size, cfg.d_ff
 
-    total = v * d  # embeddings de token
+    total = v * d  # token embeddings
     if cfg.pos == "learned":
         total += cfg.context_length * d
 
-    atencion = 4 * d * d + (4 * d if cfg.bias else 0)
+    attention = 4 * d * d + (4 * d if cfg.bias else 0)
     ffn_matrices = 3 if cfg.activation == "swiglu" else 2
     ffn = ffn_matrices * d * ff
     if cfg.bias:
         ffn += 2 * ff + d if ffn_matrices == 3 else ff + d
 
-    # RMSNorm tiene solo escala; LayerNorm tiene escala y (opcionalmente) sesgo.
-    por_norma = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
+    # RMSNorm has scale only; LayerNorm has scale and (optionally) bias.
+    per_norm = d if cfg.norm == "rmsnorm" else (2 * d if cfg.bias else d)
 
-    total += cfg.n_layers * (atencion + ffn + 2 * por_norma)
-    total += por_norma  # la norma final
+    total += cfg.n_layers * (attention + ffn + 2 * per_norm)
+    total += per_norm  # the final norm
 
     if not cfg.tie_embeddings:
         total += v * d
@@ -287,18 +287,18 @@ def expected_param_count(cfg: ModelConfig) -> int:
 
 
 def count_parameters(model: nn.Module) -> dict[str, int]:
-    """Cuenta los parametros de verdad, desglosados por componente.
+    """Count the parameters for real, broken down by component.
 
-    Con weight tying, `lm_head.weight` y `token_embedding.weight` son EL MISMO tensor.
-    `model.parameters()` deduplica por identidad, asi que el total sale bien solo; pero al
-    desglosar hay que tener cuidado de no contarlo dos veces. Por eso se lleva un conjunto
-    de `id()` ya vistos.
+    With weight tying, `lm_head.weight` and `token_embedding.weight` are THE SAME tensor.
+    `model.parameters()` deduplicates by identity, so the total comes out right on its own;
+    but when breaking it down you have to be careful not to count it twice. That is why a
+    set of already-seen `id()`s is kept.
 
     Returns:
-        Un dict con `embeddings`, `attention`, `ffn`, `norms`, `lm_head`, `other`,
-        `total` y `non_embedding`.
+        A dict with `embeddings`, `attention`, `ffn`, `norms`, `lm_head`, `other`,
+        `total` and `non_embedding`.
     """
-    desglose = {
+    breakdown = {
         "embeddings": 0,
         "attention": 0,
         "ffn": 0,
@@ -306,27 +306,27 @@ def count_parameters(model: nn.Module) -> dict[str, int]:
         "lm_head": 0,
         "other": 0,
     }
-    vistos: set[int] = set()
+    seen: set[int] = set()
 
     for name, param in model.named_parameters():
-        if id(param) in vistos:
-            continue  # tying: ya contado
-        vistos.add(id(param))
+        if id(param) in seen:
+            continue  # tying: already counted
+        seen.add(id(param))
         n = param.numel()
 
         if "token_embedding" in name or "pos_embedding" in name:
-            desglose["embeddings"] += n
+            breakdown["embeddings"] += n
         elif "attn." in name or "attention" in name:
-            desglose["attention"] += n
+            breakdown["attention"] += n
         elif any(k in name for k in ("gate_proj", "up_proj", "down_proj", "fc_in", "fc_out")):
-            desglose["ffn"] += n
+            breakdown["ffn"] += n
         elif "norm" in name:
-            desglose["norms"] += n
+            breakdown["norms"] += n
         elif "lm_head" in name:
-            desglose["lm_head"] += n
+            breakdown["lm_head"] += n
         else:
-            desglose["other"] += n
+            breakdown["other"] += n
 
-    desglose["total"] = sum(desglose.values())
-    desglose["non_embedding"] = desglose["total"] - desglose["embeddings"]
-    return desglose
+    breakdown["total"] = sum(breakdown.values())
+    breakdown["non_embedding"] = breakdown["total"] - breakdown["embeddings"]
+    return breakdown

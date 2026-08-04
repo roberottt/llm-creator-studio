@@ -1,4 +1,4 @@
-"""Referencia del modulo 00: medir el hardware y estimar el techo de velocidad."""
+"""Reference for module 01: measuring the hardware and estimating the speed ceiling."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from llmfs.device import DeviceConfig, get_device
 
 
 def matmul_flops(size: int) -> int:
-    """FLOPs de multiplicar dos matrices cuadradas de lado `size`.
+    """FLOPs of multiplying two square matrices of side `size`.
 
-    Cada elemento de la salida es un producto escalar de longitud `size`: `size`
-    multiplicaciones y `size - 1` sumas. Por convencion se cuenta como `2 * size` (la
-    diferencia de una suma es irrelevante y asi el numero es comparable con el resto del
-    mundo). Hay `size^2` elementos de salida.
+    Each element of the output is a dot product of length `size`: `size` multiplications
+    and `size - 1` additions. By convention this is counted as `2 * size` (one addition of
+    difference is irrelevant, and this way the number is comparable with everyone else's).
+    There are `size^2` output elements.
     """
     return 2 * size**3
 
@@ -27,13 +27,12 @@ def measure_matmul_tflops(
     warmup: int = 3,
     iters: int = 10,
 ) -> float:
-    """Mide los TFLOPS efectivos de un matmul grande en este dispositivo.
+    """Measure the effective TFLOPS of a large matmul on this device.
 
-    El calentamiento no es opcional: la primera llamada paga la seleccion de kernel de
-    cuBLAS/Metal y la asignacion de memoria, y sale entre 10 y 100 veces mas lenta.
-    Y hay que sincronizar antes de mirar el reloj, porque las llamadas a GPU son
-    asincronas: sin `synchronize()` estarias midiendo el tiempo de encolar, no el de
-    calcular.
+    The warmup is not optional: the first call pays for cuBLAS/Metal kernel selection and
+    memory allocation, and comes out 10 to 100 times slower. And you have to synchronize
+    before looking at the clock, because GPU calls are asynchronous: without
+    `synchronize()` you would be measuring the time to enqueue, not the time to compute.
     """
     cfg = cfg or get_device()
     if dtype is None:
@@ -64,48 +63,47 @@ def transformer_flops_per_token(
     n_ffn_matrices: int = 3,
     include_backward: bool = True,
 ) -> int:
-    """FLOPs por token de entrenamiento de un transformer decoder.
+    """Training FLOPs per token of a decoder transformer.
 
-    Se cuenta con la aproximacion estandar (Kaplan 2020, apendice B):
+    This uses the standard approximation (Kaplan 2020, appendix B):
 
-    - Un matmul con `P` parametros cuesta `2P` FLOPs por token en el forward.
-    - El backward cuesta aproximadamente el doble que el forward (una pasada para el
-      gradiente respecto a la entrada y otra respecto a los pesos). Total: `3x` forward.
+    - A matmul with `P` parameters costs `2P` FLOPs per token in the forward pass.
+    - The backward pass costs roughly twice the forward (one pass for the gradient with
+      respect to the input and another with respect to the weights). Total: `3x` forward.
 
-    De ahi sale el `6N` que se ve en todas partes: `2 * P * 3 = 6P`.
+    That is where the `6N` you see everywhere comes from: `2 * P * 3 = 6P`.
 
-    El termino cuadratico de la atencion se cuenta aparte porque no viene de parametros:
-    `Q K^T` cuesta `2 * T * d_model` por token y capa, y `softmax @ V` otro tanto, de
-    donde `4 * n_layers * T * d_model` en el forward.
+    The quadratic attention term is counted separately because it does not come from
+    parameters: `Q K^T` costs `2 * T * d_model` per token and layer, and `softmax @ V` the
+    same again, hence `4 * n_layers * T * d_model` in the forward pass.
 
-    Simplificacion consciente: no se divide por dos pese a que la mascara causal calcula
-    solo la mitad de la matriz. Es la convencion que usan nanoGPT y los papers, asi que
-    los MFU que calcules seran comparables con los suyos. Tambien se ignoran softmax,
-    normalizaciones y activaciones, que son memory-bound y aportan poco al conteo.
+    A deliberate simplification: we do not divide by two even though the causal mask only
+    computes half of the matrix. That is the convention nanoGPT and the papers use, so the
+    MFU numbers you compute will be comparable with theirs. Softmax, normalizations and
+    activations are also ignored; they are memory-bound and add little to the count.
 
     Args:
-        n_ffn_matrices: 3 para SwiGLU (gate, up, down), 2 para un FFN clasico.
+        n_ffn_matrices: 3 for SwiGLU (gate, up, down), 2 for a classic FFN.
 
     Returns:
-        FLOPs por token, entero.
+        FLOPs per token, as an integer.
     """
-    params_atencion = 4 * d_model**2
-    params_ffn = n_ffn_matrices * d_model * d_ff
-    params_matmul = n_layers * (params_atencion + params_ffn)
-    params_matmul += d_model * vocab_size  # la proyeccion final a logits
+    attention_params = 4 * d_model**2
+    ffn_params = n_ffn_matrices * d_model * d_ff
+    matmul_params = n_layers * (attention_params + ffn_params)
+    matmul_params += d_model * vocab_size  # the final projection to logits
 
-    forward = 2 * params_matmul + 4 * n_layers * context_length * d_model
+    forward = 2 * matmul_params + 4 * n_layers * context_length * d_model
     return int(3 * forward if include_backward else forward)
 
 
 def estimate_tokens_per_second(tflops: float, flops_per_token: int, mfu: float = 0.4) -> float:
-    """Tokens por segundo alcanzables, dado el pico medido y una MFU supuesta.
+    """Achievable tokens per second, given the measured peak and an assumed MFU.
 
-    `mfu` (Model FLOPs Utilization) es la fraccion del pico teorico que consigues de
-    verdad. Valores realistas: 0,4-0,5 para modelos grandes bien optimizados; 0,1-0,2
-    para un modelo de 9M, donde el lanzamiento de kernels y el ancho de banda de memoria
-    pesan mas que el calculo.
+    `mfu` (Model FLOPs Utilization) is the fraction of the theoretical peak you actually
+    get. Realistic values: 0.4-0.5 for large, well-optimized models; 0.1-0.2 for a 9M
+    model, where kernel launches and memory bandwidth weigh more than the arithmetic.
     """
     if flops_per_token <= 0:
-        raise ValueError("flops_per_token debe ser positivo")
+        raise ValueError("flops_per_token must be positive")
     return tflops * 1e12 * mfu / flops_per_token

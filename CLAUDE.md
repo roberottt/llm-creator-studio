@@ -33,7 +33,7 @@ Cada concepto de ML entra **tres veces y en este orden**:
 3. **La fórmula formal**, conectada explícitamente con el ejemplo anterior.
 
 La matemática **no se elimina ni se esconde**: deja de ser lo primero que se lee. Un
-`TEORIA.md` que abre con `C_token ≈ 6N + 12·n_layers·T·d_model` está mal escrito aunque la
+`THEORY.md` que abre con `C_token ≈ 6N + 12·n_layers·T·d_model` está mal escrito aunque la
 fórmula sea correcta.
 
 ### Estructura obligatoria de cada docstring de ejercicio
@@ -77,7 +77,7 @@ Los 62 docstrings siguen este formato. Al añadir uno nuevo, el barrido de compr
 Dos reglas que salieron de escribirlos:
 
 - **El código de los pasos tiene que compilar con lo que el alumno tiene importado.** Si tu
-  paso usa `math.sqrt` y `ejercicios.py` no importa `math`, el paso está mal. Pasó de verdad
+  paso usa `math.sqrt` y `exercises.py` no importa `math`, el paso está mal. Pasó de verdad
   en el módulo 12 (se cambió a `** 0.5`) y en el 01 (faltaba `import time` en el fichero).
 - **Los números de ejemplo se miden, no se estiman.** Los del módulo 17 se inventaron
   plausibles y estaban mal por un factor de 5; hay que ejecutar la referencia y copiar.
@@ -92,31 +92,31 @@ Dos reglas que salieron de escribirlos:
   llevan (`QUÉ TIENES QUE ESCRIBIR`, `POR QUÉ ESA FÓRMULA`) porque son los puntos de anclaje
   al leer en diagonal, y los emoji de la CLI, que viven en `progress.py`. Los `.md` llevan
   tildes normales en todas partes.
-- **Cada `TEORIA.md` abre con `## Por qué importa este módulo`**, ANTES de cualquier
+- **Cada `THEORY.md` abre con `## Por qué importa este módulo`**, ANTES de cualquier
   concepto: qué problema resuelve, qué sabrás al terminar, y cuánto cuesta. Hay un test que
   lo verifica. Alguien que no sabe de LLMs no puede juzgar si merece la pena leer cuatro
   horas sobre atención si no le dices primero que es LA pieza que separa un modelo mediocre
   de ChatGPT.
-- **Mínimo 900 palabras por `TEORIA.md`, sin techo.** El límite superior se quitó el
+- **Mínimo 900 palabras por `THEORY.md`, sin techo.** El límite superior se quitó el
   2026-07-31: cada concepto se explica lo que haga falta, con ejemplos concretos.
-- **Cada `SOLUCION.md` termina con `## El código completo`**: la implementación entera de
+- **Cada `SOLUTION.md` termina con `## El código completo`**: la implementación entera de
   todos los ejercicios del módulo, copiable. Hay un test que lo verifica. El brief original
   decía "no el código pelado"; esa instrucción quedó derogada el 2026-07-31. Quien se
   atasca necesita ver el código, no leer sobre él.
-- **El mismo registro en los docstrings de `ejercicios.py`, en `SOLUCION.md`, en las pistas
+- **El mismo registro en los docstrings de `exercises.py`, en `SOLUTION.md`, en las pistas
   de `hints.py` y en los mensajes de la CLI.**
 - **Todo docstring de ejercicio abre con `QUÉ TIENES QUE ESCRIBIR`**, y después vienen el
   ejemplo, el porqué y las trampas. Ver la sección de abajo: es innegociable y hay un
   barrido que lo comprueba.
-- **Todo término de ML que aparezca debe estar en `GLOSARIO.md`**, y cada `TEORIA.md`
+- **Todo término de ML que aparezca debe estar en `GLOSSARY.md`**, y cada `THEORY.md`
   enlaza allí al final.
 - Analogías: permitidas si son **mecánicas y verificables** (la ruleta para el muestreo, el
   reparto de una recta [0,1]). Prohibidas las místicas ("es como un cerebro", "entiende").
 - **Honestidad intelectual obligatoria.** Donde hay debate abierto (pre-norm vs post-norm,
   si las leyes de escala se sostienen, qué construye realmente un modelo por dentro) se dice
-  que lo hay, en una sección `## Dónde está el debate` al final de cada `TEORIA.md`. Se
+  que lo hay, en una sección `## Dónde está el debate` al final de cada `THEORY.md`. Se
   citan los papers originales con enlace, en la tupla `references` de `curriculum.py` y en
-  el `TEORIA.md`.
+  el `THEORY.md`.
 - **Ejecuta lo que escribas.** Cada `demo.py` y cada test tiene que correr de verdad antes
   de darlo por hecho. Nada de código que "debería funcionar".
 - **Valida los tests contra la referencia** con `make test-reference` antes de dar un módulo
@@ -126,15 +126,15 @@ Dos reglas que salieron de escribirlos:
 ## Arquitectura: tres capas que no hay que confundir
 
 ```
-modulos/NN_*/ejercicios.py   ← lo que ESCRIBE EL USUARIO (plantillas con NotImplementedError)
+modules/NN_*/exercises.py   ← lo que ESCRIBE EL USUARIO (plantillas con NotImplementedError)
 llmfs/reference/             ← implementaciones canónicas, completas y correctas
 llmfs/{model,train,infer}/   ← el código que de verdad entrena, construido sobre el bridge
 ```
 
 `llmfs/bridge.py` es la pieza clave. Cuando el código de producción necesita
-`MultiHeadAttention`, llama a `bridge.resolve("05_atencion", "MultiHeadAttention")`, que:
+`MultiHeadAttention`, llama a `bridge.resolve("06_attention", "MultiHeadAttention")`, que:
 
-1. carga `modulos/05_atencion/ejercicios.py`,
+1. carga `modules/06_attention/exercises.py`,
 2. comprueba con AST si el símbolo sigue siendo la plantilla (`raise NotImplementedError`
    o `pass` como único cuerpo) — ver `bridge.looks_unimplemented`,
 3. ejecuta el probe de `llmfs/probes.py` si hay uno registrado,
@@ -174,7 +174,7 @@ que tener presente:
 
 ```bash
 make install          # uv sync --extra compare
-make test             # suite completa (tests/ + modulos/)
+make test             # suite completa (tests/ + modules/)
 make test-fast        # sin los marcados @pytest.mark.slow
 uv run pytest tests/  # solo la infraestructura del paquete
 
@@ -194,18 +194,18 @@ El estado del currículo **no se declara en ningún sitio**: se calcula ejecutan
 
 1. Registrarlo en `llmfs/curriculum.py`: `Module(...)` con sus `Exercise(...)`,
    `est_minutes` honesto y `references` con enlaces a los papers.
-2. Crear `modulos/NN_nombre/` con **los cinco ficheros**: `TEORIA.md`, `ejercicios.py`,
-   `demo.py`, `test_NN.py`, `SOLUCION.md`. Hay un test que verifica que no falta ninguno.
-   El `TEORIA.md` sigue la estructura intuición → ejemplo numérico → fórmula, cierra con
-   `## Dónde está el debate` y enlaza al `GLOSARIO.md`.
+2. Crear `modules/NN_nombre/` con **los cinco ficheros**: `THEORY.md`, `exercises.py`,
+   `demo.py`, `test_NN.py`, `SOLUTION.md`. Hay un test que verifica que no falta ninguno.
+   El `THEORY.md` sigue la estructura intuición → ejemplo numérico → fórmula, cierra con
+   `## Dónde está el debate` y enlaza al `GLOSSARY.md`.
 3. Implementar las piezas en `llmfs/reference/` y reexportarlas en
    `llmfs/reference/__init__.py`. **Los nombres de ejercicio son únicos en todo el curso**
    (hay un test); el bridge resuelve por nombre plano.
 4. Registrar probes en `llmfs/probes.py` para los ejercicios donde "escrito pero devuelve
    basura" sea un riesgo real (formas de tensores, sobre todo).
 5. Escribir las tres pistas en `llmfs/hints.py`: conceptual → técnica → estructural.
-   La tercera no da la solución escrita. Añadir los términos nuevos a `GLOSARIO.md`.
-6. `ejercicios.py`: el docstring de módulo abre con **CÓMO SE HACE ESTE MÓDULO** (los 5
+   La tercera no da la solución escrita. Añadir los términos nuevos a `GLOSSARY.md`.
+6. `exercises.py`: el docstring de módulo abre con **CÓMO SE HACE ESTE MÓDULO** (los 5
    pasos), **QUÉ VAS A CONSTRUIR** (un diagrama de cómo encajan los ejercicios) y
    **VOCABULARIO QUE VAS A NECESITAR** (cada término de ML que aparezca, definido en una
    línea). Los docstrings de cada ejercicio llevan formas de entrada/salida y la fórmula,
@@ -216,12 +216,12 @@ El estado del currículo **no se declara en ningún sitio**: se calcula ejecutan
    `ej = exercises(__file__)`, nunca con `sys.path`.
 8. `demo.py`: experimento ejecutable que visualiza el concepto. Guarda figuras en
    `runs/figures/` vía `llmfs.paths.figures_dir()`. Tiene que correr en cuda, mps y cpu.
-9. Regenerar el bloque de código de `SOLUCION.md` con
-   `uv run python scripts/regenerar_soluciones.py` (lo extrae de `llmfs/reference/`, así que
+9. Regenerar el bloque de código de `SOLUTION.md` con
+   `uv run python scripts/regenerate_solutions.py` (lo extrae de `llmfs/reference/`, así que
    nunca diverge). Si el ejercicio necesita una función auxiliar o un import que no está en
-   `ejercicios.py`, añadirlo a `AUXILIARES` o `IMPORTS` de ese script.
+   `exercises.py`, añadirlo a `AUXILIARES` o `IMPORTS` de ese script.
 10. Correr `make test` y `make test-soluciones` antes de dar la fase por terminada. El
-   segundo pega cada solución sobre su `ejercicios.py` y corre los tests: es la única forma
+   segundo pega cada solución sobre su `exercises.py` y corre los tests: es la única forma
    de garantizar que el código de las soluciones se puede copiar y funciona.
 
 ## Dependencias
@@ -239,7 +239,7 @@ El estado del currículo **no se declara en ningún sitio**: se calcula ejecutan
 
 **18 módulos, numerados 00-17, 62 ejercicios, ~42 h de trabajo estimado.**
 
-El `00_que_es_un_llm` se añadió el 2026-07-30 (no estaba en el brief original) y renumeró
+El `00_what_is_an_llm` se añadió el 2026-07-30 (no estaba en el brief original) y renumeró
 todo lo demás: lo que el brief llamaba módulo NN es ahora NN+1. Es un módulo conceptual sin
 torch donde se construye un generador de texto por conteo, y sirve de ancla para todo lo
 que viene: el bucle autorregresivo del módulo 14 es literalmente el mismo.
@@ -268,7 +268,7 @@ de 3,2 a 1,60, 112k tokens/s) y genera Shakespeare reconocible.
 
 Lo que queda pendiente, si se retoma:
 - El pipeline de TinyStories con BPE real (`llmfs/data/prepare.py` solo tiene
-  `preparar_shakespeare`; `preparar()` lanza `NotImplementedError` para el resto).
+  `prepare_shakespeare`; `preparar()` lanza `NotImplementedError` para el resto).
 - El comando `llmfs sample` sigue siendo un stub (`_LATER` en `llmfs/cli.py`).
 - El servidor FastAPI del módulo 17 se describe en la teoría pero no se implementa.
 - La tirada real de 500M tokens en la RTX 2060 no se ha ejecutado (no hay hardware CUDA

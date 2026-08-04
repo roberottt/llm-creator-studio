@@ -1,14 +1,14 @@
-"""La CLI del curso: `python -m llmfs ...` (o simplemente `llmfs ...`).
+"""The course CLI: `python -m llmfs ...` (or just `llmfs ...`).
 
-    llmfs status              tabla de progreso de los 18 modulos
-    llmfs next                en que modulo estas y que ejercicio toca
-    llmfs check 06            corre los tests del modulo 06 con pistas si falla
-    llmfs demo 06             ejecuta el experimento del modulo 06
-    llmfs hint 06 -e 2        pista progresiva del ejercicio 2 (repite para mas)
-    llmfs device              que hardware ha detectado y con que precision va a entrenar
+    llmfs status              progress table for the 18 modules
+    llmfs next                which module you are on and which exercise is next
+    llmfs check 06            runs the tests of module 06, with hints if they fail
+    llmfs demo 06             runs the experiment of module 06
+    llmfs hint 06 -e 2        progressive hint for exercise 2 (repeat for more)
+    llmfs device              what hardware was detected and what precision it will use
 
-Torch se importa dentro de cada comando, no arriba: `llmfs next` responde en decimas y
-no hay motivo para pagar el segundo largo que cuesta cargar torch.
+Torch is imported inside each command, not at the top: `llmfs next` answers in tenths of a
+second and there is no reason to pay the long second it costs to load torch.
 """
 
 from __future__ import annotations
@@ -48,18 +48,18 @@ def _resolve_module(ref: str) -> Module:
 
 
 def _module_missing(module: Module) -> bool:
-    """`True` si el modulo todavia no ha sido escrito en el repo."""
+    """`True` if the module has not been written in the repo yet."""
     return not module.path.exists()
 
 
 def _warn_missing(module: Module) -> None:
     console.print(
         Panel(
-            f"El modulo [bold]{module.id}[/bold] todavia no existe en el repo.\n"
-            f"Se escribe en la fase correspondiente del plan de construccion.\n\n"
-            f"Modulos disponibles ahora mismo: "
-            + (", ".join(m.id for m in all_modules() if m.path.exists()) or "ninguno"),
-            title="Aun no disponible",
+            f"Module [bold]{module.id}[/bold] does not exist in the repo yet.\n"
+            f"It gets written in the corresponding phase of the build plan.\n\n"
+            f"Modules available right now: "
+            + (", ".join(m.id for m in all_modules() if m.path.exists()) or "none"),
+            title="Not available yet",
             border_style="yellow",
         )
     )
@@ -74,22 +74,22 @@ def cmd_status(args: argparse.Namespace) -> int:
     if args.cached:
         results = prog.load()
         if not results:
-            console.print("[yellow]No hay progreso cacheado. Corriendo los tests...[/yellow]")
+            console.print("[yellow]No cached progress. Running the tests...[/yellow]")
             results = _refresh(modules)
     else:
         results = _refresh(modules)
 
     table = Table(
-        title="LLM desde cero - progreso del curriculo",
+        title="LLM from scratch - curriculum progress",
         title_style="bold",
         header_style="bold",
         expand=False,
     )
     table.add_column("", width=2, justify="center")
     table.add_column("id", style="cyan", no_wrap=True)
-    table.add_column("modulo")
+    table.add_column("module")
     table.add_column("tests", justify="right")
-    table.add_column("mio", justify="right")
+    table.add_column("mine", justify="right")
     table.add_column("est.", justify="right", style="dim")
 
     for part, part_modules in parts().items():
@@ -120,18 +120,18 @@ def cmd_status(args: argparse.Namespace) -> int:
     mine_total = sum(len(s.mine) for s in results.values())
 
     console.print(
-        f"\n  [bold]{done}/{total}[/bold] modulos completos ({pct:.0f}%)  |  "
-        f"[bold]{mine_total}/{total_exercises()}[/bold] ejercicios implementados  |  "
-        f"trabajo estimado restante: {_fmt_minutes(_remaining_minutes(results))} "
-        f"de {_fmt_minutes(total_minutes())}"
+        f"\n  [bold]{done}/{total}[/bold] modules complete ({pct:.0f}%)  |  "
+        f"[bold]{mine_total}/{total_exercises()}[/bold] exercises implemented  |  "
+        f"estimated work left: {_fmt_minutes(_remaining_minutes(results))} "
+        f"of {_fmt_minutes(total_minutes())}"
     )
 
     nxt = prog.next_module(results)
     if nxt is not None:
-        console.print(f"  siguiente: [cyan]{nxt.id}[/cyan] - {nxt.summary}")
-        console.print(f"  [dim]llmfs next[/dim] para el detalle\n")
+        console.print(f"  next: [cyan]{nxt.id}[/cyan] - {nxt.summary}")
+        console.print(f"  [dim]llmfs next[/dim] for the detail\n")
     else:
-        console.print("  [green]Curriculo completo. Enhorabuena.[/green]\n")
+        console.print("  [green]Curriculum complete. Congratulations.[/green]\n")
     return 0
 
 
@@ -145,9 +145,9 @@ def _remaining_minutes(results: dict[str, prog.ModuleStatus]) -> int:
 
 def _refresh(modules: list[Module]) -> dict[str, prog.ModuleStatus]:
     results: dict[str, prog.ModuleStatus] = {}
-    with console.status("[dim]corriendo tests...[/dim]") as spinner:
+    with console.status("[dim]running tests...[/dim]") as spinner:
         for module in modules:
-            spinner.update(f"[dim]corriendo tests de {module.id}...[/dim]")
+            spinner.update(f"[dim]running the tests of {module.id}...[/dim]")
             results[module.id] = prog.run_module_tests(module, quiet=True)
     prog.save(results)
     return results
@@ -163,73 +163,76 @@ def cmd_next(args: argparse.Namespace) -> int:
 
     module = prog.next_module(results)
     if module is None:
-        console.print("[green]Has terminado todos los modulos. Ve a entrenar el modelo final.[/green]")
+        console.print("[green]You have finished every module. Go train the final model.[/green]")
         return 0
 
     status = results.get(module.id) or prog.ModuleStatus(module_id=module.id)
 
     body = [
         f"[bold cyan]{module.id}[/bold cyan] - {module.title}",
-        f"[dim]{module.part} | unas {_fmt_minutes(module.est_minutes)} de trabajo[/dim]",
+        f"[dim]{module.part} | about {_fmt_minutes(module.est_minutes)} of work[/dim]",
         "",
-        f"[bold]Que vas a aprender:[/bold] {module.summary}",
+        f"[bold]What you will learn:[/bold] {module.summary}",
     ]
 
     if _module_missing(module):
-        body += ["", "[yellow]Este modulo todavia no esta escrito en el repo.[/yellow]"]
+        body += ["", "[yellow]This module has not been written in the repo yet.[/yellow]"]
     else:
-        # Lo pendiente se deriva de `mine` y no de `borrowed`: sin datos cacheados ambas
-        # listas estan vacias, y en ese caso lo correcto es "no has hecho nada todavia",
-        # no "lo tienes todo hecho".
+        # What is pending is derived from `mine`, not from `borrowed`: with no cached data
+        # both lists are empty, and in that case the right answer is "you have not done
+        # anything yet", not "you have it all done".
         pending = [ex for ex in module.exercises if ex.name not in status.mine]
-        hechos = len(status.mine)
+        done = len(status.mine)
 
-        if hechos == 0:
+        if done == 0:
             body += [
                 "",
-                "Todavia no has empezado este modulo. El camino es siempre el mismo:",
+                "You have not started this module yet. The path is always the same:",
                 "",
-                "  1. lee la teoria (10-15 min, no te la saltes)",
-                "  2. abre ejercicios.py y lee el enunciado del primero",
-                "  3. implementalo y ejecuta los tests",
-                "  4. rojo -> pista; verde -> siguiente ejercicio",
+                "  1. read the theory (10-15 min, do not skip it)",
+                "  2. open exercises.py and read the first problem statement",
+                "  3. implement it and run the tests",
+                "  4. red -> hint; green -> next exercise",
             ]
         else:
-            body += ["", f"[bold]Llevas {hechos} de {len(module.exercises)} ejercicios.[/bold] "
-                     f"Tests: {status.ratio}"]
+            body += [
+                "",
+                f"[bold]You are {done} of {len(module.exercises)} exercises in.[/bold] "
+                f"Tests: {status.ratio}",
+            ]
 
         if pending:
             first = pending[0]
             idx = module.exercises.index(first) + 1
             body += [
                 "",
-                f"[bold]Ahora toca el ejercicio {idx}:[/bold] [yellow]{first.name}[/yellow]",
+                f"[bold]Next up is exercise {idx}:[/bold] [yellow]{first.name}[/yellow]",
                 f"  {first.title}",
             ]
             if len(pending) > 1:
-                body.append(f"  [dim]quedan {len(pending) - 1} mas despues de ese[/dim]")
+                body.append(f"  [dim]{len(pending) - 1} more after that one[/dim]")
         elif status.state != "done":
             body += [
                 "",
-                "Has implementado todos los ejercicios pero algun test sigue en rojo.",
-                "Eso es normal y es justo el momento util del ejercicio: el test te esta",
-                "diciendo exactamente que no cuadra.",
+                "You have implemented every exercise but some test is still red.",
+                "That is normal, and it is exactly the useful part of the exercise: the",
+                "test is telling you precisely what does not add up.",
             ]
             if status.first_failure:
                 body.append(f"  [red]{status.first_failure}[/red]")
 
         body += [
             "",
-            f"[dim]1. leer  :[/dim] {module.theory_file.relative_to(module.path.parent.parent)}",
-            f"[dim]2. editar:[/dim] {module.exercises_file.relative_to(module.path.parent.parent)}",
-            f"[dim]3. probar:[/dim] llmfs check {module.number:02d}",
-            f"[dim]   atasco :[/dim] llmfs hint {module.number:02d} -e 1  "
-            f"[dim](repite el comando para pistas mas explicitas)[/dim]",
-            f"[dim]   ver    :[/dim] llmfs demo {module.number:02d}  "
-            f"[dim](el concepto, en graficas y numeros)[/dim]",
+            f"[dim]1. read :[/dim] {module.theory_file.relative_to(module.path.parent.parent)}",
+            f"[dim]2. edit :[/dim] {module.exercises_file.relative_to(module.path.parent.parent)}",
+            f"[dim]3. test :[/dim] llmfs check {module.number:02d}",
+            f"[dim]   stuck:[/dim] llmfs hint {module.number:02d} -e 1  "
+            f"[dim](repeat the command for more explicit hints)[/dim]",
+            f"[dim]   see  :[/dim] llmfs demo {module.number:02d}  "
+            f"[dim](the concept, in plots and numbers)[/dim]",
         ]
 
-    console.print(Panel("\n".join(body), title="Por donde sigues", border_style="cyan"))
+    console.print(Panel("\n".join(body), title="Where you pick up", border_style="cyan"))
     return 0
 
 
@@ -237,12 +240,12 @@ def cmd_next(args: argparse.Namespace) -> int:
 
 
 def cmd_check(args: argparse.Namespace) -> int:
-    module = _resolve_module(args.modulo)
+    module = _resolve_module(args.module)
     if _module_missing(module):
         _warn_missing(module)
         return 2
     if not module.test_file.exists():
-        console.print(f"[yellow]{module.id} no tiene test_{module.number:02d}.py todavia.[/yellow]")
+        console.print(f"[yellow]{module.id} has no test_{module.number:02d}.py yet.[/yellow]")
         return 2
 
     import pytest
@@ -253,30 +256,30 @@ def cmd_check(args: argparse.Namespace) -> int:
         pytest_args += ["-k", args.k]
     code = pytest.main(pytest_args)
 
-    # Recalcula y persiste el estado del modulo despues de la ejecucion.
+    # Recompute and persist the module's state after the run.
     status = prog.run_module_tests(module, quiet=True)
     prog.save({module.id: status})
 
     console.rule(style="dim")
     if status.state == "done":
         console.print(
-            f"[green]Modulo {module.id} completo: {status.ratio} tests en verde.[/green]\n"
-            f"[dim]Si quieres contrastar tu solucion con la explicada: "
+            f"[green]Module {module.id} complete: {status.ratio} tests green.[/green]\n"
+            f"[dim]If you want to compare your solution with the explained one: "
             f"{module.solution_file.name}[/dim]"
         )
         nxt = prog.next_module(prog.load())
         if nxt is not None and nxt.id != module.id:
-            console.print(f"Siguiente: [cyan]{nxt.id}[/cyan] - {nxt.title}")
+            console.print(f"Next: [cyan]{nxt.id}[/cyan] - {nxt.title}")
     else:
         console.print(
-            f"[yellow]Vas por {status.ratio} tests.[/yellow] "
-            "Un test en rojo no es un fallo tuyo: es informacion. Lee el mensaje, que "
-            "esta escrito para decirte que esperaba y que ha recibido."
+            f"[yellow]You are at {status.ratio} tests.[/yellow] "
+            "A red test is not your failure: it is information. Read the message, which "
+            "is written to tell you what it expected and what it got."
         )
         if status.borrowed:
             console.print(
-                "\nEjercicios que todavia no estan (el resto del repo tira de la "
-                "referencia mientras tanto): "
+                "\nExercises that are not there yet (the rest of the repo uses the "
+                "reference in the meantime): "
                 + ", ".join(f"[yellow]{n}[/yellow]" for n in status.borrowed)
             )
             first = status.borrowed[0]
@@ -284,8 +287,8 @@ def cmd_check(args: argparse.Namespace) -> int:
                 (i + 1 for i, ex in enumerate(module.exercises) if ex.name == first), 1
             )
             console.print(
-                f"[dim]Si te has quedado sin ideas: llmfs hint {module.number:02d} -e {idx}"
-                f"  (tres niveles, cada vez mas explicito)[/dim]"
+                f"[dim]If you have run out of ideas: llmfs hint {module.number:02d} -e {idx}"
+                f"  (three levels, each more explicit)[/dim]"
             )
     return 0 if code == 0 else 1
 
@@ -296,12 +299,12 @@ def cmd_check(args: argparse.Namespace) -> int:
 def cmd_demo(args: argparse.Namespace) -> int:
     import runpy
 
-    module = _resolve_module(args.modulo)
+    module = _resolve_module(args.module)
     if _module_missing(module):
         _warn_missing(module)
         return 2
     if not module.demo_file.exists():
-        console.print(f"[yellow]{module.id} no tiene demo.py.[/yellow]")
+        console.print(f"[yellow]{module.id} has no demo.py.[/yellow]")
         return 2
 
     console.rule(f"[bold cyan]demo {module.id}[/bold cyan] - {module.title}")
@@ -320,19 +323,19 @@ def cmd_demo(args: argparse.Namespace) -> int:
 def cmd_hint(args: argparse.Namespace) -> int:
     from llmfs.hints import get_hints
 
-    module = _resolve_module(args.modulo)
+    module = _resolve_module(args.module)
     if not module.exercises:
-        console.print(f"[yellow]{module.id} no tiene ejercicios.[/yellow]")
+        console.print(f"[yellow]{module.id} has no exercises.[/yellow]")
         return 2
 
-    ref: str | int = args.ejercicio
+    ref: str | int = args.exercise
     if isinstance(ref, str) and ref.isdigit():
         ref = int(ref)
     try:
         exercise = module.exercise(ref)
     except KeyError as exc:
         console.print(f"[red]{exc.args[0]}[/red]")
-        console.print("Ejercicios de este modulo:")
+        console.print("Exercises in this module:")
         for i, ex in enumerate(module.exercises, start=1):
             console.print(f"  {i}. [cyan]{ex.name}[/cyan] - {ex.title}")
         return 2
@@ -340,13 +343,13 @@ def cmd_hint(args: argparse.Namespace) -> int:
     hints = get_hints(module.id, exercise.name)
     if not hints:
         console.print(
-            f"[yellow]Todavia no hay pistas escritas para {exercise.name}.[/yellow]\n"
-            f"Mira {module.theory_file.name} y el docstring del ejercicio."
+            f"[yellow]There are no hints written for {exercise.name} yet.[/yellow]\n"
+            f"Look at {module.theory_file.name} and the exercise docstring."
         )
         return 2
 
-    if args.nivel is not None:
-        level = max(1, min(args.nivel, len(hints)))
+    if args.level is not None:
+        level = max(1, min(args.level, len(hints)))
     else:
         seen = prog.get_hint_level(module.id, exercise.name)
         level = min(seen + 1, len(hints))
@@ -360,19 +363,19 @@ def cmd_hint(args: argparse.Namespace) -> int:
     console.print(
         Panel(
             text,
-            title=f"pista {level}/{len(hints)}",
+            title=f"hint {level}/{len(hints)}",
             border_style="yellow" if level < len(hints) else "red",
         )
     )
     if level < len(hints):
         console.print(
-            f"[dim]Repite el comando para la pista {level + 1}, "
-            f"o `llmfs hint {module.number:02d} -e {args.ejercicio} --nivel {level + 1}`.[/dim]"
+            f"[dim]Repeat the command for hint {level + 1}, "
+            f"or `llmfs hint {module.number:02d} -e {args.exercise} --level {level + 1}`.[/dim]"
         )
     else:
         console.print(
-            f"[dim]Ultima pista. Si sigues atascado: {module.solution_file.name} "
-            f"explica la solucion.[/dim]"
+            f"[dim]Last hint. If you are still stuck: {module.solution_file.name} "
+            f"explains the solution.[/dim]"
         )
     return 0
 
@@ -383,8 +386,8 @@ def cmd_hint(args: argparse.Namespace) -> int:
 def cmd_device(args: argparse.Namespace) -> int:
     from llmfs.device import get_device
 
-    cfg = get_device(prefer=args.dispositivo)
-    console.print(Panel(cfg.summary(), title="hardware detectado", border_style="green"))
+    cfg = get_device(prefer=args.device)
+    console.print(Panel(cfg.summary(), title="detected hardware", border_style="green"))
     return 0
 
 
@@ -392,103 +395,101 @@ def cmd_device(args: argparse.Namespace) -> int:
 
 
 _LATER = {
-    "sample": ("14_inferencia", "la generacion de texto"),
-    "data": ("04_datos", "la preparacion del dataset"),
+    "sample": ("14_inference", "text generation"),
+    "data": ("04_data", "dataset preparation"),
 }
 
 
 def cmd_train(args: argparse.Namespace) -> int:
-    """Entrena un modelo. Se construye en el modulo 11 y se usa en el 13."""
+    """Train a model. Built in module 11 and used in module 13."""
     import torch
 
     from llmfs.config import RunConfig
-    from llmfs.data import hacer_get_batch, preparar
+    from llmfs.data import make_get_batch, prepare
     from llmfs.device import get_device
     from llmfs.paths import configs_dir
-    from llmfs.train import Entrenador
+    from llmfs.train import Trainer
 
-    ruta = Path(args.config)
-    if not ruta.exists():
-        ruta = configs_dir() / args.config
-    if not ruta.exists() and not str(ruta).endswith(".yaml"):
-        ruta = configs_dir() / f"{args.config}.yaml"
-    if not ruta.exists():
-        console.print(f"[red]No encuentro el config {args.config}[/red]")
+    path = Path(args.config)
+    if not path.exists():
+        path = configs_dir() / args.config
+    if not path.exists() and not str(path).endswith(".yaml"):
+        path = configs_dir() / f"{args.config}.yaml"
+    if not path.exists():
+        console.print(f"[red]Cannot find the config {args.config}[/red]")
         console.print(
-            "Disponibles: " + ", ".join(p.stem for p in configs_dir().glob("*.yaml"))
+            "Available: " + ", ".join(p.stem for p in configs_dir().glob("*.yaml"))
         )
         return 2
 
-    cfg = RunConfig.from_yaml(ruta)
+    cfg = RunConfig.from_yaml(path)
     if args.max_steps is not None:
         cfg.train.max_tokens = args.max_steps * cfg.tokens_per_step
     if args.device:
         cfg.train.device = args.device
 
-    dispositivo = get_device(prefer=cfg.train.device, amp=cfg.train.amp)
-    console.print(Panel(cfg.summary(), title="configuracion", border_style="cyan"))
-    console.print(dispositivo.summary() + "\n")
+    device = get_device(prefer=cfg.train.device, amp=cfg.train.amp)
+    console.print(Panel(cfg.summary(), title="configuration", border_style="cyan"))
+    console.print(device.summary() + "\n")
 
-    dataset = preparar(cfg)
+    dataset = prepare(cfg)
     if dataset.vocab_size != cfg.model.vocab_size:
         console.print(
-            f"[yellow]El dataset tiene {dataset.vocab_size} tokens y el config dice "
-            f"{cfg.model.vocab_size}. Uso el del dataset.[/yellow]"
+            f"[yellow]The dataset has {dataset.vocab_size} tokens and the config says "
+            f"{cfg.model.vocab_size}. Using the dataset's.[/yellow]"
         )
         cfg.model.vocab_size = dataset.vocab_size
 
     GPT = _resolve_gpt()
-    modelo = GPT(cfg.model)
+    model = GPT(cfg.model)
     count_parameters = __import__(
         "llmfs.bridge", fromlist=["resolve"]
-    ).resolve("10_el_gpt_completo", "count_parameters")
-    conteo = count_parameters(modelo)
+    ).resolve("10_the_full_gpt", "count_parameters")
+    counts = count_parameters(model)
     console.print(
-        f"modelo: [bold]{conteo['total']:,}[/bold] parametros "
-        f"({conteo['non_embedding']:,} no-embedding)\n"
+        f"model: [bold]{counts['total']:,}[/bold] parameters "
+        f"({counts['non_embedding']:,} non-embedding)\n"
     )
 
-    get_batch = hacer_get_batch(dataset, cfg, dispositivo.device)
+    get_batch = make_get_batch(dataset, cfg, device.device)
 
-    def muestra(step: int) -> str:
-        modelo.eval()
-        inicio = torch.tensor(
-            [dataset.encode(args.prompt or "\n")], dtype=torch.long, device=dispositivo.device
+    def sample(step: int) -> str:
+        model.eval()
+        start = torch.tensor(
+            [dataset.encode(args.prompt or "\n")], dtype=torch.long, device=device.device
         )
         with torch.no_grad():
-            salida = modelo.generate(inicio, max_new_tokens=200, temperature=0.8, top_k=40)
-        modelo.train()
-        texto = dataset.decode(salida[0].tolist())
-        console.print(Panel(texto, title=f"muestra del paso {step:,}", border_style="dim"))
-        return texto
+            out = model.generate(start, max_new_tokens=200, temperature=0.8, top_k=40)
+        model.train()
+        text = dataset.decode(out[0].tolist())
+        console.print(Panel(text, title=f"sample at step {step:,}", border_style="dim"))
+        return text
 
-    entrenador = Entrenador(
-        cfg, modelo, get_batch, device=dispositivo, on_sample=muestra
-    )
+    trainer = Trainer(cfg, model, get_batch, device=device, on_sample=sample)
 
-    reanudar = None
+    resume_from = None
     if args.resume:
-        candidato = cfg.run_dir / "last.pt"
-        if candidato.exists():
-            reanudar = candidato
+        candidate = cfg.run_dir / "last.pt"
+        if candidate.exists():
+            resume_from = candidate
         else:
-            console.print("[yellow]No hay checkpoint que reanudar; empiezo de cero.[/yellow]")
+            console.print("[yellow]No checkpoint to resume from; starting over.[/yellow]")
 
-    estado = entrenador.entrenar(reanudar=reanudar, console=console)
+    state = trainer.train(resume=resume_from, console=console)
 
     console.print(
-        f"\n[green]Terminado.[/green] {estado.step:,} pasos, "
-        f"{estado.tokens_vistos:,} tokens, mejor perdida de validacion "
-        f"[bold]{estado.best_val_loss:.4f}[/bold]"
+        f"\n[green]Done.[/green] {state.step:,} steps, "
+        f"{state.tokens_seen:,} tokens, best validation loss "
+        f"[bold]{state.best_val_loss:.4f}[/bold]"
     )
-    console.print(f"checkpoints y curvas en [cyan]{cfg.run_dir}[/cyan]")
+    console.print(f"checkpoints and curves in [cyan]{cfg.run_dir}[/cyan]")
     return 0
 
 
 def _resolve_gpt():
     from llmfs.bridge import resolve
 
-    return resolve("10_el_gpt_completo", "GPT")
+    return resolve("10_the_full_gpt", "GPT")
 
 
 def _make_stub(name: str) -> Any:
@@ -496,10 +497,10 @@ def _make_stub(name: str) -> Any:
         module_id, what = _LATER[name]
         console.print(
             Panel(
-                f"`llmfs {name}` implementa {what}, que se construye en el modulo "
+                f"`llmfs {name}` implements {what}, which is built in module "
                 f"[cyan]{module_id}[/cyan].\n"
-                f"Todavia no esta escrito en el repo.",
-                title="Aun no disponible",
+                f"It has not been written in the repo yet.",
+                title="Not available yet",
                 border_style="yellow",
             )
         )
@@ -514,61 +515,61 @@ def _make_stub(name: str) -> Any:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="llmfs",
-        description="Curso 'LLM desde cero': progreso, tests, demos y pistas.",
+        description="'LLM from scratch' course: progress, tests, demos and hints.",
     )
-    sub = parser.add_subparsers(dest="comando", required=True)
+    sub = parser.add_subparsers(dest="command", required=True)
 
-    p_status = sub.add_parser("status", help="tabla de progreso de todos los modulos")
+    p_status = sub.add_parser("status", help="progress table for every module")
     p_status.add_argument(
         "--cached",
         action="store_true",
-        help="usa el ultimo resultado guardado en vez de volver a correr los tests",
+        help="use the last saved result instead of running the tests again",
     )
     p_status.set_defaults(func=cmd_status)
 
-    p_next = sub.add_parser("next", help="en que modulo estas y que ejercicio toca")
+    p_next = sub.add_parser("next", help="which module you are on and which exercise is next")
     p_next.set_defaults(func=cmd_next)
 
-    p_check = sub.add_parser("check", help="corre los tests de un modulo")
-    p_check.add_argument("modulo", help="numero (6, 06) o id (06_atencion)")
-    p_check.add_argument("-k", help="filtro de pytest, p.ej. -k causal", default=None)
+    p_check = sub.add_parser("check", help="run a module's tests")
+    p_check.add_argument("module", help="number (6, 06) or id (06_attention)")
+    p_check.add_argument("-k", help="pytest filter, e.g. -k causal", default=None)
     p_check.set_defaults(func=cmd_check)
 
-    p_demo = sub.add_parser("demo", help="ejecuta el experimento de un modulo")
-    p_demo.add_argument("modulo", help="numero (6, 06) o id (06_atencion)")
-    # REMAINDER y no "*": asi `llmfs demo 03 --rapido` pasa el flag a demo.py en lugar de
-    # que argparse lo intente interpretar como una opcion suya y falle.
+    p_demo = sub.add_parser("demo", help="run a module's experiment")
+    p_demo.add_argument("module", help="number (6, 06) or id (06_attention)")
+    # REMAINDER instead of "*": this way `llmfs demo 03 --fast` passes the flag on to
+    # demo.py rather than argparse trying to read it as one of its own options and failing.
     p_demo.add_argument(
-        "extra", nargs=argparse.REMAINDER, help="argumentos que se pasan tal cual a demo.py"
+        "extra", nargs=argparse.REMAINDER, help="arguments passed through to demo.py as-is"
     )
     p_demo.set_defaults(func=cmd_demo)
 
-    p_hint = sub.add_parser("hint", help="pista progresiva de un ejercicio")
-    p_hint.add_argument("modulo", help="numero (6, 06) o id (06_atencion)")
+    p_hint = sub.add_parser("hint", help="progressive hint for an exercise")
+    p_hint.add_argument("module", help="number (6, 06) or id (06_attention)")
     p_hint.add_argument(
-        "-e", "--ejercicio", required=True, help="indice (1, 2, 3...) o nombre del ejercicio"
+        "-e", "--exercise", required=True, help="index (1, 2, 3...) or exercise name"
     )
     p_hint.add_argument(
-        "--nivel", type=int, default=None, help="fuerza un nivel de pista (1-3)"
+        "--level", type=int, default=None, help="force a hint level (1-3)"
     )
     p_hint.set_defaults(func=cmd_hint)
 
-    p_dev = sub.add_parser("device", help="hardware detectado y politica de precision")
-    p_dev.add_argument("--dispositivo", default=None, help="fuerza cuda, mps o cpu")
+    p_dev = sub.add_parser("device", help="detected hardware and precision policy")
+    p_dev.add_argument("--device", default=None, help="force cuda, mps or cpu")
     p_dev.set_defaults(func=cmd_device)
 
-    p_train = sub.add_parser("train", help="entrena un modelo")
+    p_train = sub.add_parser("train", help="train a model")
     p_train.add_argument(
-        "--config", default="tiny_char", help="nombre o ruta del YAML (por defecto tiny_char)"
+        "--config", default="tiny_char", help="name or path of the YAML (tiny_char by default)"
     )
-    p_train.add_argument("--resume", action="store_true", help="reanuda desde el ultimo checkpoint")
-    p_train.add_argument("--max-steps", type=int, default=None, help="acorta la tirada")
-    p_train.add_argument("--device", default=None, help="fuerza cuda, mps o cpu")
-    p_train.add_argument("--prompt", default=None, help="prompt para las muestras periodicas")
+    p_train.add_argument("--resume", action="store_true", help="resume from the last checkpoint")
+    p_train.add_argument("--max-steps", type=int, default=None, help="shorten the run")
+    p_train.add_argument("--device", default=None, help="force cuda, mps or cpu")
+    p_train.add_argument("--prompt", default=None, help="prompt for the periodic samples")
     p_train.set_defaults(func=cmd_train)
 
     for name, (module_id, _) in _LATER.items():
-        p = sub.add_parser(name, help=f"(modulo {module_id})")
+        p = sub.add_parser(name, help=f"(module {module_id})")
         p.add_argument("rest", nargs=argparse.REMAINDER)
         p.set_defaults(func=_make_stub(name))
 
@@ -581,7 +582,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         return int(args.func(args) or 0)
     except KeyboardInterrupt:
-        console.print("\n[dim]interrumpido[/dim]")
+        console.print("\n[dim]interrupted[/dim]")
         return 130
 
 

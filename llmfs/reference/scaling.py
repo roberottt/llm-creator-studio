@@ -1,4 +1,4 @@
-"""Referencia del modulo 12: eficiencia y leyes de escala."""
+"""Reference for module 12: efficiency and scaling laws."""
 
 from __future__ import annotations
 
@@ -6,14 +6,14 @@ from llmfs.config import ModelConfig
 
 
 def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
-    """FLOPs por token, separados en matmuls y atencion.
+    """FLOPs per token, split into matmuls and attention.
 
-    Es el mismo calculo del modulo 01, pero devolviendo el desglose en vez de un unico
-    numero. Saber cuanto pesa cada parte es lo que permite decidir si conviene tocar el
-    contexto o el tamanyo del modelo.
+    It is the same calculation as module 01, but returning the breakdown instead of a single
+    number. Knowing how much each part weighs is what lets you decide whether it is better
+    to change the context length or the model size.
 
     Returns:
-        Un dict con `matmul`, `attention`, `total` y `params_matmul`.
+        A dict with `matmul`, `attention`, `total` and `params_matmul`.
     """
     d, ff, v = cfg.d_model, cfg.d_ff, cfg.vocab_size
     n_ffn = 3 if cfg.activation == "swiglu" else 2
@@ -35,63 +35,62 @@ def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> di
 def compute_mfu(
     tokens_per_second: float, flops_per_token: int, peak_tflops: float
 ) -> float:
-    """Model FLOPs Utilization: que fraccion del pico del hardware estas aprovechando.
+    """Model FLOPs Utilization: what fraction of the hardware peak you are getting.
 
     $$\\text{MFU} = \\frac{\\text{tokens/s} \\times C_{\\text{token}}}{\\text{FLOPS pico}}$$
 
-    Es LA metrica para saber si tu entrenamiento va bien optimizado, y es independiente del
-    modelo y del hardware, asi que se puede comparar entre configuraciones.
+    It is THE metric for knowing whether your training run is well optimized, and it is
+    independent of the model and the hardware, so it can be compared across configurations.
 
-    Referencias de lo que es razonable:
-        0.4 - 0.5   modelos grandes bien optimizados en A100/H100
-        0.2 - 0.3   modelos medianos
-        0.1 - 0.2   nuestro modelo de 9M
-        < 0.05      algo va mal: mira el dataloader o el tamanyo de batch
+    Reference values for what is reasonable:
+        0.4 - 0.5   large, well-optimized models on A100/H100
+        0.2 - 0.3   mid-sized models
+        0.1 - 0.2   our 9M model
+        < 0.05      something is wrong: look at the dataloader or the batch size
 
-    Con un modelo pequenyo la MFU baja es esperable: las matrices de 320x320 no dan para
-    saturar los tensor cores, y el tiempo se va en lanzar kernels y en mover memoria.
+    With a small model a low MFU is expected: 320x320 matrices are not enough to saturate
+    the tensor cores, and the time goes into launching kernels and moving memory.
     """
     if peak_tflops <= 0:
-        raise ValueError("peak_tflops tiene que ser positivo")
+        raise ValueError("peak_tflops has to be positive")
     return tokens_per_second * flops_per_token / (peak_tflops * 1e12)
 
 
 def chinchilla_optimal_allocation(
     compute_budget: float, tokens_per_param: float = 20.0
 ) -> dict[str, float]:
-    """Reparte un presupuesto de computo entre parametros y tokens, segun Chinchilla.
+    """Split a compute budget between parameters and tokens, following Chinchilla.
 
-    EL PROBLEMA. Tienes un presupuesto fijo de FLOPs. Puedes gastarlo en un modelo grande
-    con pocos datos, o en uno pequenyo con muchos. ¿Cual da menos perdida?
+    THE PROBLEM. You have a fixed budget of FLOPs. You can spend it on a large model with
+    little data, or on a small one with a lot. Which gives the lower loss?
 
-    LA RESPUESTA (Hoffmann et al. 2022). Los dos deben crecer PROPORCIONALMENTE. Su
-    resultado empirico: unos **20 tokens por parametro**.
+    THE ANSWER (Hoffmann et al. 2022). Both should grow PROPORTIONALLY. Their empirical
+    result: about **20 tokens per parameter**.
 
-    Fue un resultado importante porque contradecia la practica del momento. GPT-3 tenia
-    175.000 millones de parametros entrenados con 300.000 millones de tokens: 1,7 tokens
-    por parametro, casi doce veces por debajo del optimo. Chinchilla (70.000 millones de
-    parametros, 1,4 billones de tokens) lo batio en casi todos los benchmarks con menos de
-    la mitad de parametros.
+    It was an important result because it contradicted the practice of the time. GPT-3 had
+    175 billion parameters trained on 300 billion tokens: 1.7 tokens per parameter, almost
+    twelve times below the optimum. Chinchilla (70 billion parameters, 1.4 trillion tokens)
+    beat it on almost every benchmark with less than half the parameters.
 
-    LA ARITMETICA. Con `C = 6ND`:
+    THE ARITHMETIC. With `C = 6ND`:
 
         C = 6 * N * (20N) = 120 N^2      ->     N = sqrt(C / 120)
         D = 20 * N
 
-    NUESTRO CASO. El modelo tiene 7,62M de parametros no-embedding y va a ver 500M de
-    tokens: 65 tokens por parametro, mas de tres veces por encima de lo "optimo". Es
-    deliberado, y hay dos razones:
+    OUR CASE. The model has 7.62M non-embedding parameters and will see 500M tokens: 65
+    tokens per parameter, more than three times above the "optimum". That is deliberate, for
+    two reasons:
 
-    1. Chinchilla optimiza el computo de ENTRENAMIENTO. Si el modelo se va a usar mucho
-       despues, conviene un modelo mas pequenyo y mas entrenado: la inferencia se paga cada
-       vez. Llama-3 lleva esto al extremo con ~1.800 tokens por parametro.
-    2. A esta escala, entrenar de mas es barato (horas) y da un modelo notablemente mejor.
+    1. Chinchilla optimizes TRAINING compute. If the model is going to be used a lot
+       afterwards, a smaller and more heavily trained model is better: inference is paid
+       every time. Llama-3 takes this to the extreme with ~1,800 tokens per parameter.
+    2. At this scale, over-training is cheap (hours) and gives a noticeably better model.
 
     Returns:
         `{"params", "tokens", "tokens_per_param", "compute"}`.
     """
     if compute_budget <= 0:
-        raise ValueError("el presupuesto de computo tiene que ser positivo")
+        raise ValueError("the compute budget has to be positive")
 
     params = (compute_budget / (6 * tokens_per_param)) ** 0.5
     tokens = tokens_per_param * params

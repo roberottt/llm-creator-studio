@@ -27,4 +27,4 @@ jobs:
         run: uv run pytest tests/
 
       - name: Tests de referencia del curso (salud del curso, siempre en verde)
-        run: LLMFS_TEST_REFERENCE=1 uv run pytest modulos/
+        run: LLMFS_TEST_REFERENCE=1 uv run pytest modules/

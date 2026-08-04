@@ -1,10 +1,10 @@
-"""Referencia del modulo 01: motor de autodiferenciacion escalar.
+"""Reference for module 02: a scalar autodifferentiation engine.
 
-Un `Value` es un numero que ademas recuerda de donde ha salido. Al encadenar operaciones
-se construye un grafo dirigido aciclico; `backward()` lo recorre en orden topologico
-inverso aplicando la regla de la cadena.
+A `Value` is a number that also remembers where it came from. Chaining operations together
+builds a directed acyclic graph; `backward()` walks it in reverse topological order
+applying the chain rule.
 
-Es exactamente lo que hace PyTorch, solo que PyTorch lo hace sobre tensores y en C++.
+It is exactly what PyTorch does, only PyTorch does it over tensors and in C++.
 """
 
 from __future__ import annotations
@@ -15,14 +15,14 @@ from typing import Any, Callable, Iterable, Sequence
 
 
 class Value:
-    """Un escalar con gradiente.
+    """A scalar with a gradient.
 
     Attributes:
-        data: el valor hacia delante.
-        grad: derivada de la salida final respecto a este nodo. Se acumula.
-        _prev: nodos de los que depende este.
-        _op: etiqueta de la operacion, solo para depurar y dibujar el grafo.
-        _backward: closure que propaga el gradiente de este nodo a sus hijos.
+        data: the forward value.
+        grad: derivative of the final output with respect to this node. It accumulates.
+        _prev: the nodes this one depends on.
+        _op: label for the operation, only for debugging and drawing the graph.
+        _backward: closure that propagates this node's gradient down to its children.
     """
 
     __slots__ = ("data", "grad", "_prev", "_op", "_backward", "label")
@@ -41,7 +41,7 @@ class Value:
         self.label = label
         self._backward: Callable[[], None] = lambda: None
 
-    # ------------------------------------------------------------------ operaciones
+    # ------------------------------------------------------------------ operations
 
     def __add__(self, other: Any) -> "Value":
         other = other if isinstance(other, Value) else Value(other)
@@ -69,7 +69,7 @@ class Value:
 
     def __pow__(self, exponent: float) -> "Value":
         if not isinstance(exponent, (int, float)):
-            raise TypeError("solo se admiten exponentes int o float constantes")
+            raise TypeError("only constant int or float exponents are supported")
         out = Value(self.data**exponent, (self,), f"**{exponent}")
 
         def _backward() -> None:
@@ -83,7 +83,7 @@ class Value:
         out = Value(math.exp(self.data), (self,), "exp")
 
         def _backward() -> None:
-            # d(e^a)/da = e^a, que es justamente out.data
+            # d(e^a)/da = e^a, which is exactly out.data
             self.grad += out.data * out.grad
 
         out._backward = _backward
@@ -113,7 +113,7 @@ class Value:
         out = Value(self.data if self.data > 0 else 0.0, (self,), "relu")
 
         def _backward() -> None:
-            # La derivada en 0 no existe; por convencion se toma 0.
+            # The derivative at 0 does not exist; by convention we take 0.
             self.grad += (out.data > 0) * out.grad
 
         out._backward = _backward
@@ -129,7 +129,7 @@ class Value:
         out._backward = _backward
         return out
 
-    # ------------------------------------------------------------------ azucar
+    # ------------------------------------------------------------------ sugar
 
     def __neg__(self) -> "Value":
         return self * -1
@@ -153,23 +153,23 @@ class Value:
         return (other if isinstance(other, Value) else Value(other)) * self**-1
 
     def __repr__(self) -> str:
-        etiqueta = f" {self.label}" if self.label else ""
-        return f"Value({self.data:.6g}, grad={self.grad:.6g}{etiqueta})"
+        label = f" {self.label}" if self.label else ""
+        return f"Value({self.data:.6g}, grad={self.grad:.6g}{label})"
 
     # ------------------------------------------------------------------ backward
 
     def backward(self) -> None:
-        """Propaga el gradiente desde este nodo hasta las hojas.
+        """Propagate the gradient from this node down to the leaves.
 
-        Dos detalles que importan:
+        Two details that matter:
 
-        1. Se arranca con `self.grad = 1.0`, porque la derivada de la salida respecto a
-           si misma es 1.
-        2. Hay que recorrer en orden topologico inverso. Si propagases el gradiente de un
-           nodo antes de que TODOS sus padres hayan aportado el suyo, ese nodo enviaria
-           hacia abajo un gradiente incompleto. Con un grafo en forma de arbol no se nota;
-           en cuanto hay un nodo reutilizado (y en una red neuronal los hay a miles), da
-           resultados mal.
+        1. It starts with `self.grad = 1.0`, because the derivative of the output with
+           respect to itself is 1.
+        2. You have to walk in reverse topological order. If you propagated a node's
+           gradient before ALL of its parents had contributed theirs, that node would send
+           an incomplete gradient downwards. On a tree-shaped graph you would not notice;
+           as soon as there is a reused node (and in a neural network there are thousands),
+           it gives wrong results.
         """
         self.grad = 1.0
         for node in reversed(topological_order(self)):
@@ -177,14 +177,14 @@ class Value:
 
 
 def topological_order(root: Value) -> list[Value]:
-    """Orden topologico del grafo: cada nodo aparece despues de todos sus hijos.
+    """Topological order of the graph: each node appears after all of its children.
 
-    DFS post-orden iterativo. Iterativo y no recursivo porque el grafo de un MLP con
-    unos cuantos cientos de neuronas ya se acerca al limite de recursion de python.
+    Iterative post-order DFS. Iterative rather than recursive because the graph of an MLP
+    with a few hundred neurons already gets close to python's recursion limit.
     """
     order: list[Value] = []
     visited: set[int] = set()
-    # (nodo, hijos_ya_expandidos)
+    # (node, children_already_expanded)
     stack: list[tuple[Value, bool]] = [(root, False)]
 
     while stack:
@@ -203,11 +203,11 @@ def topological_order(root: Value) -> list[Value]:
     return order
 
 
-# ---------------------------------------------------------------------------- red neuronal
+# ---------------------------------------------------------------------------- neural net
 
 
 class Neuron:
-    """Una neurona: `act(w . x + b)`."""
+    """A neuron: `act(w . x + b)`."""
 
     def __init__(self, nin: int, nonlin: bool = True, value_cls: type = Value, rng: Any = None) -> None:
         rng = rng or random.Random(0)
@@ -236,10 +236,10 @@ class Layer:
 
 
 class MLP:
-    """Perceptron multicapa construido sobre `value_cls`.
+    """Multilayer perceptron built on top of `value_cls`.
 
-    `value_cls` se pasa por parametro para que puedas montarlo con TU clase `Value` sin
-    tocar este codigo. Es lo que hace el ejercicio `train_scalar_mlp`.
+    `value_cls` is a parameter so you can build it with YOUR `Value` class without touching
+    this code. That is what the `train_scalar_mlp` exercise does.
     """
 
     def __init__(
@@ -257,7 +257,7 @@ class MLP:
                 sizes[i + 1],
                 value_cls=value_cls,
                 rng=rng,
-                nonlin=i < len(nouts) - 1,  # la ultima capa es lineal
+                nonlin=i < len(nouts) - 1,  # the last layer is linear
             )
             for i in range(len(nouts))
         ]
@@ -284,28 +284,28 @@ def train_scalar_mlp(
     seed: int = 0,
     value_cls: type = Value,
 ) -> list[float]:
-    """Entrena un MLP con descenso de gradiente y devuelve el historial de perdida.
+    """Train an MLP with gradient descent and return the loss history.
 
-    Perdida: error cuadratico medio. El bucle es el mismo que usaras en el modulo 10 con
-    PyTorch, y conviene verlo aqui sin ninguna abstraccion por medio.
+    Loss: mean squared error. The loop is the same one you will use in module 10 with
+    PyTorch, and it is worth seeing it here with no abstraction in the way.
 
     Returns:
-        Lista de `steps` perdidas, una por paso.
+        A list of `steps` losses, one per step.
     """
     model = MLP(len(xs[0]), [*hidden, 1], value_cls=value_cls, seed=seed)
     history: list[float] = []
 
     for _ in range(steps):
-        # forward: predicciones y perdida
+        # forward: predictions and loss
         preds = [model(x) for x in xs]
         loss = sum(((p - y) ** 2 for p, y in zip(preds, ys)), value_cls(0.0)) * (1.0 / len(ys))
 
-        # backward: SIEMPRE poner los gradientes a cero antes, porque se acumulan.
-        # Olvidarse de esto es el bug numero uno de quien empieza.
+        # backward: ALWAYS zero the gradients first, because they accumulate.
+        # Forgetting this is the number one beginner bug.
         model.zero_grad()
         loss.backward()
 
-        # descenso: un paso en contra del gradiente
+        # descent: one step against the gradient
         for p in model.parameters():
             p.data -= lr * p.grad
 

@@ -1,8 +1,8 @@
-"""Localizacion de la raiz del repo y de sus directorios.
+"""Locating the repo root and its directories.
 
-Existe porque `modulos/`, `configs/` y `data/` se resuelven relativos a la raiz del repo,
-no al directorio desde el que ejecutes el comando. Asi `python -m llmfs status` funciona
-igual desde la raiz que desde `modulos/05_atencion/`.
+This exists because `modules/`, `configs/` and `data/` are resolved relative to the repo
+root, not to the directory you run the command from. That way `python -m llmfs status`
+works the same from the root as from `modules/06_attention/`.
 """
 
 from __future__ import annotations
@@ -16,11 +16,11 @@ _MARKERS = ("pyproject.toml", ".git")
 
 @lru_cache(maxsize=1)
 def repo_root() -> Path:
-    """Raiz del repositorio.
+    """Repository root.
 
-    Orden de busqueda: `$LLMFS_ROOT` -> ancestro de este fichero que contenga
-    `pyproject.toml` -> ancestro del cwd. Con instalacion editable (`uv sync`) la primera
-    busqueda ya acierta, porque el paquete vive dentro del repo.
+    Search order: `$LLMFS_ROOT` -> ancestor of this file containing `pyproject.toml` ->
+    ancestor of the cwd. With an editable install (`uv sync`) the first search already
+    hits, because the package lives inside the repo.
     """
     env = os.environ.get("LLMFS_ROOT")
     if env:
@@ -35,7 +35,7 @@ def repo_root() -> Path:
 
 
 def modules_dir() -> Path:
-    return repo_root() / "modulos"
+    return repo_root() / "modules"
 
 
 def configs_dir() -> Path:
@@ -51,7 +51,7 @@ def runs_dir() -> Path:
 
 
 def figures_dir() -> Path:
-    """Donde escriben sus PNG las demos. Esta en .gitignore."""
+    """Where the demos write their PNGs. It is in .gitignore."""
     path = runs_dir() / "figures"
     path.mkdir(parents=True, exist_ok=True)
     return path

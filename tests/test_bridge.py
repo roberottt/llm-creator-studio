@@ -59,7 +59,7 @@ def test_usa_tu_implementacion_cuando_funciona(modulo):
     escribe_ejercicios(modulo, "def suma(a, b):\n    return a + b\n")
 
     assert bridge.resolve(modulo, "suma")(2, 3) == 5
-    assert bridge.resolution(modulo, "suma").source == "ejercicio"
+    assert bridge.resolution(modulo, "suma").source == "exercise"
 
 
 def test_cae_a_referencia_si_el_ejercicio_lanza_not_implemented(modulo):
@@ -69,7 +69,7 @@ def test_cae_a_referencia_si_el_ejercicio_lanza_not_implemented(modulo):
     )
 
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert "NotImplementedError" in res.reason
     # y aun asi el codigo de produccion sigue funcionando
     assert bridge.resolve(modulo, "suma")(2, 3) == 5
@@ -77,7 +77,7 @@ def test_cae_a_referencia_si_el_ejercicio_lanza_not_implemented(modulo):
 
 def test_cae_a_referencia_si_ejercicios_py_no_existe(modulo):
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert bridge.resolve(modulo, "suma")(1, 1) == 2
 
 
@@ -85,7 +85,7 @@ def test_cae_a_referencia_si_ejercicios_py_no_compila(modulo, capsys):
     escribe_ejercicios(modulo, "def suma(a, b)\n    return a + b\n")  # falta el ':'
 
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert bridge.resolve(modulo, "suma")(4, 5) == 9
 
     # Un fichero que no compila es algo que el usuario TIENE que ver.
@@ -97,7 +97,7 @@ def test_cae_a_referencia_si_falta_el_simbolo(modulo):
     escribe_ejercicios(modulo, "def otra_cosa():\n    return 1\n")
 
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert "no esta definido" in res.reason
 
 
@@ -113,7 +113,7 @@ def test_el_probe_descarta_implementaciones_que_devuelven_basura(modulo, monkeyp
     escribe_ejercicios(modulo, "def suma(a, b):\n    return None\n")
 
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert "ValueError" in res.reason
 
 
@@ -123,7 +123,7 @@ def test_force_reference_ignora_tu_codigo_aunque_sea_correcto(modulo, monkeypatc
     bridge.clear_cache()
 
     res = bridge.resolution(modulo, "suma")
-    assert res.source == "referencia"
+    assert res.source == "reference"
     assert "LLMFS_FORCE_REFERENCE" in res.reason
 
 
@@ -160,12 +160,12 @@ def test_una_clase_con_forward_sin_implementar_no_es_usable(modulo):
         "    def forward(self, x):\n"
         "        raise NotImplementedError('TODO')\n",
     )
-    assert bridge.resolution(modulo, "suma").source == "referencia"
+    assert bridge.resolution(modulo, "suma").source == "reference"
 
 
 def test_un_cuerpo_con_solo_pass_tambien_cuenta_como_plantilla(modulo):
     escribe_ejercicios(modulo, "def suma(a, b):\n    pass\n")
-    assert bridge.resolution(modulo, "suma").source == "referencia"
+    assert bridge.resolution(modulo, "suma").source == "reference"
 
 
 def test_un_docstring_largo_no_confunde_al_detector(modulo):
@@ -177,7 +177,7 @@ def test_un_docstring_largo_no_confunde_al_detector(modulo):
         '    Returns:\n        a + b\n    """\n'
         '    return a + b\n',
     )
-    assert bridge.resolution(modulo, "suma").source == "ejercicio"
+    assert bridge.resolution(modulo, "suma").source == "exercise"
 
 
 def test_module_resolutions_cubre_todos_los_ejercicios(modulo):

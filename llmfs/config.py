@@ -1,12 +1,12 @@
-"""Configuracion tipada del modelo, los datos y el entrenamiento.
+"""Typed configuration for the model, the data and the training run.
 
-Un unico sitio donde vive "que estoy entrenando exactamente". Los YAML de `configs/`
-se cargan aqui y se validan al construirse: un typo en una clave revienta al arrancar,
-no tres horas despues de empezar la tirada.
+A single place where "what exactly am I training" lives. The YAML files in `configs/` are
+loaded here and validated on construction: a typo in a key blows up at startup, not three
+hours into the run.
 
-El cargador acepta YAML plano o por secciones. Estos dos son equivalentes:
+The loader accepts flat YAML or YAML split into sections. These two are equivalent:
 
-    # plano                      # por secciones
+    # flat                       # sectioned
     n_layers: 6                  model:
     d_model: 320                   n_layers: 6
     lr: 1.0e-3                     d_model: 320
@@ -30,7 +30,7 @@ ScheduleKind = Literal["cosine", "linear", "constant"]
 
 @dataclass
 class ModelConfig:
-    """Arquitectura. Todo lo que determina el numero de parametros esta aqui."""
+    """Architecture. Everything that determines the parameter count lives here."""
 
     vocab_size: int = 4096
     n_layers: int = 6
@@ -43,24 +43,24 @@ class ModelConfig:
     activation: ActivationKind = "swiglu"
     tie_embeddings: bool = True
     dropout: float = 0.0
-    #: Sesgos en las proyecciones lineales. Los LLM modernos los quitan: aportan poco y
-    #: complican el weight decay. Ver modulo 09.
+    #: Biases in the linear projections. Modern LLMs drop them: they add little and they
+    #: complicate weight decay. See module 09.
     bias: bool = False
     rope_theta: float = 10000.0
 
     def __post_init__(self) -> None:
         if self.d_model % self.n_heads != 0:
             raise ValueError(
-                f"d_model ({self.d_model}) debe ser divisible por n_heads ({self.n_heads}); "
-                f"ahora mismo da {self.d_model / self.n_heads:.2f} por cabeza."
+                f"d_model ({self.d_model}) must be divisible by n_heads ({self.n_heads}); "
+                f"right now that gives {self.d_model / self.n_heads:.2f} per head."
             )
         if self.pos == "rope" and self.head_dim % 2 != 0:
             raise ValueError(
-                f"RoPE rota pares de dimensiones, asi que head_dim ({self.head_dim}) "
-                "tiene que ser par."
+                f"RoPE rotates pairs of dimensions, so head_dim ({self.head_dim}) "
+                "has to be even."
             )
         if not 0.0 <= self.dropout < 1.0:
-            raise ValueError(f"dropout fuera de rango: {self.dropout}")
+            raise ValueError(f"dropout out of range: {self.dropout}")
 
     @property
     def head_dim(self) -> int:
@@ -69,13 +69,13 @@ class ModelConfig:
 
 @dataclass
 class DataConfig:
-    """De donde salen los tokens."""
+    """Where the tokens come from."""
 
     dataset: str = "tinystories"
     data_dir: str = "data"
     tokenizer: Literal["bpe", "char"] = "bpe"
-    #: Cuanto texto se usa para ENTRENAR el BPE (no para entrenar el modelo).
-    #: Ver modulo 02: entrenar merges sobre 2 GB en python puro no es viable.
+    #: How much text is used to TRAIN the BPE (not to train the model).
+    #: See module 03: training merges over 2 GB in pure python is not viable.
     bpe_train_bytes: int = 150_000_000
     val_fraction: float = 0.005
     num_workers: int = 4
@@ -83,7 +83,7 @@ class DataConfig:
 
 @dataclass
 class TrainConfig:
-    """El bucle de entrenamiento."""
+    """The training loop."""
 
     optimizer: Literal["adamw", "adamw_scratch"] = "adamw"
     lr: float = 1.0e-3
@@ -92,7 +92,7 @@ class TrainConfig:
     grad_clip: float = 1.0
     warmup_steps: int = 500
     schedule: ScheduleKind = "cosine"
-    #: El coseno decae hasta este porcentaje del lr, no hasta cero.
+    #: The cosine decays down to this fraction of the lr, not to zero.
     min_lr_ratio: float = 0.1
     batch_size: int = 48
     grad_accum: int = 2
@@ -102,28 +102,28 @@ class TrainConfig:
     log_interval: int = 10
     sample_interval: int = 500
     seed: int = 1337
-    #: Desactivado por defecto: en Turing (sm_75) da mas problemas que alegrias.
+    #: Off by default: on Turing (sm_75) it causes more grief than it is worth.
     compile: bool = False
-    #: `None` = politica por defecto del backend (ver llmfs/device.py).
+    #: `None` = the backend's default policy (see llmfs/device.py).
     amp: bool | None = None
     device: str | None = None
 
     def __post_init__(self) -> None:
         self.betas = tuple(self.betas)  # type: ignore[assignment]
         if len(self.betas) != 2:
-            raise ValueError(f"betas debe tener 2 elementos, no {len(self.betas)}")
+            raise ValueError(f"betas must have 2 elements, not {len(self.betas)}")
         if self.warmup_steps < 0 or self.grad_accum < 1 or self.batch_size < 1:
-            raise ValueError("warmup_steps>=0, grad_accum>=1 y batch_size>=1")
+            raise ValueError("warmup_steps>=0, grad_accum>=1 and batch_size>=1")
 
     @property
     def tokens_per_step(self) -> int:
-        """Tokens consumidos por paso de optimizador. Necesita el context_length."""
-        raise NotImplementedError("Usa RunConfig.tokens_per_step, que si conoce el contexto.")
+        """Tokens consumed per optimizer step. Needs the context_length."""
+        raise NotImplementedError("Use RunConfig.tokens_per_step, which does know the context.")
 
 
 @dataclass
 class RunConfig:
-    """Una tirada completa: nombre + arquitectura + datos + entrenamiento."""
+    """A complete run: name + architecture + data + training."""
 
     name: str = "run"
     model: ModelConfig = field(default_factory=ModelConfig)
@@ -132,14 +132,14 @@ class RunConfig:
     out_dir: str = "checkpoints"
 
     def __post_init__(self) -> None:
-        # El vocabulario lo manda el modelo; el tokenizador tiene que producir ese tamanyo.
+        # The vocabulary is dictated by the model; the tokenizer has to produce that size.
         if self.data.tokenizer == "char" and self.model.vocab_size > 512:
             raise ValueError(
-                "Un tokenizador de caracteres con vocab_size > 512 no tiene sentido. "
-                "Revisa el config."
+                "A character tokenizer with vocab_size > 512 makes no sense. "
+                "Check the config."
             )
 
-    # ------------------------------------------------------------------ derivados
+    # ------------------------------------------------------------------ derived
 
     @property
     def tokens_per_step(self) -> int:
@@ -153,13 +153,13 @@ class RunConfig:
     def run_dir(self) -> Path:
         return Path(self.out_dir) / self.name
 
-    # ------------------------------------------------------------------ (de)serializacion
+    # ------------------------------------------------------------------ (de)serialization
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> RunConfig:
         path = Path(path)
         if not path.exists():
-            raise FileNotFoundError(f"No existe el config {path}")
+            raise FileNotFoundError(f"Config {path} does not exist")
         raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         cfg = cls.from_dict(raw)
         if cfg.name == "run":
@@ -168,7 +168,7 @@ class RunConfig:
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> RunConfig:
-        """Construye desde un dict plano, por secciones, o mezcla de ambos."""
+        """Build from a flat dict, a sectioned one, or a mix of both."""
         sections: dict[str, type] = {
             "model": ModelConfig,
             "data": DataConfig,
@@ -182,7 +182,7 @@ class RunConfig:
             for f in fields(klass):
                 if f.name in field_owner:
                     raise RuntimeError(
-                        f"Clave ambigua {f.name!r}: aparece en varias secciones del config."
+                        f"Ambiguous key {f.name!r}: it appears in several config sections."
                     )
                 field_owner[f.name] = section
 
@@ -201,7 +201,7 @@ class RunConfig:
         if unknown:
             valid = sorted(own_fields | set(field_owner) | set(sections))
             raise ValueError(
-                f"Claves desconocidas en el config: {unknown}.\nClaves validas: {valid}"
+                f"Unknown keys in the config: {unknown}.\nValid keys: {valid}"
             )
 
         return cls(
@@ -224,15 +224,15 @@ class RunConfig:
         m, t = self.model, self.train
         return "\n".join(
             [
-                f"run           : {self.name}",
-                f"arquitectura  : {m.n_layers}L x {m.d_model}d x {m.n_heads}h "
+                f"run          : {self.name}",
+                f"architecture : {m.n_layers}L x {m.d_model}d x {m.n_heads}h "
                 f"(head_dim={m.head_dim}), d_ff={m.d_ff}",
-                f"contexto      : {m.context_length} tokens, vocab {m.vocab_size}",
-                f"piezas        : {m.norm}, {m.pos}, {m.activation}, "
-                f"tie={'si' if m.tie_embeddings else 'no'}, dropout={m.dropout}",
-                f"batch         : {t.batch_size} x {t.grad_accum} accum x {m.context_length} "
-                f"= {self.tokens_per_step:,} tokens/paso",
-                f"presupuesto   : {t.max_tokens:,} tokens = {self.max_steps:,} pasos",
-                f"optimizador   : {t.optimizer} lr={t.lr} betas={t.betas} wd={t.weight_decay}",
+                f"context      : {m.context_length} tokens, vocab {m.vocab_size}",
+                f"pieces       : {m.norm}, {m.pos}, {m.activation}, "
+                f"tie={'yes' if m.tie_embeddings else 'no'}, dropout={m.dropout}",
+                f"batch        : {t.batch_size} x {t.grad_accum} accum x {m.context_length} "
+                f"= {self.tokens_per_step:,} tokens/step",
+                f"budget       : {t.max_tokens:,} tokens = {self.max_steps:,} steps",
+                f"optimizer    : {t.optimizer} lr={t.lr} betas={t.betas} wd={t.weight_decay}",
             ]
         )

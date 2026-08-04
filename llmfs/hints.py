@@ -1,200 +1,197 @@
-"""Pistas progresivas por ejercicio.
+"""Progressive hints, one set per exercise.
 
-Tres niveles, pensados para desbloquearte sin quemarte el ejercicio:
+Three levels, designed to unblock you without burning the exercise:
 
-  1. **Conceptual.** Que estas intentando conseguir y por que. Sin codigo, sin formulas.
-     Muchas veces con esto basta: el atasco no era tecnico, era que no estaba claro el
-     objetivo.
-  2. **Tecnico.** La formula exacta, las formas de los tensores, o que funcion de PyTorch
-     es la adecuada. Todavia sin codigo.
-  3. **Estructural.** El esqueleto en pseudocodigo, incluidos los sitios donde la gente se
-     equivoca (ejes al reves, broadcasting, el `-1` que sobra). Sigue sin ser la solucion
-     escrita: eso lo pones tu.
+  1. **Conceptual.** What you are trying to achieve and why. No code, no formulas. Often
+     this is enough: the blocker was not technical, it was that the goal was unclear.
+  2. **Technical.** The exact formula, the tensor shapes, or which PyTorch function is the
+     right one. Still no code.
+  3. **Structural.** The skeleton in pseudocode, including the places where people get it
+     wrong (swapped axes, broadcasting, the extra `-1`). Still not the written solution:
+     that part is yours.
 
-Si el nivel 3 no te desbloquea, `modulos/NN_*/SOLUCION.md` explica la solucion entera y
-`llmfs/reference/` tiene el codigo. Mirarlo no es hacer trampa: hacer trampa seria mirarlo
-sin haber intentado nada. Aprender leyendo una solucion que ya has peleado funciona muy
-bien; leerla en frio no funciona nada.
+If level 3 does not unblock you, `modules/NN_*/SOLUTION.md` explains the whole solution and
+`llmfs/reference/` has the code. Looking at it is not cheating: cheating would be looking at
+it without having tried anything. Learning by reading a solution you have already wrestled
+with works very well; reading it cold does not work at all.
 """
 
 from __future__ import annotations
 
 HINTS: dict[str, dict[str, tuple[str, ...]]] = {
-    # ------------------------------------------------------------------ modulo 00
-    "00_que_es_un_llm": {
+    # ------------------------------------------------------------------ module 00
+    "00_what_is_an_llm": {
         "next_token_probs": (
-            "Tienes cuentas: la 'n' salio 40 veces, la 'r' 25... Son numeros enteros que "
-            "no significan nada por si solos, porque dependen de lo largo que fuera el "
-            "texto.\n\n"
-            "Lo que necesitas es la PROPORCION: de todas las veces que miraste, "
-            "que fraccion fue una 'n'. Y esas fracciones tienen que sumar exactamente 1, "
-            "porque algo tuvo que venir siempre.",
+            "You have counts: 'n' came up 40 times, 'r' 25... They are whole numbers that "
+            "mean nothing on their own, because they depend on how long the text was.\n\n"
+            "What you need is the PROPORTION: out of every time you looked, what fraction "
+            "was an 'n'. And those fractions have to sum to exactly 1, because something "
+            "always had to come next.",
 
-            "Probabilidad de cada token = su conteo dividido entre la suma de TODOS los "
-            "conteos.\n\n"
+            "Probability of each token = its count divided by the sum of ALL the counts.\n\n"
             "    total = 40 + 25 + 20 + 15 = 100\n"
             "    P(n) = 40/100 = 0.40\n\n"
-            "Dos avisos:\n"
-            "- Comprueba que el total no sea 0 ANTES de dividir, y lanza ValueError si lo "
-            "es. Si no, el ZeroDivisionError saltara mas tarde y en otro sitio.\n"
-            "- Conserva el orden original de las claves. El ejercicio 2 recorre este "
-            "diccionario y el orden cambia el resultado del muestreo.",
+            "Two warnings:\n"
+            "- Check that the total is not 0 BEFORE dividing, and raise ValueError if it "
+            "is. Otherwise the ZeroDivisionError will fire later and somewhere else.\n"
+            "- Preserve the original key order. Exercise 2 walks this dictionary and the "
+            "order changes the result of the sampling.",
 
             "    total = sum(counts.values())\n"
-            "    si total == 0: raise ValueError(...)\n"
-            "    return {token: conteo / total  para cada (token, conteo) en counts.items()}\n\n"
-            "Una comprension de diccionario sobre `counts.items()` conserva el orden sola. "
-            "No ordenes las claves.",
+            "    if total == 0: raise ValueError(...)\n"
+            "    return {token: count / total  for each (token, count) in counts.items()}\n\n"
+            "A dict comprehension over `counts.items()` preserves the order by itself. Do "
+            "not sort the keys.",
         ),
         "sample_next_token": (
-            "Piensa en una ruleta. Cada caracter ocupa un trozo del circulo proporcional a "
-            "su probabilidad: la 'n' con 0.40 ocupa el 40% de la ruleta.\n\n"
-            "Tiras la bola una vez (un numero aleatorio entre 0 y 1) y devuelves el "
-            "caracter en cuyo trozo ha caido.\n\n"
-            "No devuelvas el mas probable siempre: eso genera texto repetitivo y con "
-            "bucles.",
+            "Think of a roulette wheel. Each character takes up a slice of the circle "
+            "proportional to its probability: 'n' with 0.40 takes up 40% of the wheel.\n\n"
+            "You spin the ball once (a random number between 0 and 1) and return the "
+            "character whose slice it landed in.\n\n"
+            "Do not always return the most likely one: that generates repetitive text with "
+            "loops.",
 
-            "Extiende la ruleta en una recta del 0 al 1:\n\n"
+            "Stretch the wheel out along a line from 0 to 1:\n\n"
             "    |----'n'----|--'r'--|--' '--|-'s'-|\n"
             "    0          0.40    0.65    0.85   1.0\n\n"
-            "Saca `r = rng.random()` (un float en [0,1)) y recorre los tokens llevando un "
-            "acumulador. Devuelve el primero cuyo acumulado SUPERE a `r`.\n\n"
-            "Y al salir del bucle, devuelve el ultimo token de todas formas: por error de "
-            "redondeo el acumulado puede quedarse en 0.9999999 y no superar nunca a un `r` "
-            "muy cercano a 1. Si no lo haces, la funcion devuelve None y el ejercicio 3 "
-            "revienta con un error que no dice nada.",
+            "Draw `r = rng.random()` (a float in [0,1)) and walk the tokens keeping a "
+            "running total. Return the first one whose running total EXCEEDS `r`.\n\n"
+            "And when the loop ends, return the last token anyway: because of rounding "
+            "error the running total can end up at 0.9999999 and never exceed an `r` very "
+            "close to 1. If you skip that, the function returns None and exercise 3 blows "
+            "up with an error that tells you nothing.",
 
             "    r = rng.random()\n"
-            "    acumulado = 0.0\n"
-            "    ultimo = None\n"
-            "    para cada (token, p) en probs.items():\n"
-            "        acumulado += p\n"
-            "        ultimo = token\n"
-            "        si r < acumulado:\n"
+            "    running = 0.0\n"
+            "    last = None\n"
+            "    for each (token, p) in probs.items():\n"
+            "        running += p\n"
+            "        last = token\n"
+            "        if r < running:\n"
             "            return token\n"
-            "    return ultimo\n\n"
-            "Usa `<` y no `<=`. Con {a:0.5, b:0.5} y r=0.5 exacto, `<` devuelve 'b', que es "
-            "lo correcto: 'a' ocupa [0, 0.5) y 'b' ocupa [0.5, 1).",
+            "    return last\n\n"
+            "Use `<` and not `<=`. With {a:0.5, b:0.5} and r=0.5 exactly, `<` returns 'b', "
+            "which is correct: 'a' occupies [0, 0.5) and 'b' occupies [0.5, 1).",
         ),
         "generate_naive": (
-            "Ya sabes sacar una distribucion (ejercicio 1) y elegir un caracter de ella "
-            "(ejercicio 2). Generar texto es hacer eso en bucle.\n\n"
-            "La clave: cada caracter que sacas se convierte en parte de la entrada del "
-            "paso siguiente. Escribes una letra, la lees como si te la hubiera dado otro, "
-            "y decides la siguiente.\n\n"
-            "Este bucle es el mismo que ejecuta ChatGPT. Literalmente el mismo.",
+            "You already know how to get a distribution (exercise 1) and pick a character "
+            "from it (exercise 2). Generating text is doing that in a loop.\n\n"
+            "The key: every character you draw becomes part of the input to the next step. "
+            "You write a letter, read it as if someone else had given it to you, and decide "
+            "the next one.\n\n"
+            "This loop is the same one ChatGPT runs. Literally the same one.",
 
-            "En cada vuelta:\n"
-            "  1. coge los ultimos `len(start)` caracteres de lo que llevas generado\n"
-            "  2. busca ese contexto en la tabla\n"
-            "  3. si no esta, PARA (la tabla solo conoce lo que vio al entrenar)\n"
-            "  4. si esta, convierte los conteos en probabilidades y muestrea\n"
-            "  5. anyade el caracter elegido\n\n"
-            "Cuidado con `length`: es el total devuelto INCLUYENDO `start`. Si start tiene "
-            "2 caracteres y piden 5, generas 3, no 5.",
+            "On each pass:\n"
+            "  1. take the last `len(start)` characters of what you have generated\n"
+            "  2. look that context up in the table\n"
+            "  3. if it is not there, STOP (the table only knows what it saw in training)\n"
+            "  4. if it is, turn the counts into probabilities and sample\n"
+            "  5. append the chosen character\n\n"
+            "Watch out for `length`: it is the total returned INCLUDING `start`. If start "
+            "has 2 characters and 5 are asked for, you generate 3, not 5.",
 
             "    context_size = len(start)\n"
-            "    salida = list(start)\n"
-            "    repetir max(0, length - len(start)) veces:\n"
-            "        contexto = ''.join(salida[-context_size:])\n"
-            "        counts = table.get(contexto)\n"
-            "        si no counts: break\n"
-            "        salida.append(sample_next_token(next_token_probs(counts), rng))\n"
-            "    return ''.join(salida)\n\n"
-            "Acumula en una lista y une al final con `''.join()`. Concatenar cadenas en un "
-            "bucle crea una cadena nueva en cada vuelta; aqui da igual, pero es una "
-            "costumbre que en el modulo 13 sale cara.",
+            "    out = list(start)\n"
+            "    repeat max(0, length - len(start)) times:\n"
+            "        context = ''.join(out[-context_size:])\n"
+            "        counts = table.get(context)\n"
+            "        if not counts: break\n"
+            "        out.append(sample_next_token(next_token_probs(counts), rng))\n"
+            "    return ''.join(out)\n\n"
+            "Accumulate into a list and join at the end with `''.join()`. Concatenating "
+            "strings in a loop creates a new string on every pass; here it does not matter, "
+            "but it is a habit that gets expensive in module 13.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 01
-    "01_entorno": {
+    # ------------------------------------------------------------------ module 01
+    "01_environment": {
         "measure_matmul_tflops": (
-            "Quieres saber cuantas operaciones por segundo hace tu GPU DE VERDAD, no las "
-            "que pone en la caja. La forma de averiguarlo es darle un trabajo grande y "
-            "conocido, cronometrarlo, y dividir.\n\n"
-            "El trabajo: multiplicar dos matrices cuadradas. Sabes exactamente cuantas "
-            "operaciones son, asi que solo te falta el tiempo.",
+            "You want to know how many operations per second your GPU REALLY does, not the "
+            "number on the box. The way to find out is to give it a large, known amount of "
+            "work, time it, and divide.\n\n"
+            "The work: multiplying two square matrices. You know exactly how many operations "
+            "that is, so all you are missing is the time.",
 
-            "FLOPs de multiplicar dos matrices (size x size) = 2 * size^3.\n"
-            "TFLOPS = (FLOPs * numero_de_repeticiones) / segundos / 1e12\n\n"
-            "Las dos cosas que hay que hacer bien:\n\n"
-            "1. CALENTAR. La primera multiplicacion de un tamanyo dado es entre 10 y 100 "
-            "veces mas lenta: la GPU esta eligiendo que kernel usar y reservando memoria. "
-            "Haz unas cuantas que no cronometres.\n\n"
-            "2. SINCRONIZAR. `a @ b` en GPU no espera a que termine: encola el trabajo y "
-            "devuelve el control. Si cronometras sin sincronizar, mides lo que tarda en "
-            "encolar (microsegundos) y te salen miles de TFLOPS. Usa `cfg.synchronize()` "
-            "justo antes de cada marca de tiempo.",
+            "FLOPs of multiplying two (size x size) matrices = 2 * size^3.\n"
+            "TFLOPS = (FLOPs * number_of_repeats) / seconds / 1e12\n\n"
+            "The two things you have to get right:\n\n"
+            "1. WARM UP. The first multiplication at a given size is between 10 and 100 "
+            "times slower: the GPU is choosing which kernel to use and allocating memory. Do "
+            "a few that you do not time.\n\n"
+            "2. SYNCHRONIZE. `a @ b` on a GPU does not wait for the result: it queues the "
+            "work and returns control. If you time without synchronizing, you measure how "
+            "long it takes to enqueue (microseconds) and you get thousands of TFLOPS. Use "
+            "`cfg.synchronize()` right before each timestamp.",
 
             "    a = torch.randn(size, size, device=cfg.device, dtype=dtype)\n"
             "    b = torch.randn(size, size, device=cfg.device, dtype=dtype)\n\n"
-            "    repetir `warmup` veces: a @ b\n"
+            "    repeat `warmup` times: a @ b\n"
             "    cfg.synchronize()\n\n"
             "    t0 = time.perf_counter()\n"
-            "    repetir `iters` veces: a @ b\n"
+            "    repeat `iters` times: a @ b\n"
             "    cfg.synchronize()\n"
             "    elapsed = time.perf_counter() - t0\n\n"
             "    return (2 * size**3 * iters) / elapsed / 1e12\n\n"
-            "El dtype por defecto: `cfg.amp_dtype` si existe, si no `torch.float32`.",
+            "The default dtype: `cfg.amp_dtype` if it exists, otherwise `torch.float32`.",
         ),
         "transformer_flops_per_token": (
-            "Quieres saber cuanto cuesta procesar UN token, para poder multiplicar por "
-            "500 millones y saber si el entrenamiento dura dos horas o dos semanas.\n\n"
-            "La idea que lo hace facil: casi todo el coste de una red son "
-            "multiplicaciones de matrices, y una matriz de P parametros cuesta "
-            "aproximadamente 2P operaciones por cada token que la atraviesa.",
+            "You want to know what it costs to process ONE token, so you can multiply by 500 "
+            "million and know whether training takes two hours or two weeks.\n\n"
+            "The idea that makes it easy: almost all of a network's cost is matrix "
+            "multiplications, and a matrix with P parameters costs roughly 2P operations for "
+            "each token that passes through it.",
 
-            "Suma los parametros que participan en multiplicaciones:\n\n"
-            "    por capa: 4*d_model^2 (las 4 proyecciones de atencion)\n"
-            "            + n_ffn_matrices*d_model*d_ff (el FFN)\n"
-            "    mas la proyeccion final a logits: d_model*vocab_size\n\n"
-            "Forward = 2 * esos_parametros + 4*n_layers*context_length*d_model\n\n"
-            "Ese segundo termino es la atencion en si (Q@K^T y softmax@V). No sale de "
-            "parametros: sale de multiplicar tokens entre si, y por eso crece con el "
-            "contexto y no con el tamanyo del modelo.\n\n"
-            "Total con backward = 3 * forward. El backward cuesta el doble que el forward "
-            "porque hace dos multiplicaciones por cada una del forward: una para el "
-            "gradiente respecto a la entrada y otra respecto a los pesos.",
+            "Add up the parameters that take part in multiplications:\n\n"
+            "    per layer: 4*d_model^2 (the 4 attention projections)\n"
+            "             + n_ffn_matrices*d_model*d_ff (the FFN)\n"
+            "    plus the final projection to logits: d_model*vocab_size\n\n"
+            "Forward = 2 * those_parameters + 4*n_layers*context_length*d_model\n\n"
+            "That second term is attention itself (Q@K^T and softmax@V). It does not come "
+            "from parameters: it comes from multiplying tokens against each other, which is "
+            "why it grows with the context and not with the model size.\n\n"
+            "Total with the backward pass = 3 * forward. The backward costs twice the "
+            "forward because it does two multiplications for each one in the forward: one "
+            "for the gradient with respect to the input and one with respect to the weights.",
 
             "    params = n_layers * (4*d_model**2 + n_ffn_matrices*d_model*d_ff)\n"
             "    params += d_model * vocab_size\n"
             "    forward = 2*params + 4*n_layers*context_length*d_model\n"
             "    return int(3*forward if include_backward else forward)\n\n"
-            "Dos avisos:\n"
-            "- La proyeccion final cuenta aunque uses weight tying. Atar los pesos ahorra "
-            "memoria, no calculo: el matmul se hace igual.\n"
-            "- NO dividas por dos por la mascara causal. Es la convencion de nanoGPT y de "
-            "los papers; si divides, tu MFU no sera comparable con la de nadie.",
+            "Two warnings:\n"
+            "- The final projection counts even if you use weight tying. Tying the weights "
+            "saves memory, not computation: the matmul happens all the same.\n"
+            "- Do NOT divide by two for the causal mask. That is the nanoGPT and paper "
+            "convention; if you divide, your MFU will not be comparable with anyone's.",
         ),
         "estimate_tokens_per_second": (
-            "Tienes la potencia de tu GPU (TFLOPS) y lo que cuesta un token (FLOPs). "
-            "Dividir una cosa entre la otra da tokens por segundo.\n\n"
-            "El unico matiz es la MFU: nunca aprovechas el 100% de la GPU, asi que hay "
-            "que multiplicar por la fraccion que realmente consigues.",
+            "You have your GPU's power (TFLOPS) and the cost of a token (FLOPs). Dividing "
+            "one by the other gives tokens per second.\n\n"
+            "The only nuance is the MFU: you never use 100% of the GPU, so you have to "
+            "multiply by the fraction you actually get.",
 
-            "    tokens/s = TFLOPS * 1e12 * MFU / FLOPs_por_token\n\n"
-            "El 1e12 es para pasar de TeraFLOPS a FLOPS. Comprueba que "
-            "`flops_per_token` sea positivo y lanza ValueError si no: una division por "
-            "cero aqui produce `inf` silenciosamente y estimaciones absurdas.",
+            "    tokens/s = TFLOPS * 1e12 * MFU / FLOPs_per_token\n\n"
+            "The 1e12 converts TeraFLOPS to FLOPS. Check that `flops_per_token` is positive "
+            "and raise ValueError if it is not: a division by zero here silently produces "
+            "`inf` and absurd estimates.",
 
-            "    si flops_per_token <= 0: raise ValueError(...)\n"
+            "    if flops_per_token <= 0: raise ValueError(...)\n"
             "    return tflops * 1e12 * mfu / flops_per_token\n\n"
-            "Valores de MFU realistas: 0.4-0.5 para modelos de miles de millones bien "
-            "optimizados, 0.1-0.2 para nuestro modelo de 9M. Las matrices de 320x320 son "
-            "demasiado pequenyas para saturar los tensor cores.",
+            "Realistic MFU values: 0.4-0.5 for well-optimized billion-parameter models, "
+            "0.1-0.2 for our 9M model. 320x320 matrices are too small to saturate the tensor "
+            "cores.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 02
+    # ------------------------------------------------------------------ module 02
     "02_autograd": {
         "Value": (
-            "Un `Value` es un numero que ademas se acuerda de como se calculo. Cuando "
-            "haces `c = a * b`, el objeto `c` guarda: su valor, quienes son `a` y `b`, y "
-            "COMO repartir hacia atras el gradiente que le llegue.\n\n"
-            "La parte que cuesta ver: ese 'como repartir' se guarda como una funcion que "
-            "NO se ejecuta todavia. Se ejecutara mas tarde, durante el backward. Estas "
-            "construyendo una lista de tareas pendientes mientras haces el forward.",
+            "A `Value` is a number that also remembers how it was computed. When you write "
+            "`c = a * b`, the object `c` stores: its value, who `a` and `b` are, and HOW to "
+            "pass backwards whatever gradient reaches it.\n\n"
+            "The part that is hard to see: that 'how to pass it back' is stored as a "
+            "function that does NOT run yet. It will run later, during the backward pass. "
+            "You are building a to-do list while doing the forward pass.",
 
-            "Todas las operaciones siguen el mismo molde:\n\n"
+            "Every operation follows the same mould:\n\n"
             "    def __mul__(self, other):\n"
             "        other = other if isinstance(other, Value) else Value(other)\n"
             "        out = Value(self.data * other.data, (self, other), '*')\n"
@@ -203,7 +200,7 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "            other.grad += self.data  * out.grad\n"
             "        out._backward = _backward\n"
             "        return out\n\n"
-            "Las derivadas locales que necesitas:\n"
+            "The local derivatives you need:\n"
             "    a+b   -> da += 1*out.grad ; db += 1*out.grad\n"
             "    a*b   -> da += b.data*out.grad ; db += a.data*out.grad\n"
             "    a**n  -> da += n * a.data**(n-1) * out.grad\n"
@@ -212,36 +209,36 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "    tanh  -> da += (1 - out.data**2) * out.grad\n"
             "    relu  -> da += (out.data > 0) * out.grad",
 
-            "SIEMPRE `+=`, NUNCA `=`. Es el error que hay que evitar. Pruebalo con "
-            "`y = x + x`: con `=` la segunda rama pisa a la primera y sale 1; con `+=` "
-            "sale 2, que es lo correcto porque y = 2x.\n\n"
-            "El azucar no necesita derivadas nuevas:\n"
+            "ALWAYS `+=`, NEVER `=`. That is the mistake to avoid. Try it with `y = x + x`: "
+            "with `=` the second branch overwrites the first and you get 1; with `+=` you get "
+            "2, which is correct because y = 2x.\n\n"
+            "The sugar needs no new derivatives:\n"
             "    -a      = a * -1\n"
             "    a - b   = a + (-b)\n"
             "    a / b   = a * b**-1\n\n"
-            "Y `backward()` son tres lineas:\n"
+            "And `backward()` is three lines:\n"
             "    self.grad = 1.0\n"
             "    for node in reversed(topological_order(self)):\n"
             "        node._backward()\n\n"
-            "El `self.grad = 1.0` es la semilla: la derivada de algo respecto a si mismo. "
-            "Sin ella todos los gradientes salen 0.",
+            "The `self.grad = 1.0` is the seed: the derivative of something with respect to "
+            "itself. Without it every gradient comes out 0.",
         ),
         "topological_order": (
-            "Cuando un nodo reparte su gradiente hacia sus hijos, tiene que haber "
-            "recibido ya TODO lo que le llega de sus padres. Si lo reparte antes de "
-            "tiempo, manda hacia abajo un gradiente incompleto.\n\n"
-            "Necesitas una lista donde cada nodo aparezca DESPUES de todos sus hijos. "
-            "`root` queda el ultimo, y `backward()` recorre la lista al reves.",
+            "When a node passes its gradient down to its children, it must already have "
+            "received EVERYTHING coming from its parents. If it passes it on too early, it "
+            "sends an incomplete gradient downwards.\n\n"
+            "You need a list where every node appears AFTER all of its children. `root` ends "
+            "up last, and `backward()` walks the list in reverse.",
 
-            "Es un DFS post-orden: visitas los hijos de un nodo y solo despues anyades el "
-            "nodo al resultado.\n\n"
-            "HAZLO ITERATIVO, con una pila explicita. La version recursiva son cinco "
-            "lineas pero revienta con RecursionError en cuanto el grafo tenga unos "
-            "cientos de nodos, y el MLP del ejercicio 3 los tiene.\n\n"
-            "Usa `id(nodo)` para el conjunto de visitados, no el nodo. Si sobrecargas "
-            "operadores en una clase, apoyarte en su hash por defecto es pedir problemas.",
+            "It is a post-order DFS: you visit a node's children and only then append the "
+            "node to the result.\n\n"
+            "MAKE IT ITERATIVE, with an explicit stack. The recursive version is five lines "
+            "but it blows up with RecursionError as soon as the graph has a few hundred "
+            "nodes, and the MLP in exercise 3 does.\n\n"
+            "Use `id(node)` for the visited set, not the node itself. If you overload "
+            "operators on a class, relying on its default hash is asking for trouble.",
 
-            "El truco es una bandera que dice si ya expandiste los hijos de ese nodo:\n\n"
+            "The trick is a flag saying whether you already expanded that node's children:\n\n"
             "    order, visited = [], set()\n"
             "    stack = [(root, False)]\n"
             "    while stack:\n"
@@ -250,34 +247,33 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "            order.append(node); continue\n"
             "        if id(node) in visited: continue\n"
             "        visited.add(id(node))\n"
-            "        stack.append((node, True))          # me reencolo para DESPUES\n"
+            "        stack.append((node, True))          # requeue myself for LATER\n"
             "        for child in node._prev:\n"
             "            if id(child) not in visited:\n"
             "                stack.append((child, False))\n\n"
-            "Cada nodo entra dos veces: la primera para expandir sus hijos, la segunda "
-            "-que se procesa cuando ya estan todos- para anyadirse. Eso es el post-orden.\n\n"
-            "Si te sale `root` el PRIMERO, tienes el orden invertido. El sintoma sera que "
-            "los gradientes salen bien en grafos simples y mal en cuanto haya un nodo "
-            "reutilizado.",
+            "Each node goes in twice: the first time to expand its children, the second one "
+            "-processed once they are all done- to append itself. That is post-order.\n\n"
+            "If `root` comes out FIRST, you have the order reversed. The symptom will be "
+            "gradients that are right on simple graphs and wrong as soon as there is a reused "
+            "node.",
         ),
         "train_scalar_mlp": (
-            "Es el bucle de entrenamiento en su forma mas desnuda: predecir, medir el "
-            "error, calcular gradientes, mover los pesos un poco en contra del gradiente, "
-            "repetir.\n\n"
-            "El del modulo 11 sera este mismo con AMP, scheduler y checkpointing "
-            "encima. El nucleo no cambia.",
+            "This is the training loop in its most naked form: predict, measure the error, "
+            "compute gradients, move the weights a little against the gradient, repeat.\n\n"
+            "The one in module 11 will be this same loop with AMP, a scheduler and "
+            "checkpointing on top. The core does not change.",
 
-            "En cada paso, y en este orden:\n"
+            "At each step, and in this order:\n"
             "    1. preds = [model(x) for x in xs]\n"
-            "    2. loss  = media de (pred - y)**2\n"
-            "    3. model.zero_grad()      <- ANTES del backward\n"
+            "    2. loss  = mean of (pred - y)**2\n"
+            "    3. model.zero_grad()      <- BEFORE the backward\n"
             "    4. loss.backward()\n"
-            "    5. p.data -= lr * p.grad  para cada p en model.parameters()\n"
+            "    5. p.data -= lr * p.grad  for each p in model.parameters()\n"
             "    6. history.append(loss.data)\n\n"
-            "El paso 3 es el que se olvida todo el mundo. Los gradientes se ACUMULAN "
-            "(lo hiciste asi en el ejercicio 1), asi que sin limpiarlos el paso 50 usa la "
-            "suma de los gradientes de los pasos 1 a 50. No da ningun error: la perdida "
-            "baja un poco y se estanca.",
+            "Step 3 is the one everybody forgets. Gradients ACCUMULATE (you made them do "
+            "that in exercise 1), so without clearing them step 50 uses the sum of the "
+            "gradients from steps 1 to 50. It produces no error: the loss drops a little and "
+            "then stalls.",
 
             "    model = MLP(len(xs[0]), [*hidden, 1], value_cls=value_cls, seed=seed)\n"
             "    history = []\n"
@@ -291,49 +287,50 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "            p.data -= lr * p.grad\n"
             "        history.append(loss.data)\n"
             "    return history\n\n"
-            "Dos detalles:\n"
-            "- El `value_cls(0.0)` como valor inicial del `sum()`: sin el, python empieza "
-            "a acumular desde el entero 0 y mezclas tipos.\n"
-            "- `p.data -= ...` y no `p -= ...`. Modificas el numero de dentro, no creas "
-            "un nodo nuevo. Si crearas nodos, el grafo del paso siguiente colgaria del "
-            "anterior y creceria sin parar. En PyTorch esto es el `torch.no_grad()`.",
+            "Two details:\n"
+            "- The `value_cls(0.0)` as the initial value of `sum()`: without it, python "
+            "starts accumulating from the integer 0 and you mix types.\n"
+            "- `p.data -= ...` and not `p -= ...`. You modify the number inside, you do not "
+            "create a new node. If you created nodes, the next step's graph would hang off "
+            "the previous one and grow without end. In PyTorch this is `torch.no_grad()`.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 03
-    "03_tokenizacion": {
+    # ------------------------------------------------------------------ module 03
+    "03_tokenization": {
         "get_stats": (
-            "Recorre la lista mirando de dos en dos y cuenta cuantas veces sale cada "
-            "pareja de vecinos. Es el primer paso de BPE: para fusionar el par mas "
-            "frecuente, primero hay que saber cual es.",
+            "Walk the list two elements at a time and count how many times each pair of "
+            "neighbours comes up. It is the first step of BPE: to merge the most frequent "
+            "pair, you first have to know which one it is.",
 
-            "`zip(ids, ids[1:])` te da todos los pares consecutivos sin tener que "
-            "manejar indices.\n\n"
-            "OJO: al CONTAR, los pares SI se solapan. En [1,1,1] el par (1,1) sale 2 "
-            "veces: en las posiciones 0-1 y en las 1-2. (Al FUSIONAR, en el ejercicio 2, "
-            "no se solapan. Son cosas distintas.)\n\n"
-            "El parametro `counts` sirve para acumular sobre un diccionario que ya "
-            "existe, que es lo que necesita `train_bpe` para sumar varios chunks.",
+            "`zip(ids, ids[1:])` gives you all the consecutive pairs without handling "
+            "indices.\n\n"
+            "WATCH OUT: when COUNTING, pairs DO overlap. In [1,1,1] the pair (1,1) comes up "
+            "twice: at positions 0-1 and at 1-2. (When MERGING, in exercise 2, they do not "
+            "overlap. They are different things.)\n\n"
+            "The `counts` parameter is there so you can accumulate into a dictionary that "
+            "already exists, which is what `train_bpe` needs to add up several chunks.",
 
             "    counts = {} if counts is None else counts\n"
             "    for pair in zip(ids, ids[1:]):\n"
             "        counts[pair] = counts.get(pair, 0) + 1\n"
             "    return counts\n\n"
-            "Devuelve el diccionario ademas de mutarlo: asi vale para los dos usos, "
-            "`stats = get_stats(ids)` y `get_stats(chunk, stats)`.\n\n"
-            "El valor por defecto es `None` y no `{}` a proposito. Un `{}` como valor por "
-            "defecto se crea UNA VEZ al definir la funcion y se comparte entre todas las "
-            "llamadas: es el clasico bug de python con argumentos mutables.",
+            "Return the dictionary as well as mutating it: that way it works for both uses, "
+            "`stats = get_stats(ids)` and `get_stats(chunk, stats)`.\n\n"
+            "The default value is `None` and not `{}` on purpose. A `{}` as a default value "
+            "is created ONCE when the function is defined and shared across every call: the "
+            "classic python mutable-default bug.",
         ),
         "merge": (
-            "Recorres la lista y cada vez que encuentras el par buscado lo sustituyes por "
-            "un unico numero nuevo. Esto es lo que acorta la secuencia y crea el token.",
+            "You walk the list and every time you find the pair you are looking for you "
+            "replace it with a single new number. This is what shortens the sequence and "
+            "creates the token.",
 
-            "La clave esta en como avanzas: cuando hay coincidencia consumes DOS "
-            "posiciones, cuando no, UNA.\n\n"
-            "Por eso un `for` no vale bien: avanza siempre de uno en uno. Necesitas un "
-            "`while` con un indice que controlas tu.\n\n"
-            "En [1,1,1] fusionando (1,1) el resultado es [256, 1], no [256, 256]: al "
-            "consumir las posiciones 0 y 1, el 1 de la posicion 2 ya no tiene pareja.",
+            "The key is how you advance: on a match you consume TWO positions, otherwise "
+            "ONE.\n\n"
+            "That is why a `for` does not fit well: it always advances by one. You need a "
+            "`while` with an index you control yourself.\n\n"
+            "In [1,1,1] merging (1,1) the result is [256, 1], not [256, 256]: having consumed "
+            "positions 0 and 1, the 1 at position 2 has no partner left.",
 
             "    out, i, n = [], 0, len(ids)\n"
             "    while i < n:\n"
@@ -344,57 +341,57 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "            out.append(ids[i])\n"
             "            i += 1\n"
             "    return out\n\n"
-            "El `i < n - 1` evita mirar `ids[i+1]` cuando estas en el ultimo elemento. "
-            "Sin el, IndexError en cuanto la lista acabe justo en el primer elemento del "
-            "par.\n\n"
-            "Devuelve una lista NUEVA, no modifiques la de entrada.",
+            "The `i < n - 1` avoids looking at `ids[i+1]` when you are on the last element. "
+            "Without it, IndexError as soon as the list ends right on the first element of "
+            "the pair.\n\n"
+            "Return a NEW list, do not modify the input.",
         ),
         "train_bpe": (
-            "Es el ejemplo de 'aaabdaaabac' del TEORIA.md, en bucle. Repites: cuenta los "
-            "pares, coge el mas frecuente, fusionalo, apunta el merge. Tantas veces como "
-            "tokens nuevos quieras.\n\n"
-            "Empiezas con los 256 bytes, asi que los ids nuevos van del 256 en adelante.",
+            "It is the 'aaabdaaabac' example from THEORY.md, in a loop. You repeat: count the "
+            "pairs, take the most frequent one, merge it, record the merge. As many times as "
+            "you want new tokens.\n\n"
+            "You start with the 256 bytes, so the new ids run from 256 upwards.",
 
-            "Estructura:\n"
-            "  1. trocear con `regex.findall(pattern, text)` (o dejarlo entero si "
-            "pattern es None)\n"
-            "  2. cada trozo a bytes: `list(chunk.encode('utf-8'))`\n"
+            "Structure:\n"
+            "  1. split with `regex.findall(pattern, text)` (or leave it whole if pattern is "
+            "None)\n"
+            "  2. each chunk to bytes: `list(chunk.encode('utf-8'))`\n"
             "  3. `vocab = {i: bytes([i]) for i in range(256)}`\n"
-            "  4. repetir `vocab_size - 256` veces:\n"
-            "       - acumular `get_stats` de TODOS los trozos en un mismo dict\n"
-            "       - si el dict esta vacio -> `break` (no quedan pares)\n"
-            "       - elegir el par ganador\n"
-            "       - aplicar `merge` a cada trozo\n"
-            "       - `merges[par] = 256 + i`\n"
-            "       - `vocab[256+i] = vocab[par[0]] + vocab[par[1]]`  (bytes, no str)\n\n"
-            "Se cuenta chunk a chunk para que ningun merge una el final de una palabra "
-            "con el principio de la siguiente.",
+            "  4. repeat `vocab_size - 256` times:\n"
+            "       - accumulate `get_stats` over ALL the chunks into one dict\n"
+            "       - if the dict is empty -> `break` (no pairs left)\n"
+            "       - pick the winning pair\n"
+            "       - apply `merge` to each chunk\n"
+            "       - `merges[pair] = 256 + i`\n"
+            "       - `vocab[256+i] = vocab[pair[0]] + vocab[pair[1]]`  (bytes, not str)\n\n"
+            "Counting chunk by chunk stops any merge from joining the end of one word with "
+            "the start of the next.",
 
-            "El desempate tiene que ser EXACTAMENTE este o tus merges divergiran de los "
-            "de la referencia en cuanto haya un empate:\n\n"
+            "The tie-break has to be EXACTLY this one or your merges will diverge from the "
+            "reference's as soon as there is a tie:\n\n"
             "    pair = max(stats, key=lambda p: (stats[p], p))\n\n"
-            "Python compara tuplas elemento a elemento: primero frecuencia, y si empata, "
-            "el par. Cual gane da igual para la calidad; lo que importa es que sea "
-            "determinista y el mismo criterio.\n\n"
-            "El `break` cuando `stats` esta vacio NO es opcional: si pides 4096 merges "
-            "sobre un texto corto, llega un momento en que no quedan pares y `max()` "
-            "sobre un dict vacio lanza ValueError.\n\n"
-            "Y valida `vocab_size >= 256` al principio.",
+            "Python compares tuples element by element: frequency first and, on a tie, the "
+            "pair. Which one wins makes no difference to quality; what matters is that it is "
+            "deterministic and that it is the same criterion.\n\n"
+            "The `break` when `stats` is empty is NOT optional: if you ask for 4096 merges "
+            "over a short text, at some point there are no pairs left and `max()` over an "
+            "empty dict raises ValueError.\n\n"
+            "And validate `vocab_size >= 256` at the start.",
         ),
         "bpe_encode": (
-            "Aplicar los merges que aprendiste a texto nuevo. El detalle que lo hace "
-            "no-trivial: hay que aplicarlos EN EL ORDEN EN QUE SE APRENDIERON, no en el "
-            "orden en que aparecen en este texto.\n\n"
-            "Si los aplicas en otro orden, la tokenizacion es valida pero DISTINTA de la "
-            "que vio el modelo al entrenar, y el modelo no la entiende.",
+            "Applying the merges you learned to new text. The detail that makes it "
+            "non-trivial: they have to be applied IN THE ORDER THEY WERE LEARNED, not in the "
+            "order they appear in this particular text.\n\n"
+            "If you apply them in another order, the tokenization is valid but DIFFERENT from "
+            "the one the model saw during training, and the model does not understand it.",
 
-            "Como los ids de merge son 256, 257, 258... en orden de aprendizaje, "
-            "'el que se aprendio antes' es 'el que tiene el id mas bajo'.\n\n"
+            "Since the merge ids are 256, 257, 258... in learning order, 'the one learned "
+            "first' is 'the one with the lowest id'.\n\n"
             "    stats = get_stats(ids)\n"
             "    pair = min(stats, key=lambda p: merges.get(p, float('inf')))\n\n"
-            "El `float('inf')` es el truco: los pares que no estan en `merges` reciben "
-            "infinito y nunca ganan el `min`. Si el ganador resulta no estar en `merges`, "
-            "es que ya no queda nada fusionable: para.",
+            "The `float('inf')` is the trick: pairs that are not in `merges` get infinity and "
+            "never win the `min`. If the winner turns out not to be in `merges`, there is "
+            "nothing mergeable left: stop.",
 
             "    def _encode_chunk(ids, merges):\n"
             "        while len(ids) >= 2:\n"
@@ -404,97 +401,97 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "                break\n"
             "            ids = merge(ids, pair, merges[pair])\n"
             "        return ids\n\n"
-            "Y arriba: trocear con el MISMO patron con el que entrenaste, aplicar "
-            "`_encode_chunk` a cada trozo, y concatenar todos los ids en una lista.\n\n"
-            "El `len(ids) >= 2` evita llamar a `get_stats` sobre algo que no tiene pares.",
+            "And above that: split with the SAME pattern you trained with, apply "
+            "`_encode_chunk` to each chunk, and concatenate all the ids into one list.\n\n"
+            "The `len(ids) >= 2` avoids calling `get_stats` on something with no pairs.",
         ),
         "bpe_decode": (
-            "Lo contrario de codificar, y mucho mas corto. Cada id tiene asociada una "
-            "secuencia de bytes en `vocab`. Las juntas todas y las decodificas.",
+            "The opposite of encoding, and much shorter. Each id has a byte sequence "
+            "associated with it in `vocab`. You join them all and decode.",
 
-            "Lo unico que hay que hacer bien: JUNTAR PRIMERO, DECODIFICAR DESPUES.\n\n"
-            "Una 'n' es un byte pero una 'ñ' son dos (0xC3 0xB1). A BPE le da igual: "
-            "puede haber aprendido un token que acaba en 0xC3 y otro que empieza por "
-            "0xB1. Por separado ninguno es UTF-8 valido; juntos son una 'ñ'.\n\n"
-            "Asi que NO hagas `''.join(vocab[i].decode() for i in ids)`.",
+            "The one thing to get right: JOIN FIRST, DECODE AFTERWARDS.\n\n"
+            "An 'n' is one byte but an 'ñ' is two (0xC3 0xB1). BPE does not care: it may have "
+            "learned a token ending in 0xC3 and another starting with 0xB1. On their own "
+            "neither is valid UTF-8; together they are an 'ñ'.\n\n"
+            "So do NOT write `''.join(vocab[i].decode() for i in ids)`.",
 
             "    raw = b''.join(vocab[i] for i in ids)\n"
             "    return raw.decode('utf-8', errors='replace')\n\n"
-            "El `errors='replace'` es el BYTES FALLBACK y tampoco es opcional. Un modelo "
-            "a medio entrenar genera ids al azar y muchas de esas secuencias no son UTF-8 "
-            "valido. Con `replace` sale un caracter de reemplazo y la generacion sigue; "
-            "sin el, una excepcion tumba el bucle entero por un byte suelto.",
+            "The `errors='replace'` is the BYTES FALLBACK and it is not optional either. A "
+            "half-trained model generates random ids and many of those sequences are not "
+            "valid UTF-8. With `replace` you get a replacement character and generation "
+            "continues; without it, one exception takes down the whole loop over a stray "
+            "byte.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 04
-    "04_datos": {
+    # ------------------------------------------------------------------ module 04
+    "04_data": {
         "pack_tokens_uint16": (
-            "Vas a guardar 500 millones de tokens en disco. Con el int64 que usa python "
-            "por defecto son 4 GB; con uint16 son 1 GB. Como tus ids van de 0 a 4095 y "
-            "uint16 llega a 65.535, sobra de largo.\n\n"
-            "El ejercicio no es la conversion (una linea), es la VALIDACION.",
+            "You are going to store 500 million tokens on disk. With python's default int64 "
+            "that is 4 GB; with uint16 it is 1 GB. Since your ids run from 0 to 4095 and "
+            "uint16 reaches 65,535, there is room to spare.\n\n"
+            "The exercise is not the conversion (one line), it is the VALIDATION.",
 
-            "Numpy no avisa si un numero no cabe: hace wrap around en silencio.\n\n"
+            "Numpy does not warn you if a number does not fit: it wraps around silently.\n\n"
             "    np.array([65536], dtype=np.int64).astype(np.uint16)   ->  [0]\n\n"
-            "Sin excepcion, sin warning. Los datos quedan corruptos, el modelo entrena "
-            "peor y no hay nada que apunte a la causa.\n\n"
-            "Hay que comprobar DOS cosas: que `vocab_size` cabe en uint16, y que ningun "
-            "id es negativo ni >= `vocab_size`. Y hacerlo ANTES de convertir, en un tipo "
-            "donde todo quepa.",
+            "No exception, no warning. The data is corrupted, the model trains worse, and "
+            "there is nothing pointing at the cause.\n\n"
+            "You have to check TWO things: that `vocab_size` fits in uint16, and that no id "
+            "is negative or >= `vocab_size`. And do it BEFORE converting, in a type where "
+            "everything fits.",
 
             "    if vocab_size > 2**16: raise ValueError(...)\n"
             "    array = np.asarray(ids, dtype=np.int64)\n"
             "    if array.size and (array.min() < 0 or array.max() >= vocab_size):\n"
-            "        raise ValueError(f'... minimo={array.min()}, maximo={array.max()}')\n"
+            "        raise ValueError(f'... min={array.min()}, max={array.max()}')\n"
             "    return array.astype(np.uint16)\n\n"
-            "El `array.size and ...` es necesario: `.min()` sobre un array vacio lanza "
-            "una excepcion que no tiene nada que ver y despista.\n\n"
-            "Pon los valores concretos en el mensaje de error. 'ids fuera de rango' no "
-            "ayuda; 'maximo=9999' te dice al instante que tu tokenizador esta mal.",
+            "The `array.size and ...` is necessary: `.min()` on an empty array raises an "
+            "exception that has nothing to do with anything and sends you off track.\n\n"
+            "Put the actual values in the error message. 'ids out of range' does not help; "
+            "'max=9999' tells you instantly that your tokenizer is wrong.",
         ),
         "train_val_split": (
-            "Necesitas texto que el modelo NO vea al entrenar, para saber si esta "
-            "aprendiendo o solo memorizando.\n\n"
-            "La unica decision del ejercicio: el corte es CONTIGUO y POR EL FINAL, no "
-            "aleatorio.",
+            "You need text the model does NOT see during training, so you can tell whether it "
+            "is learning or just memorizing.\n\n"
+            "The only decision in the exercise: the cut is CONTIGUOUS and FROM THE END, not "
+            "random.",
 
-            "Por que no aleatorio: las ventanas de entrenamiento se solapan. La que "
-            "empieza en la posicion 100 y la que empieza en la 101 comparten 511 de sus "
-            "512 tokens.\n\n"
-            "Si repartieras al azar, validacion estaria llena de fragmentos ya vistos. La "
-            "perdida saldria preciosa y no significaria nada: estarias midiendo "
-            "memorizacion y llamandolo generalizacion.\n\n"
-            "Cortando un bloque del final, lo que reservas son historias enteras.",
+            "Why not random: the training windows overlap. The one starting at position 100 "
+            "and the one starting at 101 share 511 of their 512 tokens.\n\n"
+            "If you split at random, validation would be full of fragments already seen. The "
+            "loss would look beautiful and mean nothing: you would be measuring memorization "
+            "and calling it generalization.\n\n"
+            "By cutting a block off the end, what you set aside are whole stories.",
 
             "    if not 0.0 < val_fraction < 1.0: raise ValueError(...)\n"
             "    n_val = max(1, int(len(tokens) * val_fraction))\n"
             "    if n_val >= len(tokens): raise ValueError(...)\n"
             "    return tokens[:-n_val], tokens[-n_val:]\n\n"
-            "El slicing de numpy devuelve VISTAS, no copias, y eso es lo que quieres: con "
-            "500M tokens, un copy gratuito es 1 GB de RAM tirado.\n\n"
-            "El `max(1, ...)` evita que con un corpus pequenyo `int(50*0.005)` de 0 y te "
-            "quedes sin conjunto de validacion.",
+            "Numpy slicing returns VIEWS, not copies, and that is what you want: with 500M "
+            "tokens, a needless copy is 1 GB of RAM thrown away.\n\n"
+            "The `max(1, ...)` stops a small corpus from making `int(50*0.005)` come out 0 "
+            "and leaving you with no validation set.",
         ),
         "get_batch": (
-            "Eliges posiciones al azar en el corpus. De cada una coges una ventana como "
-            "entrada, y LA MISMA ventana desplazada un token como objetivo.\n\n"
+            "You pick random positions in the corpus. From each one you take a window as the "
+            "input, and THE SAME window shifted by one token as the target.\n\n"
             "    x = [5, 8, 2, 9]\n"
             "    y = [8, 2, 9, 1]\n\n"
-            "Leelo columna a columna: viendo [5] predice 8, viendo [5,8] predice 2... "
-            "Una ventana de 4 tokens son CUATRO ejemplos de entrenamiento.",
+            "Read it column by column: seeing [5] predict 8, seeing [5,8] predict 2... A "
+            "4-token window is FOUR training examples.",
 
             "    max_start = len(data) - context_length - 1\n"
             "    starts = rng.integers(0, max_start, size=batch_size)\n"
             "    x = np.stack([data[i : i+context_length]     for i in starts])\n"
             "    y = np.stack([data[i+1 : i+1+context_length] for i in starts])\n\n"
-            "El `-1` de `max_start` es el off-by-one del ejercicio: `y` necesita un token "
-            "MAS alla del final de `x`. Sin el, la ultima ventana desborda, y numpy no "
-            "avisa (el slicing fuera de rango simplemente devuelve menos elementos); lo "
-            "que ves es un `np.stack` fallando por formas incompatibles.\n\n"
-            "Si `max_start < 1`, el corpus es mas corto que el contexto: ValueError.",
+            "The `-1` in `max_start` is the exercise's off-by-one: `y` needs one token MORE "
+            "than the end of `x`. Without it the last window overflows, and numpy does not "
+            "warn (out-of-range slicing simply returns fewer elements); what you see is an "
+            "`np.stack` failing on incompatible shapes.\n\n"
+            "If `max_start < 1`, the corpus is shorter than the context: ValueError.",
 
-            "Despues del stack:\n\n"
-            "    x_np = ....astype(np.int64)      # OBLIGATORIO\n"
+            "After the stack:\n\n"
+            "    x_np = ....astype(np.int64)      # MANDATORY\n"
             "    x = torch.from_numpy(x_np)\n"
             "    if device is not None:\n"
             "        device = torch.device(device)\n"
@@ -502,687 +499,694 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "            x = x.pin_memory().to(device, non_blocking=True)\n"
             "        else:\n"
             "            x = x.to(device)\n\n"
-            "El `.astype(np.int64)` hace dos cosas: nn.Embedding exige indices int64, y "
-            "de paso COPIA los datos. Sin la copia te quedarias apuntando al fichero "
-            "mapeado en disco y cada acceso del modelo seria una lectura.\n\n"
-            "`pin_memory` + `non_blocking` solo tienen sentido en CUDA: permiten que la "
-            "copia del siguiente batch se solape con el calculo del actual. En MPS la "
-            "memoria es unificada y no hay copia que solapar.",
+            "The `.astype(np.int64)` does two things: nn.Embedding requires int64 indices, "
+            "and it COPIES the data along the way. Without the copy you would be left "
+            "pointing at the disk-mapped file and every model access would be a read.\n\n"
+            "`pin_memory` + `non_blocking` only make sense on CUDA: they let the next batch's "
+            "copy overlap with the current computation. On MPS the memory is unified and "
+            "there is no copy to overlap.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 05
+    # ------------------------------------------------------------------ module 05
     "05_baselines": {
         "uniform_baseline_loss": (
-            "Un modelo que no sabe nada reparte la probabilidad por igual entre todas las "
-            "palabras del vocabulario: le da 1/V a cada una.\n\n"
-            "La perdida es -ln(probabilidad que le dio al token correcto). Si esa "
-            "probabilidad es siempre 1/V, la perdida es siempre la misma. Calculala.",
+            "A model that knows nothing spreads probability equally across every word in the "
+            "vocabulary: it gives 1/V to each one.\n\n"
+            "The loss is -ln(probability it gave to the correct token). If that probability "
+            "is always 1/V, the loss is always the same. Compute it.",
 
             "    -ln(1/V) = ln(V)\n\n"
-            "Y ya esta, es una linea con `math.log`. Valida que `vocab_size >= 1` y lanza "
-            "ValueError si no.\n\n"
-            "Numeros que vas a ver: ln(65)=4.174 para shakespeare a nivel caracter, "
-            "ln(4096)=8.317 para el modelo final.",
+            "And that is it, one line with `math.log`. Validate that `vocab_size >= 1` and "
+            "raise ValueError if not.\n\n"
+            "Numbers you will see: ln(65)=4.174 for character-level shakespeare, "
+            "ln(4096)=8.317 for the final model.",
 
             "    if vocab_size < 1: raise ValueError(...)\n"
             "    return math.log(vocab_size)\n\n"
-            "Guarda este numero: es tu detector de bugs mas barato. En el modulo 11, la "
-            "perdida del paso 0 tiene que valer casi exactamente esto.\n"
-            "  - mucho mas alta -> la inicializacion es demasiado agresiva\n"
-            "  - mas baja       -> fuga de informacion (mascara causal mal puesta)",
+            "Keep this number: it is your cheapest bug detector. In module 11, the loss at "
+            "step 0 has to be almost exactly this.\n"
+            "  - much higher -> the initialization is too aggressive\n"
+            "  - lower       -> information leak (badly placed causal mask)",
         ),
         "bigram_counts": (
-            "Una matriz V x V donde la casilla [i][j] cuenta cuantas veces el token j vino "
-            "justo detras del token i.\n\n"
-            "Con ids=[0,1,0,1,2] los pares son (0,1),(1,0),(0,1),(1,2), asi que "
-            "counts[0][1]=2 y counts[1][0]=counts[1][2]=1.",
+            "A V x V matrix where cell [i][j] counts how many times token j came right after "
+            "token i.\n\n"
+            "With ids=[0,1,0,1,2] the pairs are (0,1),(1,0),(0,1),(1,2), so counts[0][1]=2 "
+            "and counts[1][0]=counts[1][2]=1.",
 
-            "Se puede con un bucle, pero con 500M tokens tardaria una eternidad. "
-            "Vectorizado:\n\n"
+            "You can do it with a loop, but with 500M tokens it would take forever. "
+            "Vectorized:\n\n"
             "    tokens = torch.as_tensor(ids, dtype=torch.int64)\n"
             "    counts.index_put_((tokens[:-1], tokens[1:]),\n"
             "                      torch.ones(len(tokens)-1, dtype=torch.int64),\n"
             "                      accumulate=True)\n\n"
-            "`tokens[:-1]` son todos los 'desde' y `tokens[1:]` todos los 'hasta'.",
+            "`tokens[:-1]` are all the 'from's and `tokens[1:]` all the 'to's.",
 
-            "El `accumulate=True` NO es opcional. Sin el, `index_put_` ASIGNA en vez de "
-            "sumar: cada par repetido pisa al anterior y todos los conteos acaban valiendo "
-            "1. Pruebalo con [0,0,0,0,0]: el resultado correcto es counts[0][0]=4.\n\n"
-            "Y con menos de 2 tokens no hay ningun par: devuelve la matriz de ceros sin "
-            "intentar indexar nada.",
+            "The `accumulate=True` is NOT optional. Without it, `index_put_` ASSIGNS instead "
+            "of adding: each repeated pair overwrites the previous one and every count ends "
+            "up at 1. Try it with [0,0,0,0,0]: the correct result is counts[0][0]=4.\n\n"
+            "And with fewer than 2 tokens there are no pairs at all: return the matrix of "
+            "zeros without trying to index anything.",
         ),
         "bigram_nll": (
-            "Ya tienes los conteos del texto de entrenamiento. Ahora mides como de bien "
-            "predicen OTRO texto (el de validacion).\n\n"
-            "Para cada par consecutivo de la secuencia a evaluar coges la probabilidad que "
-            "el modelo le asigna, le aplicas -ln, y promedias.",
+            "You already have the counts from the training text. Now you measure how well "
+            "they predict ANOTHER text (the validation one).\n\n"
+            "For each consecutive pair in the sequence being evaluated you take the "
+            "probability the model assigns it, apply -ln, and average.",
 
-            "    P(b|a) = (C[a][b] + alpha) / (suma_b' C[a][b'] + alpha*V)\n\n"
-            "El `alpha` (suavizado de Laplace) es imprescindible: sin el, un par que nunca "
-            "aparecio tiene probabilidad 0, su logaritmo es -infinito, y como la perdida es "
-            "una MEDIA, ese -inf se lleva por delante el resultado entero.\n\n"
-            "Pasos:\n"
+            "    P(b|a) = (C[a][b] + alpha) / (sum_b' C[a][b'] + alpha*V)\n\n"
+            "The `alpha` (Laplace smoothing) is essential: without it, a pair that never "
+            "appeared has probability 0, its logarithm is -infinity, and since the loss is a "
+            "MEAN, that -inf takes the whole result with it.\n\n"
+            "Steps:\n"
             "  1. smoothed = counts.double() + alpha\n"
             "  2. probs = smoothed / smoothed.sum(dim=1, keepdim=True)\n"
-            "  3. seleccionar probs[tokens[:-1], tokens[1:]]\n"
+            "  3. select probs[tokens[:-1], tokens[1:]]\n"
             "  4. float(-torch.log(...).mean())",
 
-            "Dos trampas:\n\n"
-            "1. El `keepdim=True` del paso 2. Sin el, la suma tiene forma (V,) en vez de "
-            "(V,1) y el broadcast divide por COLUMNAS en lugar de por filas. El resultado "
-            "sale plausible y es completamente incorrecto.\n\n"
-            "2. El denominador. Al sumar alpha a las V entradas de una fila, el total crece "
-            "en alpha*V, no en alpha. Si haces la suma DESPUES de anyadir alpha (como en el "
-            "paso 2), esto se resuelve solo.\n\n"
-            "Usa `.double()` y no `.float()`: con corpus grandes se suman millones de "
-            "conteos y float32 pierde precision.",
+            "Two traps:\n\n"
+            "1. The `keepdim=True` in step 2. Without it the sum has shape (V,) instead of "
+            "(V,1) and the broadcast divides by COLUMNS instead of by rows. The result looks "
+            "plausible and is completely wrong.\n\n"
+            "2. The denominator. Adding alpha to a row's V entries grows the total by "
+            "alpha*V, not by alpha. If you do the sum AFTER adding alpha (as in step 2), this "
+            "takes care of itself.\n\n"
+            "Use `.double()` and not `.float()`: with large corpora millions of counts get "
+            "added up and float32 loses precision.",
         ),
         "NeuralBigram": (
-            "El mismo modelo del ejercicio 2, pero aprendido por descenso de gradiente en "
-            "vez de contando.\n\n"
-            "La idea: una tabla de V filas y V columnas donde la fila `i` son directamente "
-            "los LOGITS del token que sigue al token `i`. Entrenada con cross-entropy, "
-            "converge a los conteos normalizados.",
+            "The same model as exercise 2, but learned by gradient descent instead of by "
+            "counting.\n\n"
+            "The idea: a table with V rows and V columns where row `i` is directly the LOGITS "
+            "of the token that follows token `i`. Trained with cross-entropy, it converges to "
+            "the normalized counts.",
 
-            "Un unico submodulo, y el nombre importa porque el test copia pesos por "
-            "nombre:\n\n"
+            "A single submodule, and the name matters because the test copies weights by "
+            "name:\n\n"
             "    self.token_embedding = nn.Embedding(vocab_size, vocab_size)\n\n"
-            "El forward es leer la tabla:\n"
+            "The forward is reading the table:\n"
             "    logits = self.token_embedding(idx)      # (B, T) -> (B, T, V)\n\n"
-            "Y si hay targets, la perdida:\n"
+            "And if there are targets, the loss:\n"
             "    F.cross_entropy(logits.reshape(-1, V), targets.reshape(-1))",
 
-            "El `reshape(-1, V)` es porque `F.cross_entropy` espera (N, clases) y (N,), "
-            "pero tu tienes (B, T, V) y (B, T). Aplanar batch y tiempo en una sola "
-            "dimension es el patron que repetiras en TODOS los modelos del curso.\n\n"
-            "Devuelve `(logits, None)` si no hay targets, no `(logits, 0)`.\n\n"
-            "Curiosidad util: `nn.Embedding` y `nn.Linear` son lo mismo matematicamente (un "
-            "Embedding es un Linear con entrada one-hot), pero el Embedding LEE la fila que "
-            "necesita en vez de multiplicar por una matriz llena de ceros.",
+            "The `reshape(-1, V)` is because `F.cross_entropy` expects (N, classes) and (N,), "
+            "while you have (B, T, V) and (B, T). Flattening batch and time into a single "
+            "dimension is the pattern you will repeat in EVERY model in the course.\n\n"
+            "Return `(logits, None)` if there are no targets, not `(logits, 0)`.\n\n"
+            "A useful curiosity: `nn.Embedding` and `nn.Linear` are mathematically the same "
+            "thing (an Embedding is a Linear with one-hot input), but the Embedding READS the "
+            "row it needs instead of multiplying by a matrix full of zeros.",
         ),
         "BengioMLP": (
-            "En vez de mirar solo el token anterior, mira los `block_size` anteriores. "
-            "Coge sus embeddings, los PEGA uno detras de otro en un vector largo, y pasa "
-            "ese vector por un MLP normal.\n\n"
-            "Es el paper de 2003 que invento los word embeddings.",
+            "Instead of looking only at the previous token, it looks at the previous "
+            "`block_size` ones. It takes their embeddings, GLUES them one after another into "
+            "a long vector, and passes that vector through a normal MLP.\n\n"
+            "It is the 2003 paper that invented word embeddings.",
 
-            "Tres submodulos, con estos nombres exactos:\n\n"
+            "Three submodules, with these exact names:\n\n"
             "    self.embedding = nn.Embedding(vocab_size, d_embed)\n"
             "    self.hidden    = nn.Linear(block_size * d_embed, n_hidden)\n"
             "    self.output    = nn.Linear(n_hidden, vocab_size)\n\n"
-            "Y el forward:\n"
+            "And the forward:\n"
             "    emb    = self.embedding(idx)       # (B, block_size, d_embed)\n"
             "    flat   = emb.reshape(B, -1)        # (B, block_size*d_embed)\n"
             "    h      = torch.tanh(self.hidden(flat))\n"
             "    logits = self.output(h)            # (B, V)\n\n"
-            "Ojo: aqui `targets` es `(B,)`, UN token por muestra, no una secuencia.",
+            "Note: here `targets` is `(B,)`, ONE token per sample, not a sequence.",
 
-            "El `reshape(B, -1)` es CONCATENAR, y eso es lo importante. Si hicieras "
-            "`emb.mean(dim=1)` estarias promediando, y el modelo perderia el orden: le "
-            "daria lo mismo [el, gato, come] que [come, gato, el]. Hay un test que lo "
-            "comprueba pasando el contexto al reves.\n\n"
-            "Y cuidado con donde va el -1: `reshape(B, -1)`, no `reshape(-1, B)`. El "
-            "segundo compila y produce basura.\n\n"
-            "Fijate en la capa `hidden`: sus parametros crecen LINEALMENTE con block_size. "
-            "Esa es justo la limitacion que la atencion viene a resolver en el modulo 06.",
+            "The `reshape(B, -1)` is CONCATENATION, and that is what matters. If you did "
+            "`emb.mean(dim=1)` you would be averaging, and the model would lose the order: "
+            "[the, cat, eats] and [eats, cat, the] would look the same to it. There is a test "
+            "that checks this by passing the context in reverse.\n\n"
+            "And watch where the -1 goes: `reshape(B, -1)`, not `reshape(-1, B)`. The second "
+            "compiles and produces garbage.\n\n"
+            "Notice the `hidden` layer: its parameters grow LINEARLY with block_size. That is "
+            "exactly the limitation attention comes to solve in module 06.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 06
-    "06_atencion": {
+    # ------------------------------------------------------------------ module 06
+    "06_attention": {
         "causal_mask": (
-            "Al entrenar le damos al modelo la frase entera de golpe y le pedimos que "
-            "prediga cada token a partir de los anteriores. Sin nada que lo impida, la "
-            "posicion 3 podria mirar a la 4, que es literalmente la respuesta.\n\n"
-            "Necesitas una matriz que diga, para cada par (i, j), si el token i tiene "
-            "permiso para mirar al token j.",
+            "During training we give the model the whole sentence at once and ask it to "
+            "predict each token from the previous ones. With nothing stopping it, position 3 "
+            "could look at position 4, which is literally the answer.\n\n"
+            "You need a matrix saying, for each pair (i, j), whether token i is allowed to "
+            "look at token j.",
 
-            "Convenio del curso: True = SI puede mirar. Es el mismo que usa "
-            "`F.scaled_dot_product_attention`.\n\n"
-            "Para seq_len=4:\n\n"
+            "The course convention: True = it CAN look. It is the same one "
+            "`F.scaled_dot_product_attention` uses.\n\n"
+            "For seq_len=4:\n\n"
             "    [[ T, F, F, F],\n"
             "     [ T, T, F, F],\n"
             "     [ T, T, T, F],\n"
             "     [ T, T, T, T]]\n\n"
-            "Es una matriz triangular INFERIOR, con la diagonal incluida (un token si "
-            "puede mirarse a si mismo). PyTorch tiene una funcion para esto.",
+            "It is a LOWER triangular matrix, with the diagonal included (a token can look at "
+            "itself). PyTorch has a function for this.",
 
             "    return torch.ones(seq_len, seq_len, dtype=torch.bool, device=device).tril()\n\n"
-            "`tril` = triangular lower. Su argumento `diagonal` vale 0 por defecto, que "
-            "INCLUYE la diagonal: es lo que quieres.\n\n"
-            "Si te sale al reves has usado `triu`. Si la diagonal sale False, has pasado "
-            "`diagonal=-1`.\n\n"
-            "Aviso para mas adelante: `nn.MultiheadAttention` de PyTorch usa el convenio "
-            "CONTRARIO (True = prohibido). Por eso el test que compara contra ella pasa "
-            "`~mask`. Es una inconsistencia real de la libreria.",
+            "`tril` = triangular lower. Its `diagonal` argument is 0 by default, which "
+            "INCLUDES the diagonal: that is what you want.\n\n"
+            "If it comes out inverted you used `triu`. If the diagonal comes out False, you "
+            "passed `diagonal=-1`.\n\n"
+            "A warning for later: PyTorch's `nn.MultiheadAttention` uses the OPPOSITE "
+            "convention (True = forbidden). That is why the test comparing against it passes "
+            "`~mask`. It is a real inconsistency in the library.",
         ),
         "single_head_attention": (
-            "Es el ejemplo de TEORIA.md hecho con tensores. Cada token pregunta (query), "
-            "todos responden (keys), se mide el parecido con productos escalares, se "
-            "convierte en pesos con softmax, y se mezclan los contenidos (values).\n\n"
-            "    salida = softmax( Q K^T / sqrt(d_k) + mascara ) V",
+            "It is the THEORY.md example done with tensors. Each token asks (query), everyone "
+            "answers (keys), similarity is measured with dot products, turned into weights "
+            "with softmax, and the contents (values) are mixed.\n\n"
+            "    output = softmax( Q K^T / sqrt(d_k) + mask ) V",
 
-            "Cuatro pasos:\n\n"
+            "Four steps:\n\n"
             "  1. scores = q @ k.transpose(-2, -1)\n"
-            "     (B,T,d_k) @ (B,d_k,S) -> (B,T,S). La casilla [b,i,j] es cuanto le "
-            "interesa a i el token j.\n"
-            "  2. dividir por sqrt(d_k), con d_k = q.shape[-1]\n"
-            "  3. scores.masked_fill(~mask, float('-inf'))  si hay mascara\n"
-            "  4. weights = F.softmax(scores, dim=-1) ; salida = weights @ v\n\n"
-            "Devuelve `(salida, weights)`: los pesos hacen falta para el heatmap de la demo.",
+            "     (B,T,d_k) @ (B,d_k,S) -> (B,T,S). Cell [b,i,j] is how interested i is in "
+            "token j.\n"
+            "  2. divide by sqrt(d_k), with d_k = q.shape[-1]\n"
+            "  3. scores.masked_fill(~mask, float('-inf'))  if there is a mask\n"
+            "  4. weights = F.softmax(scores, dim=-1) ; output = weights @ v\n\n"
+            "Return `(output, weights)`: the weights are needed for the demo's heatmap.",
 
-            "Tres trampas, y las tres son silenciosas (no dan error, solo resultados malos):\n\n"
-            "1. Usa `transpose(-2, -1)`, con indices NEGATIVOS. Asi funciona igual con "
-            "(B,T,d) que con (B,heads,T,d). Con `transpose(1,2)` este ejercicio pasa y el "
-            "siguiente se rompe.\n\n"
-            "2. `dim=-1` en el softmax. Normalizas sobre A QUIEN se mira, de forma que cada "
-            "fila sume 1. Con `dim=-2` normalizarias sobre quien mira, que no significa "
-            "nada, y las formas son identicas asi que no salta ningun error.\n\n"
-            "3. La mascara va ANTES del softmax. Si borrases los pesos despues, las filas "
-            "ya no sumarian 1 y estarias escalando la salida por un factor arbitrario.",
+            "Three traps, and all three are silent (no error, just bad results):\n\n"
+            "1. Use `transpose(-2, -1)`, with NEGATIVE indices. That way it works the same "
+            "with (B,T,d) as with (B,heads,T,d). With `transpose(1,2)` this exercise passes "
+            "and the next one breaks.\n\n"
+            "2. `dim=-1` in the softmax. You normalize over WHO IS BEING LOOKED AT, so each "
+            "row sums to 1. With `dim=-2` you would normalize over who is looking, which "
+            "means nothing, and the shapes are identical so no error fires.\n\n"
+            "3. The mask goes BEFORE the softmax. If you zeroed the weights afterwards, the "
+            "rows would no longer sum to 1 and you would be scaling the output by an "
+            "arbitrary factor.",
         ),
         "MultiHeadAttention": (
-            "Varias atenciones en paralelo, cada una con sus propias proyecciones, para "
-            "que puedan especializarse en relaciones distintas.\n\n"
-            "Y no cuesta mas: con d_model=320 y 8 cabezas, cada una trabaja en 40 "
-            "dimensiones. En vez de una atencion de 320 haces ocho de 40.",
+            "Several attentions in parallel, each with its own projections, so they can "
+            "specialize in different relationships.\n\n"
+            "And it costs no more: with d_model=320 and 8 heads, each one works in 40 "
+            "dimensions. Instead of one attention over 320 you do eight over 40.",
 
-            "El truco: NO hagas 8 proyecciones separadas. Haz una de d_model -> d_model y "
-            "parte el resultado.\n\n"
-            "    partir:  x.view(B, T, n_heads, head_dim).transpose(1, 2)\n"
-            "             (B, T, d_model) -> (B, n_heads, T, head_dim)\n\n"
-            "    juntar:  x.transpose(1, 2).contiguous().view(B, T, d_model)\n\n"
-            "Con q, k, v ya partidos, la atencion es EXACTAMENTE la misma formula del "
-            "ejercicio 2 (por eso el transpose de alli tenia que usar indices negativos).\n\n"
-            "Submodulos: q_proj, k_proj, v_proj, out_proj (todos Linear d_model->d_model), "
-            "attn_dropout y resid_dropout.",
+            "The trick: do NOT make 8 separate projections. Make one d_model -> d_model and "
+            "split the result.\n\n"
+            "    split:  x.view(B, T, n_heads, head_dim).transpose(1, 2)\n"
+            "            (B, T, d_model) -> (B, n_heads, T, head_dim)\n\n"
+            "    merge:  x.transpose(1, 2).contiguous().view(B, T, d_model)\n\n"
+            "With q, k, v already split, attention is EXACTLY the same formula as exercise 2 "
+            "(which is why the transpose there had to use negative indices).\n\n"
+            "Submodules: q_proj, k_proj, v_proj, out_proj (all Linear d_model->d_model), "
+            "attn_dropout and resid_dropout.",
 
-            "Cuatro detalles que fallan si no los cuidas:\n\n"
-            "1. El ORDEN del view: `view(B, T, n_heads, head_dim)` y LUEGO transpose. Si "
-            "haces `view(B, n_heads, T, head_dim)` directamente estas mezclando posiciones "
-            "con cabezas. Forma correcta, datos mal, cero errores.\n\n"
-            "2. `.contiguous()` antes del view al juntar. `transpose` no mueve datos, solo "
-            "cambia los strides, y `view` exige memoria contigua.\n\n"
-            "3. RoPE (si cos/sin no son None) va DESPUES de partir en cabezas, porque la "
-            "rotacion depende de head_dim. Y solo a q y k, nunca a v.\n\n"
-            "4. Si `self.use_sdpa`, usa `F.scaled_dot_product_attention(q, k, v, "
-            "attn_mask=mask, dropout_p=self.dropout if self.training else 0.0)`. Ese "
-            "`if self.training` importa: SDPA no consulta el modo por su cuenta y aplicaria "
-            "dropout tambien en evaluacion.",
+            "Four details that break things if you do not watch them:\n\n"
+            "1. The ORDER of the view: `view(B, T, n_heads, head_dim)` and THEN transpose. If "
+            "you do `view(B, n_heads, T, head_dim)` directly you are mixing positions with "
+            "heads. Right shape, wrong data, zero errors.\n\n"
+            "2. `.contiguous()` before the view when merging. `transpose` does not move data, "
+            "it only changes the strides, and `view` demands contiguous memory.\n\n"
+            "3. RoPE (if cos/sin are not None) goes AFTER splitting into heads, because the "
+            "rotation depends on head_dim. And only to q and k, never to v.\n\n"
+            "4. If `self.use_sdpa`, use `F.scaled_dot_product_attention(q, k, v, "
+            "attn_mask=mask, dropout_p=self.dropout if self.training else 0.0)`. That "
+            "`if self.training` matters: SDPA does not check the mode on its own and would "
+            "apply dropout at evaluation time too.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 07
-    "07_normalizacion": {
+    # ------------------------------------------------------------------ module 07
+    "07_normalization": {
         "layer_norm": (
-            "Los numeros que atraviesan una red profunda tienden a crecer o encogerse capa "
-            "tras capa, hasta explotar o desvanecerse. La solucion es brutal en su "
-            "simplicidad: despues de cada bloque, vuelve a ponerlos en una escala conocida.\n\n"
-            "LayerNorm coge el vector de cada token, le resta su media y lo divide por su "
-            "desviacion. Sale media 0 y varianza 1, venga de donde venga.",
+            "The numbers flowing through a deep network tend to grow or shrink layer after "
+            "layer, until they explode or vanish. The fix is brutal in its simplicity: after "
+            "every block, put them back on a known scale.\n\n"
+            "LayerNorm takes each token's vector, subtracts its mean and divides by its "
+            "standard deviation. Out comes mean 0 and variance 1, wherever it came from.",
 
-            "    y = (x - media) / sqrt(varianza + eps) * weight + bias\n\n"
-            "Sobre la ULTIMA dimension (las features de cada token), con `dim=-1` y "
-            "`keepdim=True`. Cada token se normaliza por su cuenta, sin mirar al batch: eso "
-            "es lo que lo distingue de BatchNorm.\n\n"
-            "El eps va DENTRO de la raiz: sqrt(var + eps), no sqrt(var) + eps.\n\n"
-            "Si `weight` o `bias` son None, no los apliques.",
+            "    y = (x - mean) / sqrt(variance + eps) * weight + bias\n\n"
+            "Over the LAST dimension (each token's features), with `dim=-1` and "
+            "`keepdim=True`. Each token is normalized on its own, without looking at the "
+            "batch: that is what distinguishes it from BatchNorm.\n\n"
+            "The eps goes INSIDE the square root: sqrt(var + eps), not sqrt(var) + eps.\n\n"
+            "If `weight` or `bias` are None, do not apply them.",
 
-            "LA TRAMPA: `torch.var` divide por (n-1) por defecto (varianza muestral). "
-            "LayerNorm usa la POBLACIONAL, que divide por n.\n\n"
+            "THE TRAP: `torch.var` divides by (n-1) by default (sample variance). LayerNorm "
+            "uses the POPULATION one, which divides by n.\n\n"
             "    var = x.var(dim=-1, keepdim=True, unbiased=False)\n\n"
-            "Sin el `unbiased=False`, tu resultado se parecera mucho a `F.layer_norm` pero "
-            "no coincidira. Con d=320 la diferencia es del 0,3% y podrias no verla; con d=4 "
-            "es del 33%. El test compara contra las dos versiones y te dice a cual te "
-            "pareces.\n\n"
-            "Y el `keepdim=True` tampoco es opcional: sin el, la media de (4,8,32) sale "
-            "(4,8) en vez de (4,8,1) y la resta se emite mal.",
+            "Without the `unbiased=False`, your result will look a lot like `F.layer_norm` "
+            "but will not match it. With d=320 the difference is 0.3% and you might not see "
+            "it; with d=4 it is 33%. The test compares against both versions and tells you "
+            "which one you resemble.\n\n"
+            "And the `keepdim=True` is not optional either: without it, the mean of (4,8,32) "
+            "comes out (4,8) instead of (4,8,1) and the subtraction broadcasts wrong.",
         ),
         "RMSNorm": (
-            "Lo mismo que LayerNorm pero SIN restar la media y SIN sesgo. Solo reescala.\n\n"
-            "Zhang y Sennrich (2019) observaron que casi todo el beneficio de LayerNorm "
-            "viene de reescalar, no de recentrar. Quitandolo se ahorra una pasada por los "
-            "datos y un tensor intermedio. Lo usan Llama, Mistral y nuestro modelo.",
+            "The same as LayerNorm but WITHOUT subtracting the mean and WITHOUT a bias. Just "
+            "rescaling.\n\n"
+            "Zhang and Sennrich (2019) observed that almost all of LayerNorm's benefit comes "
+            "from rescaling, not from recentering. Dropping it saves a pass over the data and "
+            "an intermediate tensor. Llama, Mistral and our model use it.",
 
-            "    y = x / sqrt( media(x^2) + eps ) * weight\n\n"
-            "Con x = [2, 8, 4, 6]:\n"
+            "    y = x / sqrt( mean(x^2) + eps ) * weight\n\n"
+            "With x = [2, 8, 4, 6]:\n"
             "    RMS = sqrt((4+64+16+36)/4) = sqrt(30) = 5.477\n"
             "    y   = [0.365, 1.461, 0.730, 1.096]\n\n"
-            "El unico parametro es `weight`, de forma (dim,), inicializado a UNOS. Al "
-            "arrancar la capa tiene que ser la normalizacion pura: si empezara aleatorio, "
-            "la perdida del paso 0 no cuadraria con ln(V).\n\n"
-            "`torch.rsqrt(z)` calcula 1/sqrt(z) de una vez y es mas rapido que dividir.",
+            "The only parameter is `weight`, of shape (dim,), initialized to ONES. At startup "
+            "the layer has to be pure normalization: if it started random, the step-0 loss "
+            "would not match ln(V).\n\n"
+            "`torch.rsqrt(z)` computes 1/sqrt(z) in one go and is faster than dividing.",
 
             "    def _norm(self, x):\n"
             "        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)\n\n"
             "    def forward(self, x):\n"
             "        return self._norm(x.float()).type_as(x) * self.weight\n\n"
-            "El `.float()` NO es paranoia. Con activaciones en fp16, elevar al cuadrado "
-            "desborda antes de lo que parece: 300^2 = 90.000 y fp16 se acaba en 65.504. "
-            "Saldria inf, luego la media seria inf, y rsqrt(inf) = 0: la capa devolveria "
-            "ceros. Hay un test que reproduce ese caso exacto.\n\n"
-            "Detalle que sorprende: aunque hagas `.type_as(x)`, la salida acaba en fp32, "
-            "porque `self.weight` es fp32 y PyTorch promociona. Es correcto y es lo que "
-            "hace Llama.",
+            "The `.float()` is NOT paranoia. With activations in fp16, squaring overflows "
+            "sooner than you would think: 300^2 = 90,000 and fp16 runs out at 65,504. You "
+            "would get inf, then the mean would be inf, and rsqrt(inf) = 0: the layer would "
+            "return zeros. There is a test that reproduces exactly that case.\n\n"
+            "A surprising detail: even if you call `.type_as(x)`, the output ends up in fp32, "
+            "because `self.weight` is fp32 and PyTorch promotes. That is correct and it is "
+            "what Llama does.",
         ),
         "prenorm_residual": (
-            "Es UNA LINEA y es el ejercicio mas importante del modulo.\n\n"
-            "En vez de que cada bloque SUSTITUYA la representacion, se le pide que la "
-            "MODIFIQUE: la salida es la entrada mas una correccion. Asi hay siempre un "
-            "camino directo de la entrada a la salida.",
+            "It is ONE LINE and it is the most important exercise in the module.\n\n"
+            "Instead of each block REPLACING the representation, it is asked to MODIFY it: "
+            "the output is the input plus a correction. That way there is always a direct "
+            "path from the input to the output.",
 
-            "Dos opciones, y solo cambian los parentesis de sitio:\n\n"
-            "    post-norm (paper de 2017):   norm(x + fn(x))\n"
-            "    pre-norm  (todo lo moderno): x + fn(norm(x))\n\n"
-            "En pre-norm la normalizacion esta DENTRO de la rama, asi que el camino x -> x "
-            "queda libre. Al derivar sale `1 + algo`, y ese 1 llega intacto a las capas de "
-            "abajo por muchas que haya.\n\n"
-            "En post-norm la norma esta ENCIMA de la suma, asi que el gradiente la atraviesa "
-            "en cada capa y se va reescalando.",
+            "Two options, and only the parentheses move:\n\n"
+            "    post-norm (2017 paper):        norm(x + fn(x))\n"
+            "    pre-norm  (everything modern): x + fn(norm(x))\n\n"
+            "In pre-norm the normalization is INSIDE the branch, so the path x -> x is left "
+            "clear. Differentiating gives `1 + something`, and that 1 arrives intact at the "
+            "layers below however many there are.\n\n"
+            "In post-norm the norm sits ON TOP of the sum, so the gradient goes through it at "
+            "every layer and keeps getting rescaled.",
 
             "    return x + fn(norm(x))\n\n"
-            "Ya esta. Si te sale `norm(x + fn(x))` has hecho post-norm y hay un test que lo "
-            "detecta.\n\n"
-            "Consecuencia para el modulo 10: como la corriente residual nunca se normaliza "
-            "por el camino, llega a la salida con una escala que crece con la profundidad. "
-            "Por eso los modelos pre-norm llevan SIEMPRE una normalizacion final antes de la "
-            "capa de logits. Se llamara `norm_f`.",
+            "That is it. If you end up with `norm(x + fn(x))` you have written post-norm and "
+            "there is a test that detects it.\n\n"
+            "A consequence for module 10: since the residual stream is never normalized along "
+            "the way, it reaches the output at a scale that grows with depth. That is why "
+            "pre-norm models ALWAYS carry a final normalization before the logits layer. It "
+            "will be called `norm_f`.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 08
-    "08_mlp_y_activaciones": {
+    # ------------------------------------------------------------------ module 08
+    "08_mlp_and_activations": {
         "gelu": (
-            "La atencion es una media ponderada, o sea una operacion LINEAL. Y dos "
-            "operaciones lineales seguidas son una sola: W2·(W1·x) = (W2·W1)·x. Sin algo "
-            "no lineal entre capa y capa, cien capas equivalen a una.\n\n"
-            "GELU es esa pieza. Multiplica x por la probabilidad de que una normal estandar "
-            "salga menor que x: en vez de cortar en seco los negativos como hace ReLU, los "
-            "atenua de forma gradual.",
+            "Attention is a weighted average, that is, a LINEAR operation. And two linear "
+            "operations in a row are one: W2·(W1·x) = (W2·W1)·x. Without something non-linear "
+            "between layers, a hundred layers are equivalent to one.\n\n"
+            "GELU is that piece. It multiplies x by the probability that a standard normal "
+            "comes out below x: instead of cutting the negatives dead like ReLU, it "
+            "attenuates them gradually.",
 
-            "La aproximacion por tanh, que es la que se pide:\n\n"
+            "The tanh approximation, which is the one asked for:\n\n"
             "    GELU(x) ~= 0.5 * x * (1 + tanh( sqrt(2/pi) * (x + 0.044715 * x^3) ))\n\n"
-            "Escrita de izquierda a derecha, sin reagrupar. Las constantes son las del "
-            "paper: sqrt(2/pi) ~= 0.7978 y 0.044715.\n\n"
-            "Tiene que coincidir con `F.gelu(x, approximate='tanh')`, NO con `F.gelu(x)` a "
-            "secas: son funciones distintas y el test compara contra la primera.",
+            "Written left to right, without regrouping. The constants are the paper's: "
+            "sqrt(2/pi) ~= 0.7978 and 0.044715.\n\n"
+            "It has to match `F.gelu(x, approximate='tanh')`, NOT plain `F.gelu(x)`: they are "
+            "different functions and the test compares against the first one.",
 
             "    return 0.5 * x * (1.0 + torch.tanh(\n"
             "        math.sqrt(2.0 / math.pi) * (x + 0.044715 * x.pow(3))\n"
             "    ))\n\n"
-            "Una linea, sin bucles ni ramas.\n\n"
-            "Lo importante del ejercicio no es la formula, es la DERIVADA. Con ReLU vale "
-            "cero exacto en toda la zona negativa, asi que una neurona que se vaya alli deja "
-            "de recibir gradiente para siempre. Con GELU es pequenya pero no nula, y puede "
-            "volver. El demo lo tabula.",
+            "One line, no loops and no branches.\n\n"
+            "The important part of the exercise is not the formula, it is the DERIVATIVE. "
+            "With ReLU it is exactly zero throughout the negative region, so a neuron that "
+            "drifts there stops receiving gradient forever. With GELU it is small but not "
+            "zero, and it can come back. The demo tabulates it.",
         ),
         "swiglu_hidden_dim": (
-            "Aritmetica pura, pero con una decision detras. SwiGLU tiene TRES matrices donde "
-            "el FFN clasico tiene dos, asi que con el mismo hidden costaria un 50% mas.\n\n"
-            "Para gastar los mismos parametros se reduce el hidden a dos tercios. Este "
-            "ejercicio produce el 896 del config final.",
+            "Pure arithmetic, but with a decision behind it. SwiGLU has THREE matrices where "
+            "the classic FFN has two, so with the same hidden size it would cost 50% more.\n\n"
+            "To spend the same number of parameters the hidden size is cut to two thirds. "
+            "This exercise produces the 896 in the final config.",
 
-            "Tres pasos:\n\n"
+            "Three steps:\n\n"
             "  1. hidden = int(2 * (4 * d_model) / 3)\n"
-            "  2. si ffn_dim_multiplier no es None: hidden = int(ffn_dim_multiplier * hidden)\n"
-            "  3. redondear HACIA ARRIBA al siguiente multiplo de `multiple_of`\n\n"
-            "Comprobaciones:\n"
-            "  d_model=320 -> int(2*1280/3) = 853 -> ceil_64 = 896   (config final)\n"
+            "  2. if ffn_dim_multiplier is not None: hidden = int(ffn_dim_multiplier * hidden)\n"
+            "  3. round UP to the next multiple of `multiple_of`\n\n"
+            "Checks:\n"
+            "  d_model=320 -> int(2*1280/3) = 853 -> ceil_64 = 896   (final config)\n"
             "  d_model=128 -> int(2*512/3)  = 341 -> ceil_64 = 384   (tiny_char)",
 
-            "El redondeo hacia arriba con enteros, sin math.ceil:\n\n"
+            "Rounding up with integers, without math.ceil:\n\n"
             "    return multiple_of * ((hidden + multiple_of - 1) // multiple_of)\n\n"
-            "Sumar (multiple_of - 1) antes de la division entera fuerza el redondeo hacia "
-            "arriba, y si ya era multiplo exacto no lo cambia.\n\n"
-            "Por que se redondea: las dimensiones alineadas dejan que los tensor cores usen "
-            "sus rutas rapidas. Una matriz de 853 columnas es mas lenta que una de 896 "
-            "teniendo menos parametros.",
+            "Adding (multiple_of - 1) before the integer division forces rounding up, and if "
+            "it was already an exact multiple it leaves it alone.\n\n"
+            "Why round at all: aligned dimensions let the tensor cores take their fast paths. "
+            "A matrix with 853 columns is slower than one with 896 despite having fewer "
+            "parameters.",
         ),
         "SwiGLU": (
-            "Dos proyecciones en paralelo desde la misma entrada. Una de ellas, tras pasar "
-            "por una activacion, actua como PUERTA: multiplica a la otra elemento a elemento "
-            "y decide cuanta senyal deja pasar por cada dimension.\n\n"
-            "La diferencia con una activacion normal es que ese filtrado DEPENDE DE LA "
-            "ENTRADA: decide, para cada dimension y cada token, cuanto pasa.",
+            "Two projections in parallel from the same input. One of them, after going "
+            "through an activation, acts as a GATE: it multiplies the other element by "
+            "element and decides how much signal gets through each dimension.\n\n"
+            "The difference from a normal activation is that this filtering DEPENDS ON THE "
+            "INPUT: it decides, for each dimension and each token, how much gets through.",
 
             "    SwiGLU(x) = down( Swish(gate(x)) * up(x) )\n\n"
-            "El `*` es multiplicacion ELEMENTO A ELEMENTO, no matricial: las dos ramas salen "
-            "con forma (B, T, d_ff) y se multiplican punto a punto.\n\n"
-            "`Swish(z) = z * sigmoid(z)`, que en PyTorch es `F.silu(z)`.\n\n"
-            "Submodulos: gate_proj y up_proj (Linear d_model -> d_ff), down_proj (Linear "
-            "d_ff -> d_model) y dropout. Todos sin sesgo por defecto.",
+            "The `*` is ELEMENTWISE multiplication, not matrix multiplication: both branches "
+            "come out with shape (B, T, d_ff) and are multiplied point by point.\n\n"
+            "`Swish(z) = z * sigmoid(z)`, which in PyTorch is `F.silu(z)`.\n\n"
+            "Submodules: gate_proj and up_proj (Linear d_model -> d_ff), down_proj (Linear "
+            "d_ff -> d_model) and dropout. All without bias by default.",
 
             "    def forward(self, x):\n"
             "        return self.dropout(self.down_proj(\n"
             "            F.silu(self.gate_proj(x)) * self.up_proj(x)\n"
             "        ))\n\n"
-            "La activacion va en `gate_proj`, NO en `up_proj`. Con la asignacion invertida "
-            "el modulo funciona igual de bien pero no coincide con la referencia al copiar "
-            "pesos, y el test falla con una diferencia dificil de interpretar. Hay un test "
-            "dedicado a senyalarlo.\n\n"
-            "Y ten presente que el FFN procesa cada token POR SEPARADO: no mezcla "
-            "posiciones, eso es trabajo de la atencion. Aqui no hace falta ninguna mascara.",
+            "The activation goes on `gate_proj`, NOT on `up_proj`. With the assignment "
+            "swapped the module works just as well but does not match the reference when "
+            "weights are copied, and the test fails with a difference that is hard to "
+            "interpret. There is a dedicated test that points this out.\n\n"
+            "And keep in mind that the FFN processes each token SEPARATELY: it does not mix "
+            "positions, that is attention's job. No mask is needed here.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 09
-    "09_posicion": {
+    # ------------------------------------------------------------------ module 09
+    "09_position": {
         "sinusoidal_embeddings": (
-            "La atencion es una suma ponderada, y una suma no tiene orden: sin informacion "
-            "posicional, 'el perro muerde al hombre' y 'el hombre muerde al perro' dan "
-            "exactamente la misma salida.\n\n"
-            "Esta tabla se SUMA a los embeddings de token para decir en que posicion esta "
-            "cada uno. La idea es la de un contador binario: cada par de dimensiones oscila "
-            "a un ritmo distinto, y la combinacion identifica la posicion.",
+            "Attention is a weighted sum, and a sum has no order: without positional "
+            "information, 'the dog bites the man' and 'the man bites the dog' produce exactly "
+            "the same output.\n\n"
+            "This table is ADDED to the token embeddings to say which position each one is "
+            "in. The idea is that of a binary counter: each pair of dimensions oscillates at "
+            "a different rate, and the combination identifies the position.",
 
             "    PE[pos, 2i]   = sin( pos / base^(2i/d) )\n"
             "    PE[pos, 2i+1] = cos( pos / base^(2i/d) )\n\n"
-            "Dimensiones PARES con seno, IMPARES con coseno, misma frecuencia cada par.\n\n"
-            "Sin bucles:\n"
+            "EVEN dimensions with sine, ODD with cosine, the same frequency for each pair.\n\n"
+            "Without loops:\n"
             "  - `position = torch.arange(seq_len).unsqueeze(1)`  -> (T, 1)\n"
-            "  - las frecuencias, una por par -> (d/2,)\n"
-            "  - `position * div_term` emite a (T, d/2): todos los angulos de golpe\n"
-            "  - `tabla[:, 0::2] = sin(...)` y `tabla[:, 1::2] = cos(...)` para intercalar",
+            "  - the frequencies, one per pair -> (d/2,)\n"
+            "  - `position * div_term` broadcasts to (T, d/2): every angle at once\n"
+            "  - `table[:, 0::2] = sin(...)` and `table[:, 1::2] = cos(...)` to interleave",
 
-            "El truco que merece la pena conocer, para las frecuencias:\n\n"
+            "The trick worth knowing, for the frequencies:\n\n"
             "    div_term = torch.exp(\n"
             "        torch.arange(0, d_model, 2, dtype=torch.float32)\n"
             "        * (-math.log(base) / d_model)\n"
             "    )\n\n"
-            "Es matematicamente igual a `base ** (-2i/d)` pero mucho mas estable: elevar "
-            "10000 a una potencia negativa grande pierde precision en coma flotante, y "
-            "hacerlo pasando por logaritmos no.\n\n"
-            "Regla general que te servira en otros sitios: si ves una potencia con exponente "
-            "grande, `exp(log(...))` suele ser mejor.",
+            "It is mathematically the same as `base ** (-2i/d)` but far more stable: raising "
+            "10000 to a large negative power loses floating-point precision, and going "
+            "through logarithms does not.\n\n"
+            "A general rule that will serve you elsewhere: if you see a power with a large "
+            "exponent, `exp(log(...))` is usually better.",
         ),
         "rope_frequencies": (
-            "RoPE no SUMA nada al vector: lo ROTA. Cada par de dimensiones gira un angulo "
-            "proporcional a la posicion, y cada par tiene su propia velocidad de giro.\n\n"
-            "Esta funcion precalcula, de una vez y para todas las posiciones, el coseno y el "
-            "seno de esos angulos.",
+            "RoPE does not ADD anything to the vector: it ROTATES it. Each pair of dimensions "
+            "turns by an angle proportional to the position, and each pair has its own "
+            "rotation speed.\n\n"
+            "This function precomputes, once and for all positions, the cosine and sine of "
+            "those angles.",
 
-            "El angulo del par `i` en la posicion `pos` es:\n\n"
-            "    angulo = pos * theta^(-2i/head_dim)\n\n"
-            "Los pasos:\n"
-            "  1. validar que head_dim sea PAR (RoPE rota pares) -> ValueError si no\n"
+            "The angle of pair `i` at position `pos` is:\n\n"
+            "    angle = pos * theta^(-2i/head_dim)\n\n"
+            "The steps:\n"
+            "  1. validate that head_dim is EVEN (RoPE rotates pairs) -> ValueError if not\n"
             "  2. inv_freq = 1.0 / (theta ** (torch.arange(0, head_dim, 2).float() / head_dim))\n"
-            "     -> head_dim/2 valores\n"
+            "     -> head_dim/2 values\n"
             "  3. angles = torch.outer(positions, inv_freq)   -> (max_seq_len, head_dim/2)\n"
-            "  4. DUPLICAR: angles = torch.cat([angles, angles], dim=-1)\n"
-            "  5. devolver (angles.cos(), angles.sin())",
+            "  4. DUPLICATE: angles = torch.cat([angles, angles], dim=-1)\n"
+            "  5. return (angles.cos(), angles.sin())",
 
-            "El paso 4 es el que confunde, asi que aqui va el porque.\n\n"
-            "Hay dos convenios para emparejar dimensiones al rotar:\n"
-            "  - el paper original empareja consecutivas: (x0,x1), (x2,x3)...\n"
-            "  - Llama y HuggingFace emparejan por MITADES: (x0, x_{d/2}), (x1, x_{d/2+1})...\n\n"
-            "Usamos el de mitades. Con el, la dimension `i` y la `i + head_dim/2` forman un "
-            "par y necesitan EL MISMO angulo. Por eso cada frecuencia aparece duplicada y "
-            "las tablas tienen head_dim columnas en vez de head_dim/2.\n\n"
-            "Los dos convenios son equivalentes salvo una permutacion de dimensiones, que la "
-            "red aprende sin enterarse. El de mitades gano porque hace que apply_rope sea "
-            "una linea sin reordenar nada.",
+            "Step 4 is the confusing one, so here is why.\n\n"
+            "There are two conventions for pairing dimensions when rotating:\n"
+            "  - the original paper pairs consecutive ones: (x0,x1), (x2,x3)...\n"
+            "  - Llama and HuggingFace pair by HALVES: (x0, x_{d/2}), (x1, x_{d/2+1})...\n\n"
+            "We use the halves one. With it, dimension `i` and dimension `i + head_dim/2` "
+            "form a pair and need THE SAME angle. That is why each frequency appears "
+            "duplicated and the tables have head_dim columns instead of head_dim/2.\n\n"
+            "The two conventions are equivalent up to a permutation of the dimensions, which "
+            "the network learns without noticing. The halves one won because it makes "
+            "apply_rope a one-liner with no reordering.",
         ),
         "apply_rope": (
-            "Con las tablas ya calculadas esto es UNA LINEA. Pero conviene ver de donde sale "
-            "antes de escribirla.\n\n"
-            "Rotar un vector (x1, x2) un angulo t es la matriz de rotacion de siempre:\n\n"
+            "With the tables already computed this is ONE LINE. But it is worth seeing where "
+            "it comes from before writing it.\n\n"
+            "Rotating a vector (x1, x2) by an angle t is the usual rotation matrix:\n\n"
             "    x1' = x1*cos(t) - x2*sin(t)\n"
             "    x2' = x2*cos(t) + x1*sin(t)",
 
-            "Esas dos lineas se escriben de golpe como:\n\n"
+            "Those two lines can be written all at once as:\n\n"
             "    x' = x * cos + rotate_half(x) * sin\n\n"
-            "donde `rotate_half([a, b]) = [-b, a]`, partiendo por la mitad la ultima "
-            "dimension. Compruebalo:\n\n"
-            "    componente 1:  x1*cos + (-x2)*sin = x1*cos - x2*sin   OK\n"
-            "    componente 2:  x2*cos + ( x1)*sin = x2*cos + x1*sin   OK\n\n"
-            "Y rotate_half sin bucles:\n"
-            "    mitad = x.shape[-1] // 2\n"
-            "    x1, x2 = x[..., :mitad], x[..., mitad:]\n"
+            "where `rotate_half([a, b]) = [-b, a]`, splitting the last dimension in half. "
+            "Check it:\n\n"
+            "    component 1:  x1*cos + (-x2)*sin = x1*cos - x2*sin   OK\n"
+            "    component 2:  x2*cos + ( x1)*sin = x2*cos + x1*sin   OK\n\n"
+            "And rotate_half without loops:\n"
+            "    half = x.shape[-1] // 2\n"
+            "    x1, x2 = x[..., :half], x[..., half:]\n"
             "    return torch.cat([-x2, x1], dim=-1)",
 
             "    seq_len = x.shape[-2]\n"
             "    cos = cos[:seq_len].to(dtype=x.dtype, device=x.device)\n"
             "    sin = sin[:seq_len].to(dtype=x.dtype, device=x.device)\n"
             "    return x * cos + rotate_half(x) * sin\n\n"
-            "Dos detalles que fallan si los saltas:\n\n"
-            "1. RECORTAR a seq_len. Las tablas se precalculan hasta max_seq_len (512 en el "
-            "modelo final) y tu secuencia casi nunca mide eso. Sin recortar, el broadcast "
-            "falla o -peor- acierta por casualidad con las formas equivocadas.\n\n"
-            "2. Convertir dtype y device. Bajo AMP las tablas estan en fp32 y x llega en "
-            "fp16; mezclarlos hace que torch promocione y acabas calculando en la precision "
-            "que no querias.\n\n"
-            "No hace falta ningun unsqueeze: x es (B, heads, T, head_dim) y cos es "
-            "(T, head_dim); el broadcast alinea desde la derecha y se ocupa del resto.",
+            "Two details that break if you skip them:\n\n"
+            "1. SLICING to seq_len. The tables are precomputed up to max_seq_len (512 in the "
+            "final model) and your sequence is almost never that long. Without slicing, the "
+            "broadcast fails or -worse- succeeds by accident with the wrong shapes.\n\n"
+            "2. Converting dtype and device. Under AMP the tables are in fp32 and x arrives "
+            "in fp16; mixing them makes torch promote and you end up computing at a precision "
+            "you did not want.\n\n"
+            "No unsqueeze is needed: x is (B, heads, T, head_dim) and cos is (T, head_dim); "
+            "the broadcast aligns from the right and takes care of the rest.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 10
-    "10_el_gpt_completo": {
+    # ------------------------------------------------------------------ module 10
+    "10_the_full_gpt": {
         "expected_param_count": (
-            "Calcular cuantos parametros tendra el modelo ANTES de construirlo. Sirve para "
-            "disenyar (cambias d_model y ves al instante si cabe en la GPU) y para verificar "
-            "que el modelo que has montado es el que creias.\n\n"
-            "Hazlo con papel primero. Coge el desglose del TEORIA.md y escribe la formula; "
-            "solo despues la traduces a codigo. Si vas directo al codigo acabaras probando "
-            "numeros hasta que cuadre, y eso no ensenya nada.",
+            "Computing how many parameters the model will have BEFORE building it. It is "
+            "useful for designing (you change d_model and see instantly whether it fits on "
+            "the GPU) and for verifying that the model you assembled is the one you thought "
+            "you assembled.\n\n"
+            "Do it on paper first. Take the breakdown from THEORY.md and write the formula; "
+            "only then translate it into code. If you go straight to code you will end up "
+            "trying numbers until they add up, and that teaches nothing.",
 
-            "Los terminos:\n\n"
+            "The terms:\n\n"
             "    embeddings  = vocab_size * d_model\n"
-            "    (+ context_length * d_model solo si pos == 'learned')\n\n"
-            "    por capa:\n"
-            "      atencion = 4 * d_model^2                (Wq, Wk, Wv, Wo)\n"
-            "      ffn      = 3 * d_model * d_ff           (SwiGLU)\n"
-            "      normas   = 2 * d_model                  (dos RMSNorm)\n\n"
-            "    norma final = d_model\n"
-            "    lm_head     = 0 si tie_embeddings\n\n"
-            "Comprobacion: 1.310.720 + 6*(409.600 + 860.160 + 640) + 320 = 8.933.440",
+            "    (+ context_length * d_model only if pos == 'learned')\n\n"
+            "    per layer:\n"
+            "      attention = 4 * d_model^2                (Wq, Wk, Wv, Wo)\n"
+            "      ffn       = 3 * d_model * d_ff           (SwiGLU)\n"
+            "      norms     = 2 * d_model                  (two RMSNorms)\n\n"
+            "    final norm = d_model\n"
+            "    lm_head    = 0 if tie_embeddings\n\n"
+            "Check: 1,310,720 + 6*(409,600 + 860,160 + 640) + 320 = 8,933,440",
 
-            "Dos cosas que se olvidan y hacen que no cuadre:\n\n"
-            "1. RoPE NO aporta ni un parametro. Sus tablas salen de una formula y se guardan "
-            "como buffers. Si tu cuenta incluye algo de RoPE, sobra un termino.\n\n"
-            "2. RMSNorm tiene d_model parametros, no 2*d_model: solo escala, sin sesgo. Con "
-            "6 capas x 2 normas + 1 final son 13 x 320 = 4.160. Es poco, pero si lo olvidas "
-            "el total no cuadra.\n\n"
-            "Y acuerdate de las ramas: LayerNorm en vez de RMSNorm, MLP clasico (2 matrices) "
-            "en vez de SwiGLU (3), y los sesgos si cfg.bias es True. Los tests prueban todas "
-            "esas combinaciones.",
+            "Two things that get forgotten and make it not add up:\n\n"
+            "1. RoPE contributes ZERO parameters. Its tables come from a formula and are "
+            "stored as buffers. If your count includes anything from RoPE, there is one term "
+            "too many.\n\n"
+            "2. RMSNorm has d_model parameters, not 2*d_model: scale only, no bias. With 6 "
+            "layers x 2 norms + 1 final that is 13 x 320 = 4,160. It is small, but if you "
+            "forget it the total does not add up.\n\n"
+            "And remember the branches: LayerNorm instead of RMSNorm, classic MLP (2 "
+            "matrices) instead of SwiGLU (3), and the biases if cfg.bias is True. The tests "
+            "check all those combinations.",
         ),
         "count_parameters": (
-            "Lo contrario del ejercicio 1: en vez de calcular con una formula, recorrer el "
-            "modelo de verdad y sumar. Si los dos numeros coinciden, tu formula y tu modelo "
-            "dicen lo mismo.\n\n"
-            "Ademas se desglosa por componente, que es lo que hace util el resultado.",
+            "The opposite of exercise 1: instead of computing with a formula, walk the actual "
+            "model and add things up. If the two numbers match, your formula and your model "
+            "say the same thing.\n\n"
+            "It also breaks the count down by component, which is what makes the result "
+            "useful.",
 
-            "Recorre `model.named_parameters()` y clasifica por lo que aparezca en el "
-            "nombre. Los nombres son del estilo `blocks.3.attn.q_proj.weight`.\n\n"
+            "Walk `model.named_parameters()` and classify by what appears in the name. The "
+            "names look like `blocks.3.attn.q_proj.weight`.\n\n"
             "    'token_embedding' / 'pos_embedding'  -> embeddings\n"
             "    'attn.'                              -> attention\n"
             "    gate_proj / up_proj / down_proj      -> ffn\n"
             "    'norm'                               -> norms\n"
             "    'lm_head'                            -> lm_head\n\n"
-            "Imprime una vez `[n for n, _ in model.named_parameters()]`: vale mucho la pena "
-            "para ver como esta montado el modelo por dentro.",
+            "Print `[n for n, _ in model.named_parameters()]` once: it is well worth it for "
+            "seeing how the model is wired up inside.",
 
-            "EL ORDEN DE LAS COMPROBACIONES IMPORTA. La cadena 'norm' aparece tambien en "
-            "`attn_norm` y `ffn_norm`, asi que si compruebas 'norm' antes que 'attn.', la "
-            "normalizacion de la atencion acaba en la categoria equivocada. Ve de mas "
-            "especifico a mas general.\n\n"
-            "Sobre el weight tying: `parameters()` y `named_parameters()` DEDUPLICAN por "
-            "defecto (remove_duplicate=True), asi que el total sale bien sin hacer nada. Aun "
-            "asi lleva un `set` de `id(param)`: deja explicito que sabes que hay pesos "
-            "compartidos y protege el desglose. Con remove_duplicate=False contarias "
-            "1.310.720 parametros de mas.\n\n"
-            "No olvides `total` (suma de las seis categorias) y `non_embedding` "
-            "(total - embeddings), que es lo que usan las leyes de escala del modulo 12.",
+            "THE ORDER OF THE CHECKS MATTERS. The string 'norm' also appears in `attn_norm` "
+            "and `ffn_norm`, so if you check 'norm' before 'attn.', the attention's "
+            "normalization ends up in the wrong category. Go from more specific to more "
+            "general.\n\n"
+            "About weight tying: `parameters()` and `named_parameters()` DEDUPLICATE by "
+            "default (remove_duplicate=True), so the total comes out right without doing "
+            "anything. Even so, keep a `set` of `id(param)`: it makes explicit that you know "
+            "there are shared weights and it protects the breakdown. With "
+            "remove_duplicate=False you would count 1,310,720 parameters too many.\n\n"
+            "Do not forget `total` (the sum of the six categories) and `non_embedding` "
+            "(total - embeddings), which is what module 12's scaling laws use.",
         ),
         "TransformerBlock": (
-            "Un bloque son dos sub-bloques, cada uno con su normalizacion y su residual:\n\n"
-            "    x = x + atencion(norm1(x))\n"
+            "A block is two sub-blocks, each with its own normalization and residual:\n\n"
+            "    x = x + attention(norm1(x))\n"
             "    x = x + ffn(norm2(x))\n\n"
-            "La atencion MUEVE informacion entre tokens; el FFN la PROCESA token a token. "
-            "Alternan. Eso es todo el bloque.",
+            "Attention MOVES information between tokens; the FFN PROCESSES it token by token. "
+            "They alternate. That is the whole block.",
 
-            "Submodulos, con estos nombres (el test copia pesos por nombre y el ejercicio 2 "
-            "clasifica por nombre):\n\n"
+            "Submodules, with these names (the test copies weights by name and exercise 2 "
+            "classifies by name):\n\n"
             "    self.attn_norm = make_norm(cfg)\n"
             "    self.attn = MultiHeadAttention(cfg.d_model, cfg.n_heads,\n"
             "                                   dropout=cfg.dropout, bias=cfg.bias)\n"
             "    self.ffn_norm = make_norm(cfg)\n"
             "    self.ffn = make_ffn(cfg)\n\n"
-            "`make_norm` y `make_ffn` ya estan hechos en `llmfs.reference`: eligen RMSNorm o "
-            "LayerNorm, SwiGLU o MLP, segun el config.",
+            "`make_norm` and `make_ffn` are already written in `llmfs.reference`: they pick "
+            "RMSNorm or LayerNorm, SwiGLU or MLP, according to the config.",
 
             "    def forward(self, x, cos=None, sin=None, mask=None):\n"
             "        x = x + self.attn(self.attn_norm(x), mask=mask, cos=cos, sin=sin)\n"
             "        x = x + self.ffn(self.ffn_norm(x))\n"
             "        return x\n\n"
-            "DOS residuales independientes, no uno solo alrededor de todo el bloque. Hay un "
-            "test que pone a cero los pesos de salida de las dos ramas y comprueba que la "
-            "salida es EXACTAMENTE la entrada: si no tienes residuales, devolveria cero.\n\n"
-            "El FFN no recibe cos, sin ni mask: no mira a otros tokens y no los necesita.",
+            "TWO independent residuals, not one around the whole block. There is a test that "
+            "zeroes the output weights of both branches and checks that the output is EXACTLY "
+            "the input: with no residuals, it would return zero.\n\n"
+            "The FFN does not receive cos, sin or mask: it does not look at other tokens and "
+            "does not need them.",
         ),
         "GPT": (
-            "Ensamblar todo:\n\n"
-            "    ids -> embeddings -> [bloque] x n_layers -> norma final -> logits\n\n"
-            "Con RoPE no hay embedding posicional que sumar al principio: la posicion se "
-            "inyecta dentro de la atencion. Por eso la primera capa es solo la tabla de "
-            "tokens.\n\n"
-            "Al terminar, `sum(p.numel() for p in modelo.parameters())` tiene que dar "
-            "8.933.440 exactos.",
+            "Assembling everything:\n\n"
+            "    ids -> embeddings -> [block] x n_layers -> final norm -> logits\n\n"
+            "With RoPE there is no positional embedding to add at the start: position is "
+            "injected inside attention. That is why the first layer is only the token "
+            "table.\n\n"
+            "When you finish, `sum(p.numel() for p in model.parameters())` has to give "
+            "exactly 8,933,440.",
 
-            "Las tres cosas que hay que hacer bien:\n\n"
+            "The three things you have to get right:\n\n"
             "1. TYING:  `self.lm_head.weight = self.token_embedding.weight`\n"
-            "   Eso NO copia: hace que apunten al mismo tensor. El test comprueba `is`, no "
-            "`==`.\n\n"
-            "2. RoPE COMO BUFFER:\n"
+            "   That does NOT copy: it makes them point at the same tensor. The test checks "
+            "`is`, not `==`.\n\n"
+            "2. RoPE AS A BUFFER:\n"
             "     cos, sin = rope_frequencies(cfg.head_dim, cfg.context_length, cfg.rope_theta)\n"
             "     self.register_buffer('rope_cos', cos, persistent=False)\n"
-            "   Un buffer acompanya al modelo (se mueve con .to(device)) pero no es un "
-            "parametro. `persistent=False` ademas lo saca del checkpoint: se recalcula al "
-            "construir.\n\n"
-            "3. INIT EN DOS PASADAS: primero `self.apply(self._init_weights)` con std=0.02 "
-            "en todos los Linear y Embedding, y DESPUES pisar las proyecciones que escriben "
-            "en el residual (out_proj, down_proj) con std = 0.02/sqrt(2*n_layers).",
+            "   A buffer travels with the model (it moves with .to(device)) but is not a "
+            "parameter. `persistent=False` also keeps it out of the checkpoint: it is "
+            "recomputed on construction.\n\n"
+            "3. INIT IN TWO PASSES: first `self.apply(self._init_weights)` with std=0.02 on "
+            "every Linear and Embedding, and THEN override the projections that write into "
+            "the residual (out_proj, down_proj) with std = 0.02/sqrt(2*n_layers).",
 
-            "Por que la init escalada: cada bloque SUMA su contribucion a la corriente "
-            "residual. Con 6 capas y 2 sub-bloques cada una son 12 contribuciones, asi que "
-            "la varianza de la salida seria 12 veces la de la entrada. Dividir la desviacion "
-            "por sqrt(2*n_layers) lo compensa. El 2 es porque cada bloque escribe dos veces.\n\n"
-            "Y el orden importa: primero el apply general, LUEGO se pisa. Al reves, el apply "
-            "sobrescribiria la init escalada.\n\n"
-            "En el forward, la mascara se calcula UNA vez antes del bucle de bloques y se "
-            "pasa a todos. Dentro de cada bloque funcionaria, pero serian 6 tensores "
-            "identicos por forward.\n\n"
-            "Y valida `T <= cfg.context_length` al principio, con un ValueError que diga los "
-            "dos numeros.",
+            "Why the scaled init: every block ADDS its contribution to the residual stream. "
+            "With 6 layers and 2 sub-blocks each that is 12 contributions, so the output's "
+            "variance would be 12 times the input's. Dividing the standard deviation by "
+            "sqrt(2*n_layers) compensates for it. The 2 is because each block writes twice.\n\n"
+            "And the order matters: the general apply first, THEN the override. The other way "
+            "round, the apply would overwrite the scaled init.\n\n"
+            "In the forward, the mask is computed ONCE before the block loop and passed to "
+            "them all. Inside each block it would work, but it would be 6 identical tensors "
+            "per forward.\n\n"
+            "And validate `T <= cfg.context_length` at the start, with a ValueError that "
+            "states both numbers.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 11
-    "11_bucle_de_entrenamiento": {
+    # ------------------------------------------------------------------ module 11
+    "11_training_loop": {
         "AdamWScratch": (
-            "El descenso de gradiente pelado (`p -= lr * g`) tiene un problema: un unico lr "
-            "para todos los parametros. Los que reciben gradientes grandes constantemente "
-            "dan saltos absurdos, y los que casi nunca reciben senyal no se mueven.\n\n"
-            "Adam lo arregla con dos medias moviles: una del gradiente (momento, suaviza el "
-            "ruido) y otra del gradiente AL CUADRADO (escalado, da a cada parametro su "
-            "propio lr efectivo).",
+            "Bare gradient descent (`p -= lr * g`) has a problem: a single lr for every "
+            "parameter. The ones that constantly receive large gradients take absurd jumps, "
+            "and the ones that almost never get signal do not move.\n\n"
+            "Adam fixes it with two running averages: one of the gradient (momentum, smooths "
+            "the noise) and one of the SQUARED gradient (scaling, gives each parameter its "
+            "own effective lr).",
 
             "    m = beta1*m + (1-beta1)*g\n"
             "    v = beta2*v + (1-beta2)*g^2\n\n"
-            "    m_hat = m / (1 - beta1^t)      <- correccion de sesgo\n"
+            "    m_hat = m / (1 - beta1^t)      <- bias correction\n"
             "    v_hat = v / (1 - beta2^t)\n\n"
             "    p -= lr * m_hat / (sqrt(v_hat) + eps)\n"
-            "    p -= lr * weight_decay * p     <- POR SEPARADO\n\n"
-            "La estructura de un optimizador de PyTorch:\n\n"
-            "    for group in self.param_groups:      # los grupos del ejercicio 4\n"
+            "    p -= lr * weight_decay * p     <- SEPARATELY\n\n"
+            "The structure of a PyTorch optimizer:\n\n"
+            "    for group in self.param_groups:      # the groups from exercise 4\n"
             "        for p in group['params']:\n"
             "            if p.grad is None: continue\n"
-            "            state = self.state[p]        # dict por parametro, persiste\n"
-            "            if len(state) == 0:          # primera vez\n"
+            "            state = self.state[p]        # per-parameter dict, persists\n"
+            "            if len(state) == 0:          # first time\n"
             "                state['step'] = 0\n"
             "                state['exp_avg'] = torch.zeros_like(p)\n"
             "                state['exp_avg_sq'] = torch.zeros_like(p)\n"
             "            state['step'] += 1\n",
 
-            "Los tres errores que cazan los tests:\n\n"
-            "1. EMPEZAR t EN 0. Con t=0, 1-beta^0 = 0 y divides por cero. Incrementa "
-            "`state['step']` ANTES de usarlo.\n\n"
-            "2. OLVIDAR LA CORRECCION DE SESGO. Hay un test que da un solo paso con "
-            "gradiente 1 y lr=0.1, y exige que el parametro se mueva 0.1. Sin correccion, "
-            "con beta2=0.95 se moveria 0.447: 4,5 veces mas.\n\n"
-            "3. SUMAR EL WEIGHT DECAY AL GRADIENTE. Eso es Adam+L2, no AdamW. Hazlo "
-            "directamente sobre el parametro:\n\n"
-            "       p.mul_(1 - lr * wd)      # ANTES de la actualizacion de Adam\n\n"
-            "   El test lo distingue poniendo el gradiente a CERO: con decay desacoplado el "
-            "parametro sigue encogiendo, y con L2 no.\n\n"
-            "Y no olvides el `@torch.no_grad()` sobre `step`.",
+            "The three mistakes the tests catch:\n\n"
+            "1. STARTING t AT 0. With t=0, 1-beta^0 = 0 and you divide by zero. Increment "
+            "`state['step']` BEFORE using it.\n\n"
+            "2. FORGETTING THE BIAS CORRECTION. There is a test that takes a single step with "
+            "gradient 1 and lr=0.1, and requires the parameter to move by 0.1. Without the "
+            "correction, with beta2=0.95 it would move 0.447: 4.5 times more.\n\n"
+            "3. ADDING THE WEIGHT DECAY TO THE GRADIENT. That is Adam+L2, not AdamW. Do it "
+            "directly on the parameter:\n\n"
+            "       p.mul_(1 - lr * wd)      # BEFORE Adam's update\n\n"
+            "   The test tells them apart by setting the gradient to ZERO: with decoupled "
+            "decay the parameter keeps shrinking, with L2 it does not.\n\n"
+            "And do not forget the `@torch.no_grad()` on `step`.",
         ),
         "lr_at_step": (
-            "El learning rate no es constante durante el entrenamiento. Sube despacio al "
-            "principio (warmup) y baja al final (coseno).\n\n"
-            "El warmup existe porque en los primeros pasos los momentos de Adam estan vacios "
-            "y los pesos recien inicializados dan gradientes grandes: arrancar a lr completo "
-            "suele producir un pico del que a veces el modelo no se recupera.",
+            "The learning rate is not constant during training. It rises slowly at the start "
+            "(warmup) and falls at the end (cosine).\n\n"
+            "The warmup exists because in the first steps Adam's moments are empty and the "
+            "freshly initialized weights give large gradients: starting at full lr usually "
+            "produces a spike the model sometimes never recovers from.",
 
-            "Tres tramos:\n\n"
+            "Three segments:\n\n"
             "  1. step < warmup_steps  ->  lr * (step + 1) / warmup_steps\n"
             "  2. step >= max_steps    ->  lr * min_lr_ratio\n"
-            "  3. en medio             ->  coseno entre los dos\n\n"
-            "El coseno:\n"
-            "    progreso = (step - warmup_steps) / (max_steps - warmup_steps)\n"
-            "    coef     = 0.5 * (1 + cos(pi * progreso))\n"
+            "  3. in between           ->  cosine between the two\n\n"
+            "The cosine:\n"
+            "    progress = (step - warmup_steps) / (max_steps - warmup_steps)\n"
+            "    coef     = 0.5 * (1 + cos(pi * progress))\n"
             "    return min_lr + (lr - min_lr) * coef\n\n"
-            "Comprueba los extremos: progreso=0 da cos(0)=1 y coef=1, o sea `lr`. "
-            "progreso=1 da cos(pi)=-1 y coef=0, o sea `min_lr`.",
+            "Check the endpoints: progress=0 gives cos(0)=1 and coef=1, i.e. `lr`. "
+            "progress=1 gives cos(pi)=-1 and coef=0, i.e. `min_lr`.",
 
-            "Detalles que fallan si los saltas:\n\n"
-            "- El `+1` del warmup: sin el, el paso 0 tendria lr exactamente cero y no "
-            "aprenderia nada. Con warmup de 500, serian 500 pasos desperdiciados.\n\n"
-            "- El orden de las guardas: `step >= max_steps` tiene que ir ANTES del coseno. "
-            "Si no, progreso pasaria de 1 y el coseno empezaria a SUBIR otra vez.\n\n"
-            "- Acota progreso con `min(1.0, max(0.0, progreso))` y usa `max(1, ...)` en el "
-            "denominador: protege si max_steps <= warmup_steps.\n\n"
-            "- `schedule` tambien admite 'linear' y 'constant', de una linea cada uno.",
+            "Details that break if you skip them:\n\n"
+            "- The `+1` in the warmup: without it, step 0 would have an lr of exactly zero "
+            "and learn nothing. With a warmup of 500, that is 500 wasted steps.\n\n"
+            "- The order of the guards: `step >= max_steps` has to come BEFORE the cosine. "
+            "Otherwise progress would go past 1 and the cosine would start RISING again.\n\n"
+            "- Clamp progress with `min(1.0, max(0.0, progress))` and use `max(1, ...)` in "
+            "the denominator: it protects you if max_steps <= warmup_steps.\n\n"
+            "- `schedule` also accepts 'linear' and 'constant', one line each.",
         ),
         "clip_grad_norm": (
-            "Ocasionalmente un batch produce gradientes enormes (una secuencia rara, un "
-            "token muy poco frecuente). Sin proteccion, ese unico batch puede dar un salto "
-            "que destruya horas de entrenamiento.\n\n"
-            "La solucion: si la norma de TODOS los gradientes juntos supera un umbral, "
-            "escalarlos todos por el mismo factor.",
+            "Occasionally a batch produces enormous gradients (an odd sequence, a very rare "
+            "token). With no protection, that single batch can take a jump that destroys "
+            "hours of training.\n\n"
+            "The fix: if the norm of ALL the gradients together exceeds a threshold, scale "
+            "them all by the same factor.",
 
             "    grads = [p.grad for p in parameters if p.grad is not None]\n"
-            "    norma = sqrt( suma de (g**2).sum() sobre todos )\n"
-            "    si norma > max_norm:\n"
-            "        factor = max_norm / (norma + 1e-6)\n"
-            "        multiplicar TODOS los gradientes por factor\n"
-            "    return norma      <- la de ANTES de recortar\n\n"
-            "El `1e-6` evita dividir por cero si la norma es minuscula.\n\n"
-            "Devolver la norma ANTES es lo que hace `torch.nn.utils.clip_grad_norm_` y es lo "
-            "util: si la registras y sube de forma sostenida, el entrenamiento se esta "
-            "desestabilizando.",
+            "    norm = sqrt( sum of (g**2).sum() over all of them )\n"
+            "    if norm > max_norm:\n"
+            "        factor = max_norm / (norm + 1e-6)\n"
+            "        multiply ALL the gradients by factor\n"
+            "    return norm      <- the one from BEFORE clipping\n\n"
+            "The `1e-6` avoids dividing by zero if the norm is tiny.\n\n"
+            "Returning the norm from BEFORE is what `torch.nn.utils.clip_grad_norm_` does and "
+            "it is the useful one: if you log it and it rises steadily, training is "
+            "destabilizing.",
 
-            "LA NORMA ES GLOBAL, no una por tensor. Es lo unico conceptual del ejercicio.\n\n"
-            "Si recortaras cada tensor por separado, cada uno se escalaria por un factor "
-            "distinto y la DIRECCION del gradiente conjunto cambiaria. Y eso es justo lo que "
-            "no quieres: el gradiente apunta a donde hay que ir, y tu solo estas limitando "
-            "cuanto avanzas.\n\n"
-            "Hay un test que calcula el coseno entre el vector de gradientes antes y despues "
-            "del recorte, y exige que sea > 0.9999.\n\n"
-            "Usa `g.detach()` al calcular la norma: los gradientes no requieren gradiente, "
-            "pero es la costumbre correcta.",
+            "THE NORM IS GLOBAL, not one per tensor. It is the only conceptual point in the "
+            "exercise.\n\n"
+            "If you clipped each tensor separately, each would be scaled by a different "
+            "factor and the DIRECTION of the combined gradient would change. And that is "
+            "exactly what you do not want: the gradient points where you have to go, and you "
+            "are only limiting how far you step.\n\n"
+            "There is a test that computes the cosine between the gradient vector before and "
+            "after clipping, and requires it to be > 0.9999.\n\n"
+            "Use `g.detach()` when computing the norm: gradients do not require gradient, but "
+            "it is the correct habit.",
         ),
         "build_param_groups": (
-            "El weight decay empuja los pesos hacia cero. Eso tiene sentido en una matriz de "
-            "proyeccion, pero NO en la escala de un RMSNorm: ese parametro arranca en 1 y su "
-            "trabajo es reescalar; empujarlo hacia cero es empujar la salida de la capa "
-            "hacia cero, que es lo contrario de lo que hace falta.\n\n"
-            "Asi que hay que separar los parametros en dos grupos.",
+            "Weight decay pushes weights towards zero. That makes sense on a projection "
+            "matrix, but NOT on an RMSNorm's scale: that parameter starts at 1 and its job is "
+            "to rescale; pushing it towards zero is pushing the layer's output towards zero, "
+            "which is the opposite of what is needed.\n\n"
+            "So the parameters have to be split into two groups.",
 
-            "La regla es sorprendentemente simple:\n\n"
-            "    parametros de 2 dimensiones o mas  ->  CON decay   (las matrices)\n"
-            "    parametros de 1 dimension          ->  SIN decay   (sesgos y escalas)\n\n"
-            "`param.dim()` te da el numero de dimensiones.\n\n"
-            "El formato que espera PyTorch es una lista de dicts:\n\n"
+            "The rule is surprisingly simple:\n\n"
+            "    parameters with 2 dimensions or more  ->  WITH decay   (the matrices)\n"
+            "    parameters with 1 dimension           ->  WITHOUT decay (biases and scales)\n\n"
+            "`param.dim()` gives you the number of dimensions.\n\n"
+            "The format PyTorch expects is a list of dicts:\n\n"
             "    [{'params': [...], 'weight_decay': wd},\n"
             "     {'params': [...], 'weight_decay': 0.0}]\n\n"
-            "Cualquier clave adicional sobreescribe el valor por defecto del optimizador "
-            "solo para ese grupo.",
+            "Any extra key overrides the optimizer's default value for that group only.",
 
             "    decay, no_decay = [], []\n"
             "    for param in model.parameters():\n"
@@ -1193,500 +1197,511 @@ HINTS: dict[str, dict[str, tuple[str, ...]]] = {
             "        {'params': decay, 'weight_decay': weight_decay},\n"
             "        {'params': no_decay, 'weight_decay': 0.0},\n"
             "    ]\n\n"
-            "El orden importa: primero el grupo CON decay (hay tests que dependen de ello).\n\n"
-            "Salta los parametros congelados: no se van a actualizar y meterlos en el "
-            "optimizador solo gasta memoria.\n\n"
-            "Con el modelo final salen 43 tensores con decay (8.929.280 params) y 13 sin el "
-            "(4.160, las escalas de RMSNorm).",
+            "The order matters: the group WITH decay first (there are tests that depend on "
+            "it).\n\n"
+            "Skip frozen parameters: they are not going to be updated and putting them in the "
+            "optimizer only wastes memory.\n\n"
+            "With the final model you get 43 tensors with decay (8,929,280 params) and 13 "
+            "without it (4,160, the RMSNorm scales).",
         ),
     },
-    # ------------------------------------------------------------------ modulo 12
-    "12_eficiencia_y_escalado": {
+    # ------------------------------------------------------------------ module 12
+    "12_efficiency_and_scaling": {
         "model_flops_per_token": (
-            "El mismo calculo del modulo 01, pero devolviendo el DESGLOSE en vez de un solo "
-            "numero.\n\n"
-            "Merece la pena separarlo porque los dos terminos escalan distinto: el de matmul "
-            "con el tamanyo del modelo, el de atencion con el CONTEXTO. Saber cual pesa mas "
-            "te dice al instante si alargar el contexto te va a salir caro.",
+            "The same calculation as module 01, but returning the BREAKDOWN instead of a "
+            "single number.\n\n"
+            "It is worth separating because the two terms scale differently: the matmul one "
+            "with the model size, the attention one with the CONTEXT. Knowing which weighs "
+            "more tells you instantly whether lengthening the context is going to be "
+            "expensive.",
 
             "    params_matmul = n_layers * (4*d^2 + n_ffn*d*d_ff) + d*vocab_size\n"
-            "                    (n_ffn = 3 con SwiGLU, 2 con un FFN clasico)\n\n"
+            "                    (n_ffn = 3 with SwiGLU, 2 with a classic FFN)\n\n"
             "    matmul    = 2 * params_matmul\n"
             "    attention = 4 * n_layers * context_length * d_model\n\n"
-            "Si include_backward, multiplica AMBOS por 3.\n\n"
-            "Devuelve un dict con `matmul`, `attention`, `total` (la suma) y "
+            "If include_backward, multiply BOTH by 3.\n\n"
+            "Return a dict with `matmul`, `attention`, `total` (the sum) and "
             "`params_matmul`.",
 
-            "La proyeccion final `d * vocab_size` cuenta AUNQUE haya weight tying. Atar los "
-            "pesos ahorra memoria, no calculo: el matmul se hace igual. Hay un test que lo "
-            "comprueba.\n\n"
-            "Y el `* 3` va sobre los DOS terminos, no solo sobre el de matmul: el backward "
-            "de la atencion tambien cuesta el doble que su forward.\n\n"
-            "Comprobacion: con la config final el total tiene que dar 65.372.160, el mismo "
-            "numero del modulo 01.",
+            "The final projection `d * vocab_size` counts EVEN with weight tying. Tying the "
+            "weights saves memory, not computation: the matmul happens all the same. There is "
+            "a test that checks this.\n\n"
+            "And the `* 3` applies to BOTH terms, not just the matmul one: attention's "
+            "backward also costs twice its forward.\n\n"
+            "Check: with the final config the total has to give 65,372,160, the same number "
+            "as in module 01.",
         ),
         "compute_mfu": (
-            "Que fraccion de la potencia teorica de tu GPU estas aprovechando de verdad.\n\n"
-            "Es LA metrica para saber si tu entrenamiento va bien optimizado, y su gracia es "
-            "que no depende ni del modelo ni del hardware: puedes comparar configuraciones "
-            "distintas.",
+            "What fraction of your GPU's theoretical power you are really using.\n\n"
+            "It is THE metric for knowing whether your training run is well optimized, and "
+            "its beauty is that it depends on neither the model nor the hardware: you can "
+            "compare different configurations.",
 
             "    MFU = tokens_per_second * flops_per_token / (peak_tflops * 1e12)\n\n"
-            "El 1e12 convierte TeraFLOPS en FLOPS. Es una linea.\n\n"
-            "Valida que `peak_tflops` sea positivo y lanza ValueError si no: una division por "
-            "cero aqui da `inf` en silencio.",
+            "The 1e12 converts TeraFLOPS into FLOPS. It is one line.\n\n"
+            "Validate that `peak_tflops` is positive and raise ValueError if not: a division "
+            "by zero here silently gives `inf`.",
 
             "    if peak_tflops <= 0:\n"
             "        raise ValueError(...)\n"
             "    return tokens_per_second * flops_per_token / (peak_tflops * 1e12)\n\n"
-            "Como se interpreta:\n"
-            "    0.4-0.5   modelos grandes bien optimizados en A100/H100\n"
-            "    0.1-0.2   nuestro modelo de 9M\n"
-            "    < 0.05    algo va mal: mira el dataloader o sube el batch\n\n"
-            "NADIE llega a 1. Y con un modelo pequenyo la MFU baja es inevitable: las "
-            "matrices de 320x320 no dan para saturar los tensor cores. No es culpa tuya.",
+            "How to read it:\n"
+            "    0.4-0.5   large, well-optimized models on A100/H100\n"
+            "    0.1-0.2   our 9M model\n"
+            "    < 0.05    something is wrong: look at the dataloader or raise the batch\n\n"
+            "NOBODY reaches 1. And with a small model a low MFU is unavoidable: 320x320 "
+            "matrices are not enough to saturate the tensor cores. It is not your fault.",
         ),
         "chinchilla_optimal_allocation": (
-            "Tienes un presupuesto fijo de FLOPs. ¿Lo gastas en un modelo grande con pocos "
-            "datos o en uno pequenyo con muchos?\n\n"
-            "Hoffmann et al. (2022) lo midieron entrenando mas de 400 modelos: los dos deben "
-            "crecer PROPORCIONALMENTE, unos 20 tokens por parametro.",
+            "You have a fixed budget of FLOPs. Do you spend it on a large model with little "
+            "data or a small one with a lot?\n\n"
+            "Hoffmann et al. (2022) measured it by training more than 400 models: both should "
+            "grow PROPORTIONALLY, about 20 tokens per parameter.",
 
-            "Partiendo de C = 6ND (modulo 01) y de D = k*N:\n\n"
+            "Starting from C = 6ND (module 01) and D = k*N:\n\n"
             "    C = 6 * N * (k*N) = 6k * N^2\n\n"
             "    N = sqrt( C / (6*k) )\n"
             "    D = k * N\n\n"
-            "Valida que el presupuesto sea positivo. Devuelve un dict con `params`, "
-            "`tokens`, `tokens_per_param` y `compute`.",
+            "Validate that the budget is positive. Return a dict with `params`, `tokens`, "
+            "`tokens_per_param` and `compute`.",
 
             "    if compute_budget <= 0:\n"
             "        raise ValueError(...)\n"
             "    params = (compute_budget / (6 * tokens_per_param)) ** 0.5\n"
             "    tokens = tokens_per_param * params\n\n"
-            "LA COMPROBACION QUE DA CONFIANZA: metele el presupuesto real de Chinchilla, "
-            "5.88e23 FLOPs. La formula predice 70,0 mil millones de parametros, y el modelo "
-            "real tenia exactamente 70B.\n\n"
-            "Hay un test que lo verifica, y verlo funcionar con un caso historico da bastante "
-            "mas confianza que leer la formula.",
+            "THE CHECK THAT BUILDS CONFIDENCE: feed it Chinchilla's real budget, 5.88e23 "
+            "FLOPs. The formula predicts 70.0 billion parameters, and the real model had "
+            "exactly 70B.\n\n"
+            "There is a test that verifies this, and seeing it work on a historical case "
+            "gives a good deal more confidence than reading the formula.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 13
-    "13_entrenamiento_final": {
+    # ------------------------------------------------------------------ module 13
+    "13_final_training": {
         "overfit_single_batch": (
-            "Un modelo con millones de parametros tiene capacidad de sobra para memorizar "
-            "cuatro secuencias. Si le das el MISMO batch una y otra vez, la perdida TIENE "
-            "que bajar practicamente a cero.\n\n"
-            "Si no baja, hay un bug. Y lo sabes en 30 segundos en vez de en cuatro horas.",
+            "A model with millions of parameters has more than enough capacity to memorize "
+            "four sequences. If you give it the SAME batch over and over, the loss HAS to "
+            "drop to practically zero.\n\n"
+            "If it does not drop, there is a bug. And you know it in 30 seconds instead of "
+            "four hours.",
 
-            "El bucle mas simple posible, sin scheduler, sin acumulacion y sin AMP:\n\n"
-            "    opt = optimizer_factory(model.parameters())   # o AdamW si es None\n"
+            "The simplest possible loop, no scheduler, no accumulation and no AMP:\n\n"
+            "    opt = optimizer_factory(model.parameters())   # or AdamW if None\n"
             "    model.train()\n"
-            "    repetir `steps` veces:\n"
-            "        _, perdida = model(x, y)\n"
+            "    repeat `steps` times:\n"
+            "        _, loss = model(x, y)\n"
             "        opt.zero_grad(set_to_none=True)\n"
-            "        perdida.backward()\n"
+            "        loss.backward()\n"
             "        opt.step()\n"
-            "        historial.append(float(perdida.detach()))\n\n"
-            "Cuantas menos piezas, menos sitios donde pueda esconderse un bug. Por eso este "
-            "bucle es deliberadamente pelado.",
+            "        history.append(float(loss.detach()))\n\n"
+            "The fewer moving parts, the fewer places a bug can hide. That is why this loop "
+            "is deliberately bare.",
 
-            "Tres detalles:\n\n"
-            "1. El `model.train()` NO es decorativo. Si el modelo venia en modo eval, el "
-            "dropout estaria desactivado y no estarias probando el mismo camino de codigo "
-            "que usara el entrenamiento real. Hay un test que lo comprueba.\n\n"
-            "2. `float(perdida.detach())` y no `float(perdida)`: sin el detach, PyTorch "
-            "lanza un warning sobre convertir tensores con gradiente a escalares.\n\n"
-            "3. `optimizer_factory` es opcional: si es None, usa "
+            "Three details:\n\n"
+            "1. The `model.train()` is NOT decorative. If the model came in eval mode, "
+            "dropout would be off and you would not be testing the same code path real "
+            "training uses. There is a test that checks it.\n\n"
+            "2. `float(loss.detach())` and not `float(loss)`: without the detach, PyTorch "
+            "raises a warning about converting tensors with gradients to scalars.\n\n"
+            "3. `optimizer_factory` is optional: if it is None, use "
             "`torch.optim.AdamW(params, lr=lr)`.\n\n"
-            "AVISO: si la perdida baja a cero DEMASIADO deprisa (en cinco pasos), sospecha de "
-            "una fuga de informacion. Revisa que los targets vayan desplazados un token "
-            "respecto a la entrada.",
+            "WARNING: if the loss drops to zero TOO fast (in five steps), suspect an "
+            "information leak. Check that the targets are shifted by one token relative to "
+            "the input.",
         ),
         "format_eta": (
-            "Formatear una duracion para que se lea de un vistazo. Parece cosmetico y no lo "
-            "es: vas a mirar ese numero muchas veces durante una tirada de horas, y '1h 2m' "
-            "se lee al instante mientras que '3725 s' hay que dividirlo mentalmente.",
+            "Formatting a duration so it reads at a glance. It looks cosmetic and it is not: "
+            "you are going to look at that number many times during a run that lasts hours, "
+            "and '1h 2m' reads instantly while '3725 s' has to be divided in your head.",
 
-            "Cuatro tramos:\n\n"
+            "Four segments:\n\n"
             "    < 60      ->  '{s}s'\n"
             "    < 3600    ->  '{m}m {s}s'\n"
-            "    < 86400   ->  '{h}h {m}m'      <- sin segundos\n"
-            "    resto     ->  '{d}d {h}h'\n\n"
-            "A partir de una hora se dejan de mostrar los segundos: cuando faltan dos horas, "
-            "los segundos son ruido.\n\n"
-            "Division entera (`//`) y modulo (`%`) hacen todo el trabajo.",
+            "    < 86400   ->  '{h}h {m}m'      <- no seconds\n"
+            "    otherwise ->  '{d}d {h}h'\n\n"
+            "Past an hour the seconds stop being shown: when two hours are left, seconds are "
+            "noise.\n\n"
+            "Integer division (`//`) and modulo (`%`) do all the work.",
 
             "    if not math.isfinite(seconds) or seconds < 0:\n"
             "        return '?'\n"
-            "    segundos = int(seconds)\n"
-            "    if segundos < 60:    return f'{segundos}s'\n"
-            "    if segundos < 3600:  return f'{segundos//60}m {segundos%60}s'\n"
-            "    if segundos < 86400: return f'{segundos//3600}h {(segundos%3600)//60}m'\n"
-            "    return f'{segundos//86400}d {(segundos%86400)//3600}h'\n\n"
-            "El `math.isfinite()` cubre inf, -inf y nan de una vez. Devolver '?' es mas "
-            "honesto que inventarse un numero cuando todavia no hay datos para estimar, y "
-            "evita imprimir cosas como '-1s' o 'infd 0h'.",
+            "    secs = int(seconds)\n"
+            "    if secs < 60:    return f'{secs}s'\n"
+            "    if secs < 3600:  return f'{secs//60}m {secs%60}s'\n"
+            "    if secs < 86400: return f'{secs//3600}h {(secs%3600)//60}m'\n"
+            "    return f'{secs//86400}d {(secs%86400)//3600}h'\n\n"
+            "The `math.isfinite()` covers inf, -inf and nan in one go. Returning '?' is more "
+            "honest than inventing a number when there is not enough data to estimate yet, "
+            "and it avoids printing things like '-1s' or 'infd 0h'.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 14
-    "14_inferencia": {
+    # ------------------------------------------------------------------ module 14
+    "14_inference": {
         "apply_repetition_penalty": (
-            "Un parche directo contra el texto repetitivo: si un token ya ha aparecido, se "
-            "le baja el logit para que sea menos probable que vuelva a salir.",
+            "A blunt patch against repetitive text: if a token has already appeared, its "
+            "logit is lowered so it is less likely to come out again.",
 
-            "El detalle que casi todo el mundo implementa mal:\n\n"
-            "    logit > 0  ->  logit / penalty      lo acerca a cero\n"
-            "    logit < 0  ->  logit * penalty      lo aleja de cero, HACIA ABAJO\n\n"
-            "Con penalty=2.0:  +3.0 -> +1.5   y   -3.0 -> -6.0\n\n"
-            "Si dividieras SIEMPRE, el -3.0 pasaria a -1.5 y el token se volveria MAS "
-            "probable. Y como los logits negativos son la mayoria, estarias premiando casi "
-            "todo lo que ya salio.",
+            "The detail almost everyone gets wrong:\n\n"
+            "    logit > 0  ->  logit / penalty      moves it towards zero\n"
+            "    logit < 0  ->  logit * penalty      moves it away from zero, DOWNWARDS\n\n"
+            "With penalty=2.0:  +3.0 -> +1.5   and   -3.0 -> -6.0\n\n"
+            "If you ALWAYS divided, the -3.0 would become -1.5 and the token would become "
+            "MORE likely. And since negative logits are the majority, you would be rewarding "
+            "almost everything that already came out.",
 
-            "    salida = logits.clone()\n"
-            "    for fila in range(logits.shape[0]):\n"
-            "        vistos = torch.unique(generated[fila])\n"
-            "        valores = salida[fila, vistos]\n"
-            "        salida[fila, vistos] = torch.where(\n"
-            "            valores > 0, valores / penalty, valores * penalty\n"
+            "    out = logits.clone()\n"
+            "    for row in range(logits.shape[0]):\n"
+            "        seen = torch.unique(generated[row])\n"
+            "        values = out[row, seen]\n"
+            "        out[row, seen] = torch.where(\n"
+            "            values > 0, values / penalty, values * penalty\n"
             "        )\n"
-            "    return salida\n\n"
-            "El `torch.unique` evita penalizar dos veces un token que salio dos veces. Y el "
-            "`.clone()` es para no modificar la entrada.",
+            "    return out\n\n"
+            "The `torch.unique` avoids penalizing twice a token that came out twice. And the "
+            "`.clone()` is so you do not modify the input.",
         ),
         "top_k_filter": (
-            "Con vocabulario de 4096 hay miles de tokens con probabilidad diminuta pero no "
-            "nula. Sumadas, esa cola larga puede llevarse un 20% de la masa, y de vez en "
-            "cuando sale una y descarrila la frase.\n\n"
-            "Top-k la corta en seco: solo sobreviven los k mayores.",
+            "With a 4096-token vocabulary there are thousands of tokens with tiny but "
+            "non-zero probability. Added up, that long tail can carry 20% of the mass, and "
+            "every so often one comes out and derails the sentence.\n\n"
+            "Top-k cuts it dead: only the k largest survive.",
 
-            "    umbral = torch.topk(logits, k, dim=-1).values[..., -1:]\n"
-            "    return logits.masked_fill(logits < umbral, float('-inf'))\n\n"
-            "`torch.topk(...).values[..., -1:]` es el k-esimo logit mayor, o sea el umbral.\n\n"
-            "Si k <= 0 o k >= vocab_size, devuelve los logits sin tocar.",
+            "    threshold = torch.topk(logits, k, dim=-1).values[..., -1:]\n"
+            "    return logits.masked_fill(logits < threshold, float('-inf'))\n\n"
+            "`torch.topk(...).values[..., -1:]` is the k-th largest logit, i.e. the "
+            "threshold.\n\n"
+            "If k <= 0 or k >= vocab_size, return the logits untouched.",
 
-            "Dos detalles:\n\n"
-            "1. El `[..., -1:]` con DOS PUNTOS conserva la dimension para que el broadcast "
-            "funcione. Con `[..., -1]` la perderias y masked_fill compararia mal.\n\n"
-            "2. Usa `<` y no `<=`: el propio umbral (el k-esimo logit) tiene que "
-            "sobrevivir.\n\n"
-            "Su defecto: k es FIJO. Si el modelo esta segurisimo, k=40 mete 39 alternativas "
-            "malas; si duda entre 100, corta opciones buenas. Eso lo resuelve top-p.",
+            "Two details:\n\n"
+            "1. The `[..., -1:]` with the COLON keeps the dimension so the broadcast works. "
+            "With `[..., -1]` you would lose it and masked_fill would compare wrongly.\n\n"
+            "2. Use `<` and not `<=`: the threshold itself (the k-th logit) has to "
+            "survive.\n\n"
+            "Its flaw: k is FIXED. If the model is dead sure, k=40 lets in 39 bad "
+            "alternatives; if it is torn between 100, it cuts good options. top-p solves "
+            "that.",
         ),
         "top_p_filter": (
-            "Como top-k, pero con un numero VARIABLE de candidatos: se acumula probabilidad "
-            "hasta llegar a `p` y se corta ahi.\n\n"
-            "Si el modelo esta seguro, un token puede acumular el 90% y se queda solo el. Si "
-            "duda entre muchos, se quedan muchos. EL NUMERO DE CANDIDATOS SE ADAPTA, y eso "
-            "es lo que lo hace mejor que top-k.",
+            "Like top-k, but with a VARIABLE number of candidates: probability is accumulated "
+            "until it reaches `p` and it is cut there.\n\n"
+            "If the model is sure, one token can hold 90% and it is kept alone. If it is torn "
+            "between many, many are kept. THE NUMBER OF CANDIDATES ADAPTS, and that is what "
+            "makes it better than top-k.",
 
-            "    ordenados, indices = torch.sort(logits, descending=True, dim=-1)\n"
-            "    probs = F.softmax(ordenados, dim=-1)\n"
-            "    acumulada = torch.cumsum(probs, dim=-1)\n\n"
-            "    quitar = acumulada - probs > p        # la acumulada ANTES de este token\n"
-            "    quitar[..., 0] = False                # el mas probable siempre se queda\n\n"
-            "    a_quitar = quitar.scatter(-1, indices, quitar)\n"
-            "    return logits.masked_fill(a_quitar, float('-inf'))",
+            "    sorted_logits, indices = torch.sort(logits, descending=True, dim=-1)\n"
+            "    probs = F.softmax(sorted_logits, dim=-1)\n"
+            "    cumulative = torch.cumsum(probs, dim=-1)\n\n"
+            "    drop = cumulative - probs > p     # the cumulative BEFORE this token\n"
+            "    drop[..., 0] = False              # the most likely one always stays\n\n"
+            "    to_drop = drop.scatter(-1, indices, drop)\n"
+            "    return logits.masked_fill(to_drop, float('-inf'))",
 
-            "Tres cosas:\n\n"
-            "1. El `- probs`: se compara la acumulada ANTES de incluir el token actual, asi "
-            "que el que CRUZA el umbral todavia entra. La definicion de Holtzman es 'el "
-            "conjunto mas pequenyo cuya masa EXCEDE p', y [0.60, 0.25] = 0.85 no excede 0.9: "
-            "hace falta el tercero. Es un off-by-one que yo mismo tuve mal escribiendo el "
-            "modulo.\n\n"
-            "2. El `quitar[..., 0] = False` NO es opcional: con p=0.5 y un token de "
-            "probabilidad 0.9 te quedarias sin candidatos y multinomial reventaria.\n\n"
-            "3. El `scatter` es lo que mas cuesta ver: has ordenado los logits, asi que las "
-            "marcas estan en orden de probabilidad y no de token. `scatter` las devuelve a "
-            "su sitio.",
+            "Three things:\n\n"
+            "1. The `- probs`: you compare the cumulative BEFORE including the current token, "
+            "so the one that CROSSES the threshold still gets in. Holtzman's definition is "
+            "'the smallest set whose mass EXCEEDS p', and [0.60, 0.25] = 0.85 does not exceed "
+            "0.9: the third one is needed. It is an off-by-one I got wrong myself while "
+            "writing the module.\n\n"
+            "2. The `drop[..., 0] = False` is NOT optional: with p=0.5 and a token of "
+            "probability 0.9 you would be left with no candidates and multinomial would blow "
+            "up.\n\n"
+            "3. The `scatter` is the hardest part to see: you sorted the logits, so the marks "
+            "are in probability order and not token order. `scatter` puts them back where "
+            "they belong.",
         ),
         "KVCache": (
-            "Al generar el token 100, la version ingenua vuelve a pasar los 100 tokens por "
-            "el modelo, aunque los 99 primeros no han cambiado. Generar N tokens cuesta "
-            "O(N^2) en vez de O(N).\n\n"
-            "La cache guarda las claves y valores ya calculados. Lo que NO se puede cachear "
-            "son las queries: cada token nuevo necesita su propia pregunta.",
+            "When generating token 100, the naive version runs all 100 tokens through the "
+            "model again, even though the first 99 have not changed. Generating N tokens "
+            "costs O(N^2) instead of O(N).\n\n"
+            "The cache stores the keys and values already computed. What CANNOT be cached are "
+            "the queries: every new token needs its own question.",
 
-            "La clase es sencilla:\n\n"
-            "    __init__(n_layers):  dos listas de n_layers elementos, todos None\n"
-            "    update(layer, k, v): si es None, guarda; si no, torch.cat(..., dim=-2)\n"
-            "                         y devuelve las K y V COMPLETAS\n"
-            "    seq_len:             0 si vacia, si no keys[0].shape[-2]\n"
-            "    reset():             vuelve a poner todo a None\n"
-            "    memory_bytes():      suma numel() * element_size() de lo que no sea None",
+            "The class is simple:\n\n"
+            "    __init__(n_layers):  two lists of n_layers elements, all None\n"
+            "    update(layer, k, v): if None, store; otherwise torch.cat(..., dim=-2)\n"
+            "                         and return the FULL K and V\n"
+            "    seq_len:             0 if empty, otherwise keys[0].shape[-2]\n"
+            "    reset():             set everything back to None\n"
+            "    memory_bytes():      sum numel() * element_size() of whatever is not None",
 
-            "El `dim=-2` es la dimension de tiempo con la forma (B, n_heads, T, head_dim). "
-            "Usa indice NEGATIVO: con dim=2 te funcionaria aqui y se romperia si algun dia "
-            "cambia el numero de dimensiones.\n\n"
-            "La dificultad de este modulo no esta aqui, esta en el ejercicio 5: hacer que la "
-            "cache de EXACTAMENTE el mismo resultado.",
+            "The `dim=-2` is the time dimension with the shape (B, n_heads, T, head_dim). Use "
+            "a NEGATIVE index: with dim=2 it would work here and break if the number of "
+            "dimensions ever changed.\n\n"
+            "The difficulty of this module is not here, it is in exercise 5: making the cache "
+            "give EXACTLY the same result.",
         ),
         "generate_with_cache": (
-            "El mismo bucle autorregresivo del modulo 00 (contexto -> distribucion -> "
-            "muestrear -> anyadir -> repetir), ahora con un modelo de verdad y con cache.\n\n"
-            "Dos fases: PREFILL (se pasa el prompt entero y se llena la cache) y DECODE (en "
-            "cada paso entra SOLO el token nuevo).",
+            "The same autoregressive loop as module 00 (context -> distribution -> sample -> "
+            "append -> repeat), now with a real model and a cache.\n\n"
+            "Two phases: PREFILL (the whole prompt is passed in and the cache is filled) and "
+            "DECODE (at each step ONLY the new token goes in).",
 
-            "El orden de los filtros importa:\n\n"
-            "    1. penalizacion de repeticion   (sobre los logits crudos)\n"
-            "    2. temperatura                  (dividir)\n"
+            "The order of the filters matters:\n\n"
+            "    1. repetition penalty   (on the raw logits)\n"
+            "    2. temperature          (divide)\n"
             "    3. top-k\n"
             "    4. top-p\n\n"
-            "La temperatura va antes de los filtros porque cambia las masas acumuladas que "
-            "mira top-p.\n\n"
-            "Y usa `logits[:, -1, :].float()`: bajo AMP los logits llegan en fp16 y "
-            "multinomial puede dar resultados raros con probabilidades muy pequenyas.",
+            "Temperature goes before the filters because it changes the cumulative masses "
+            "top-p looks at.\n\n"
+            "And use `logits[:, -1, :].float()`: under AMP the logits arrive in fp16 and "
+            "multinomial can give odd results with very small probabilities.",
 
-            "EL DETALLE QUE ROMPE TODO: RoPE tiene que rotar el token nuevo con el angulo de "
-            "su POSICION REAL.\n\n"
-            "Al generar el token 50 le pasas un tensor de longitud 1. Si aplicas RoPE tal "
-            "cual, lo rota como si fuera la posicion 0, y la generacion con cache produce "
-            "texto distinto y peor que sin ella. Nada falla: el modelo simplemente escribe "
-            "mal.\n\n"
-            "Por eso la atencion recibe `pos_offset` y recorta las tablas:\n"
+            "THE DETAIL THAT BREAKS EVERYTHING: RoPE has to rotate the new token by the angle "
+            "of its REAL POSITION.\n\n"
+            "When generating token 50 you pass in a tensor of length 1. If you apply RoPE as "
+            "is, it rotates it as if it were position 0, and cached generation produces text "
+            "that is different from and worse than uncached generation. Nothing fails: the "
+            "model simply writes badly.\n\n"
+            "That is why attention receives `pos_offset` and slices the tables:\n"
             "    cos_t = cos[pos_offset : pos_offset + seq_len]\n\n"
-            "Hay un test que compara con la generacion sin cache y exige salida IDENTICA.\n\n"
-            "Y PARA al llegar al contexto maximo, en vez de recortar: recortar con cache "
-            "exigiria remapear las posiciones de RoPE de todo lo que queda (sliding window "
-            "attention). Parar es lo honesto.",
+            "There is a test that compares against uncached generation and requires IDENTICAL "
+            "output.\n\n"
+            "And it STOPS on reaching the maximum context, instead of truncating: truncating "
+            "with a cache would require remapping the RoPE positions of everything that "
+            "remains (sliding window attention). Stopping is the honest option.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 15
-    "15_evaluacion": {
+    # ------------------------------------------------------------------ module 15
+    "15_evaluation": {
         "perplexity_from_loss": (
-            "La perdida en nats no se lee bien: 1.60 no dice mucho. La perplejidad si, "
-            "porque se interpreta como ENTRE CUANTAS OPCIONES equiprobables esta dudando el "
-            "modelo.",
+            "A loss in nats does not read well: 1.60 does not say much. Perplexity does, "
+            "because it is interpreted as HOW MANY equally likely OPTIONS the model is torn "
+            "between.",
 
-            "    perplejidad = exp(perdida)\n\n"
-            "    perdida 8.317  ->  4096   (sin entrenar: duda entre todo el vocabulario)\n"
-            "    perdida 1.60   ->  4.95   (duda entre unas 5 opciones)\n"
-            "    perdida 0      ->  1      (perfecto)\n\n"
-            "Es una linea. Lo que importa es saber interpretarla.",
+            "    perplexity = exp(loss)\n\n"
+            "    loss 8.317  ->  4096   (untrained: torn between the whole vocabulary)\n"
+            "    loss 1.60   ->  4.95   (torn between about 5 options)\n"
+            "    loss 0      ->  1      (perfect)\n\n"
+            "It is one line. What matters is knowing how to read it.",
 
             "    if not math.isfinite(loss):\n"
             "        return float('inf')\n"
             "    return math.exp(loss)\n\n"
-            "La guarda no es decorativa: `math.exp(inf)` lanza OverflowError, y en medio de "
-            "una evaluacion eso te deja sin saber que paso.\n\n"
-            "La comprobacion util: con perdida ln(V), la perplejidad es exactamente V.",
+            "The guard is not decorative: `math.exp(inf)` raises OverflowError, and in the "
+            "middle of an evaluation that leaves you with no idea what happened.\n\n"
+            "The useful check: with a loss of ln(V), the perplexity is exactly V.",
         ),
         "bits_per_byte": (
-            "La perplejidad depende del tokenizador: si tu vocabulario parte las palabras en "
-            "trozos mas pequenyos, cada token es mas facil de predecir y tu numero sale "
-            "mejor SIN QUE EL MODELO SEA MEJOR.\n\n"
-            "Comparar perplejidades entre modelos con tokenizadores distintos no significa "
-            "nada, y se hace constantemente.\n\n"
-            "La solucion: normalizar por BYTES del texto original.",
+            "Perplexity depends on the tokenizer: if your vocabulary splits words into "
+            "smaller pieces, each token is easier to predict and your number comes out better "
+            "WITHOUT THE MODEL BEING BETTER.\n\n"
+            "Comparing perplexities across models with different tokenizers means nothing, "
+            "and it is done constantly.\n\n"
+            "The fix: normalize by BYTES of the original text.",
 
-            "    bits_por_byte = (perdida_total_en_nats / ln(2)) / n_bytes\n\n"
-            "El `/ ln(2)` convierte nats a bits: un nat son 1.4427 bits.\n\n"
-            "OJO: el primer argumento es la perdida TOTAL (la suma), no la media. El "
-            "parametro `n_tokens` no se usa en el calculo; esta en la firma para dejarlo "
-            "claro.",
+            "    bits_per_byte = (total_loss_in_nats / ln(2)) / n_bytes\n\n"
+            "The `/ ln(2)` converts nats to bits: one nat is 1.4427 bits.\n\n"
+            "WATCH OUT: the first argument is the TOTAL loss (the sum), not the mean. The "
+            "`n_tokens` parameter is not used in the computation; it is in the signature to "
+            "make that clear.",
 
             "    if n_bytes <= 0:\n"
             "        raise ValueError(...)\n"
             "    return total_loss_nats / math.log(2) / n_bytes\n\n"
-            "La interpretacion, que es bonita: es cuantos bits necesitarias para transmitir "
-            "el texto usando el modelo como compresor. Referencias: gzip ~2.5 bits/byte, un "
-            "buen modelo pequenyo ~1.2, los mejores LLM 0.6-0.8.\n\n"
-            "No es una analogia. Un modelo de lenguaje ES un compresor, y la equivalencia "
-            "entre prediccion y compresion viene de Shannon (1948).",
+            "The interpretation, which is rather nice: it is how many bits you would need to "
+            "transmit the text using the model as a compressor. Reference points: gzip ~2.5 "
+            "bits/byte, a good small model ~1.2, the best LLMs 0.6-0.8.\n\n"
+            "It is not an analogy. A language model IS a compressor, and the equivalence "
+            "between prediction and compression comes from Shannon (1948).",
         ),
         "run_prompt_battery": (
-            "La parte de la evaluacion que ninguna metrica automatica sustituye: hacerle al "
-            "modelo siempre las mismas preguntas y LEER lo que responde.\n\n"
-            "Los seis prompts de `PROMPTS_TINYSTORIES` vienen del paper y cada uno prueba "
-            "algo distinto: continuacion, coherencia causal, seguimiento de objeto, "
-            "resolucion y cierre.",
+            "The part of evaluation that no automatic metric replaces: asking the model the "
+            "same questions every time and READING what it answers.\n\n"
+            "The six prompts in `PROMPTS_TINYSTORIES` come from the paper and each one tests "
+            "something different: continuation, causal coherence, object tracking, resolution "
+            "and closure.",
 
             "    prompts = prompts or PROMPTS_TINYSTORIES\n"
             "    return [\n"
-            "        {'prompt': p, 'que_prueba': etiqueta, 'completion': generate_fn(p)}\n"
-            "        for p, etiqueta in prompts\n"
+            "        {'prompt': p, 'tests': label, 'completion': generate_fn(p)}\n"
+            "        for p, label in prompts\n"
             "    ]\n\n"
-            "`PROMPTS_TINYSTORIES` es una tupla de tuplas (prompt, etiqueta), asi que se "
-            "desempaqueta directamente. Las tres claves tienen que llamarse exactamente asi.",
+            "`PROMPTS_TINYSTORIES` is a tuple of (prompt, label) tuples, so it unpacks "
+            "directly. The three keys have to be named exactly like that.",
 
-            "Por que se pasa `generate_fn` en vez del modelo: encapsula el modelo Y el "
-            "tokenizador, asi que esta funcion no sabe nada de ninguno de los dos. Es el "
-            "mismo patron que `get_batch` en el modulo 04 y `optimizer_factory` en el 13.\n\n"
-            "Y hace el ejercicio testeable con un generador falso.\n\n"
-            "El valor del ejercicio no esta en el codigo (son tres lineas): esta en tener "
-            "una bateria FIJA que puedas volver a pasar cada vez que cambies algo.",
+            "Why `generate_fn` is passed instead of the model: it wraps the model AND the "
+            "tokenizer, so this function knows nothing about either. It is the same pattern "
+            "as `get_batch` in module 04 and `optimizer_factory` in module 13.\n\n"
+            "And it makes the exercise testable with a fake generator.\n\n"
+            "The value of the exercise is not in the code (three lines): it is in having a "
+            "FIXED battery you can rerun every time you change something.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 16
+    # ------------------------------------------------------------------ module 16
     "16_finetuning": {
         "build_chat_template": (
-            "Un modelo preentrenado solo sabe continuar texto. Si le escribes una pregunta, "
-            "lo mas probable es que responda con MAS preguntas: un documento que empieza asi "
-            "suele seguir asi.\n\n"
-            "Para que RESPONDA hay que enseñarle un formato. Eso son los marcadores.",
+            "A pretrained model only knows how to continue text. If you write it a question, "
+            "the most likely thing is that it answers with MORE questions: a document that "
+            "starts like that usually carries on like that.\n\n"
+            "For it to ANSWER you have to teach it a format. That is what the markers are.",
 
-            "    [{'role': 'user', 'content': 'Hola'},\n"
-            "     {'role': 'assistant', 'content': 'Que tal'}]\n\n"
-            "    ->  <|user|>Hola<|end|><|assistant|>Que tal<|end|>\n\n"
-            "Cada mensaje se envuelve en el marcador de su rol y se cierra con `<|end|>`. "
-            "Los marcadores estan en `CHAT_MARKERS`.\n\n"
-            "Con `add_generation_prompt=True` se anyade `<|assistant|>` al final y se deja la "
-            "cadena ABIERTA: es lo que se usa en inferencia.",
+            "    [{'role': 'user', 'content': 'Hello'},\n"
+            "     {'role': 'assistant', 'content': 'How are you'}]\n\n"
+            "    ->  <|user|>Hello<|end|><|assistant|>How are you<|end|>\n\n"
+            "Each message is wrapped in its role's marker and closed with `<|end|>`. The "
+            "markers are in `CHAT_MARKERS`.\n\n"
+            "With `add_generation_prompt=True`, `<|assistant|>` is appended at the end and "
+            "the string is left OPEN: that is what is used at inference time.",
 
-            "    partes = []\n"
-            "    for mensaje in messages:\n"
-            "        rol = mensaje['role']\n"
-            "        if rol not in CHAT_MARKERS:\n"
+            "    parts = []\n"
+            "    for message in messages:\n"
+            "        role = message['role']\n"
+            "        if role not in CHAT_MARKERS:\n"
             "            raise ValueError(...)\n"
-            "        partes.append(f\"{CHAT_MARKERS[rol]}{mensaje['content']}"
+            "        parts.append(f\"{CHAT_MARKERS[role]}{message['content']}"
             "{CHAT_MARKERS['end']}\")\n"
             "    if add_generation_prompt:\n"
-            "        partes.append(CHAT_MARKERS['assistant'])\n"
-            "    return ''.join(partes)\n\n"
-            "El `<|end|>` es lo que le enseña al modelo CUANDO PARAR. Sin un marcador de fin, "
-            "generaria indefinidamente.",
+            "        parts.append(CHAT_MARKERS['assistant'])\n"
+            "    return ''.join(parts)\n\n"
+            "The `<|end|>` is what teaches the model WHEN TO STOP. Without an end marker, it "
+            "would generate indefinitely.",
         ),
         "mask_prompt_tokens": (
-            "En SFT no quieres que el modelo aprenda a GENERAR las preguntas del usuario: "
-            "quieres que aprenda a RESPONDERLAS.\n\n"
-            "Poniendo -100 en las posiciones del prompt, `F.cross_entropy(..., "
-            "ignore_index=-100)` las salta.",
+            "In SFT you do not want the model to learn to GENERATE the user's questions: you "
+            "want it to learn to ANSWER them.\n\n"
+            "By putting -100 at the prompt's positions, `F.cross_entropy(..., "
+            "ignore_index=-100)` skips them.",
 
-            "    input_ids = [10, 11, 12, 20, 21, 22]   con prompt_len = 3\n"
+            "    input_ids = [10, 11, 12, 20, 21, 22]   with prompt_len = 3\n"
             "    targets   = [-100, -100, 20, 21, 22, -100]\n\n"
-            "Fijate: DOS posiciones ignoradas al principio, no tres. Y una al final.\n\n"
+            "Note: TWO ignored positions at the start, not three. And one at the end.\n\n"
             "    targets = [ignore_index] * len(input_ids)\n"
-            "    para i desde prompt_len - 1 hasta len(input_ids) - 2:\n"
+            "    for i from prompt_len - 1 to len(input_ids) - 2:\n"
             "        targets[i] = input_ids[i + 1]",
 
-            "POR QUE DOS Y NO TRES, que es todo el ejercicio.\n\n"
-            "Los targets van DESPLAZADOS un token. Asi que en la posicion 2 (el ULTIMO token "
-            "del prompt) el objetivo ya es input_ids[3] = 20, que es el primer token de la "
-            "RESPUESTA.\n\n"
-            "Y ese si interesa: es justo la transicion 'se acabo la pregunta, me toca "
-            "responder', que es lo mas importante que el modelo tiene que aprender del SFT. "
-            "Si empezaras en prompt_len, te saltarias precisamente esa transicion.\n\n"
-            "Y no da ninguna senyal: solo desperdicias la posicion mas informativa.",
+            "WHY TWO AND NOT THREE, which is the whole exercise.\n\n"
+            "The targets are SHIFTED by one token. So at position 2 (the LAST token of the "
+            "prompt) the target is already input_ids[3] = 20, which is the first token of the "
+            "ANSWER.\n\n"
+            "And that one does matter: it is exactly the transition 'the question is over, my "
+            "turn to answer', which is the most important thing the model has to learn from "
+            "SFT. If you started at prompt_len, you would skip precisely that transition.\n\n"
+            "And it gives no signal at all: you simply waste the most informative position.",
         ),
         "LoRALinear": (
-            "Hacer fine-tuning completo de un modelo grande necesita memoria para los pesos, "
-            "los gradientes Y los estados de Adam: unos 12 bytes por parametro.\n\n"
-            "LoRA parte de una observacion: los cambios que hace el fine-tuning tienen RANGO "
-            "BAJO. Asi que se CONGELA W y se le suma el producto de dos matrices flacas.",
+            "Full fine-tuning of a large model needs memory for the weights, the gradients "
+            "AND Adam's states: about 12 bytes per parameter.\n\n"
+            "LoRA starts from an observation: the changes fine-tuning makes are LOW RANK. So "
+            "W is FROZEN and the product of two thin matrices is added to it.",
 
-            "    salida = x @ W^T  +  (alpha/r) * x @ A^T @ B^T\n\n"
-            "con A de (r, d_in) y B de (d_out, r).\n\n"
-            "Con d_in = d_out = 320 y r = 8:\n"
-            "    W entera:  102.400 parametros\n"
-            "    A y B:       5.120 parametros    (el 5%)\n\n"
-            "Submodulos: `base` (la capa original), `lora_A`, `lora_B` y `lora_dropout`.\n\n"
-            "Y no olvides congelar la base:\n"
+            "    output = x @ W^T  +  (alpha/r) * x @ A^T @ B^T\n\n"
+            "with A of size (r, d_in) and B of size (d_out, r).\n\n"
+            "With d_in = d_out = 320 and r = 8:\n"
+            "    full W:  102,400 parameters\n"
+            "    A and B:   5,120 parameters    (5%)\n\n"
+            "Submodules: `base` (the original layer), `lora_A`, `lora_B` and "
+            "`lora_dropout`.\n\n"
+            "And do not forget to freeze the base:\n"
             "    for p in self.base.parameters():\n"
             "        p.requires_grad = False",
 
-            "LA INICIALIZACION NO ES SIMETRICA, y es lo importante:\n\n"
+            "THE INITIALIZATION IS NOT SYMMETRIC, and that is the important part:\n\n"
             "    lora_A -> nn.init.kaiming_uniform_(self.lora_A, a=math.sqrt(5))\n"
-            "    lora_B -> CEROS\n\n"
-            "Con B = 0, el producto BA vale cero al empezar y la capa es EXACTAMENTE la "
-            "original: el fine-tuning arranca sin perturbar nada. Hay un test que lo "
-            "comprueba.\n\n"
-            "¿Y por que no las dos a cero? Porque entonces el gradiente de ambas seria cero "
-            "-cada una multiplica a la otra- y nunca aprenderian.\n\n"
-            "Cuidado con las transpuestas: lora_A es (r, d_in), asi que `x @ lora_A.T` da "
-            "(..., r), y luego `@ lora_B.T` con lora_B de (d_out, r) da (..., d_out).",
+            "    lora_B -> ZEROS\n\n"
+            "With B = 0, the product BA is zero at the start and the layer is EXACTLY the "
+            "original: fine-tuning begins without perturbing anything. There is a test that "
+            "checks it.\n\n"
+            "So why not both at zero? Because then the gradient of both would be zero -each "
+            "multiplies the other- and they would never learn.\n\n"
+            "Watch the transposes: lora_A is (r, d_in), so `x @ lora_A.T` gives (..., r), and "
+            "then `@ lora_B.T` with lora_B of (d_out, r) gives (..., d_out).",
         ),
         "merge_lora_weights": (
-            "Durante el entrenamiento, LoRA anyade dos matmuls por capa, y eso se nota en "
-            "inferencia.\n\n"
-            "Fundiendo los adaptadores en la matriz base, el modelo resultante es "
-            "INDISTINGUIBLE de uno normal: mismo coste, mismas formas, y se puede servir sin "
-            "ninguna dependencia de LoRA.",
+            "During training, LoRA adds two matmuls per layer, and that shows up at inference "
+            "time.\n\n"
+            "By merging the adapters into the base matrix, the resulting model is "
+            "INDISTINGUISHABLE from a normal one: same cost, same shapes, and it can be "
+            "served with no LoRA dependency at all.",
 
-            "    W_nueva = W + (alpha/r) * (B @ A)\n\n"
-            "Fijate en el orden `B @ A`: B es (d_out, r) y A es (r, d_in), asi que el "
-            "producto da (d_out, d_in), que es la forma de `weight` en un nn.Linear. Al reves "
-            "las formas no cuadrarian.\n\n"
-            "Devuelve un `nn.Linear` normal, conservando el sesgo si lo habia.",
+            "    W_new = W + (alpha/r) * (B @ A)\n\n"
+            "Note the order `B @ A`: B is (d_out, r) and A is (r, d_in), so the product gives "
+            "(d_out, d_in), which is the shape of `weight` in an nn.Linear. The other way "
+            "round the shapes would not fit.\n\n"
+            "Return a plain `nn.Linear`, keeping the bias if there was one.",
 
-            "    fundida = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)\n"
+            "    merged = nn.Linear(d_in, d_out, bias=layer.base.bias is not None)\n"
             "    with torch.no_grad():\n"
             "        delta = (layer.lora_B @ layer.lora_A) * layer.scaling\n"
-            "        fundida.weight.copy_(layer.base.weight + delta)\n"
+            "        merged.weight.copy_(layer.base.weight + delta)\n"
             "        if layer.base.bias is not None:\n"
-            "            fundida.bias.copy_(layer.base.bias)\n"
-            "    return fundida\n\n"
-            "Usa `.copy_()` en vez de asignar: asi conservas el tensor que ya creo nn.Linear "
-            "con sus metadatos.\n\n"
-            "Esto es lo que hace util a LoRA frente a otros metodos de fine-tuning "
-            "eficiente: la adaptacion es EXACTAMENTE una suma de matrices, asi que se "
-            "absorbe sin aproximar nada.",
+            "            merged.bias.copy_(layer.base.bias)\n"
+            "    return merged\n\n"
+            "Use `.copy_()` instead of assigning: that way you keep the tensor nn.Linear "
+            "already created, with its metadata.\n\n"
+            "This is what makes LoRA useful compared with other parameter-efficient "
+            "fine-tuning methods: the adaptation is EXACTLY a sum of matrices, so it is "
+            "absorbed without approximating anything.",
         ),
     },
-    # ------------------------------------------------------------------ modulo 17
+    # ------------------------------------------------------------------ module 17
     "17_extra": {
         "quantize_int8_symmetric": (
-            "Un float32 ocupa 4 bytes y un int8 uno solo: el modelo ocupa la cuarta parte.\n\n"
-            "El truco es guardar, junto a los enteros, una ESCALA que permite recuperar los "
-            "valores aproximados.",
+            "A float32 takes 4 bytes and an int8 only one: the model takes a quarter of the "
+            "space.\n\n"
+            "The trick is storing, alongside the integers, a SCALE that lets you recover the "
+            "approximate values.",
 
-            "Con W = [0.12, -0.45, 0.03, 0.28], el mayor en valor absoluto es 0.45:\n\n"
-            "    escala = 0.45 / 127 = 0.003543\n"
-            "    W_int8 = round(W / escala) = [34, -127, 8, 79]\n\n"
-            "Los pasos:\n"
-            "    1. max_abs = weight.abs().amax(dim=-1, keepdim=True)   si es por canal\n"
-            "    2. escala = (max_abs / 127.0).clamp_min(1e-12)\n"
-            "    3. torch.round(weight / escala).clamp(-127, 127).to(torch.int8)",
+            "With W = [0.12, -0.45, 0.03, 0.28], the largest in absolute value is 0.45:\n\n"
+            "    scale  = 0.45 / 127 = 0.003543\n"
+            "    W_int8 = round(W / scale) = [34, -127, 8, 79]\n\n"
+            "The steps:\n"
+            "    1. max_abs = weight.abs().amax(dim=-1, keepdim=True)   if per channel\n"
+            "    2. scale = (max_abs / 127.0).clamp_min(1e-12)\n"
+            "    3. torch.round(weight / scale).clamp(-127, 127).to(torch.int8)",
 
-            "Tres detalles:\n\n"
-            "1. POR QUE 127 Y NO 128: int8 va de -128 a 127. Con 127 el rango queda "
-            "SIMETRICO y el cero se representa exactamente. En una matriz con muchos valores "
-            "pequenyos, eso evita un sesgo sistematico que se acumularia capa tras capa.\n\n"
-            "2. El `clamp_min(1e-12)` evita dividir por cero si una fila es todo ceros.\n\n"
-            "3. El `clamp(-127, 127)` protege del redondeo en el borde: sin el, un valor "
-            "justo en el maximo podria dar 128, que no cabe en int8 y haria wrap a -128. El "
-            "peso mas grande se convertiria en el mas negativo, en silencio.\n\n"
-            "Por canal siempre es mejor que por tensor (0.71% frente a 1.07% de error): una "
-            "sola fila con valores grandes no arrastra a las demas.",
+            "Three details:\n\n"
+            "1. WHY 127 AND NOT 128: int8 runs from -128 to 127. With 127 the range stays "
+            "SYMMETRIC and zero is represented exactly. In a matrix with many small values, "
+            "that avoids a systematic bias that would build up layer after layer.\n\n"
+            "2. The `clamp_min(1e-12)` avoids dividing by zero if a row is all zeros.\n\n"
+            "3. The `clamp(-127, 127)` protects against rounding at the edge: without it, a "
+            "value right at the maximum could give 128, which does not fit in int8 and would "
+            "wrap to -128. The largest weight would silently become the most negative one.\n\n"
+            "Per channel is always better than per tensor (0.71% versus 1.07% error): a "
+            "single row with large values does not drag the others down with it.",
         ),
         "dequantize_int8": (
-            "Lo contrario del ejercicio 1: multiplicar por la escala para volver a float.\n\n"
-            "El resultado NO es igual al original: se ha perdido informacion. Eso es lo que "
-            "se paga por ocupar la cuarta parte.",
+            "The opposite of exercise 1: multiply by the scale to get back to float.\n\n"
+            "The result is NOT equal to the original: information has been lost. That is the "
+            "price of taking a quarter of the space.",
 
             "    return quantized.to(torch.float32) * scale\n\n"
-            "Una linea.",
+            "One line.",
 
-            "El `.to(torch.float32)` va ANTES de multiplicar. Si multiplicaras el int8 "
-            "directamente, PyTorch haria la operacion en enteros y el resultado seria "
-            "basura.",
+            "The `.to(torch.float32)` goes BEFORE the multiplication. If you multiplied the "
+            "int8 directly, PyTorch would do the operation in integers and the result would "
+            "be garbage.",
         ),
         "quantization_error": (
-            "Cuantizar, descuantizar, y comparar con el original. Es la forma de saber si "
-            "merece la pena antes de aplicarlo al modelo entero.",
+            "Quantize, dequantize, and compare with the original. It is how you find out "
+            "whether it is worth it before applying it to the whole model.",
 
-            "Las metricas que hay que devolver:\n\n"
-            "    error_relativo   = ||original - recuperado|| / ||original||\n"
-            "    error_maximo     = max(|diferencia|)\n"
-            "    error_medio      = mean(|diferencia|)\n"
-            "    compresion       = bytes por elemento original / cuantizado\n"
-            "    bytes_original   = numel() * element_size()\n"
-            "    bytes_cuantizado = los del int8 MAS los de las escalas\n\n"
-            "`tensor.element_size()` da los bytes por elemento (4 para float32, 1 para "
-            "int8). Con eso la compresion sale sola, sin numeros magicos.",
+            "The metrics to return:\n\n"
+            "    relative_error  = ||original - recovered|| / ||original||\n"
+            "    max_error       = max(|difference|)\n"
+            "    mean_error      = mean(|difference|)\n"
+            "    compression     = bytes per original element / quantized\n"
+            "    original_bytes  = numel() * element_size()\n"
+            "    quantized_bytes = the int8's PLUS the scales'\n\n"
+            "`tensor.element_size()` gives the bytes per element (4 for float32, 1 for int8). "
+            "With that, compression falls out on its own, with no magic numbers.",
 
-            "El error RELATIVO es la metrica que conviene mirar: es independiente de la "
-            "escala de los datos, asi que puedes comparar capas distintas. Hay un test que "
-            "multiplica los pesos por 1000 y comprueba que no cambia.\n\n"
-            "Y las escalas TAMBIEN OCUPAN: incluirlas en `bytes_cuantizado` es lo honesto. "
-            "Con una por fila son despreciables, pero contarlas cuesta nada.\n\n"
-            "Con pesos de una red entrenada, int8 por canal ronda el 0.5-1% de error. Que "
-            "eso apenas afecte a la calidad del modelo es un HECHO EMPIRICO, no un teorema.",
+            "The RELATIVE error is the metric worth looking at: it is independent of the "
+            "scale of the data, so you can compare different layers. There is a test that "
+            "multiplies the weights by 1000 and checks that it does not change.\n\n"
+            "And the scales TAKE UP SPACE TOO: including them in `quantized_bytes` is the "
+            "honest thing to do. With one per row they are negligible, but counting them "
+            "costs nothing.\n\n"
+            "With the weights of a trained network, per-channel int8 is around 0.5-1% error. "
+            "That this barely affects the model's quality is an EMPIRICAL FACT, not a "
+            "theorem.",
         ),
     },
 }
 
 
 def get_hints(module_id: str, exercise_name: str) -> tuple[str, ...]:
-    """Pistas de un ejercicio, de menos a mas explicita. Tupla vacia si no hay."""
+    """An exercise's hints, from least to most explicit. Empty tuple if there are none."""
     return HINTS.get(module_id, {}).get(exercise_name, ())
 
 

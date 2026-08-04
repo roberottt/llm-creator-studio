@@ -1,15 +1,15 @@
-"""Utilidades compartidas por los tests de los modulos.
+"""Helpers shared by the module tests.
 
-El patron habitual para validar una `nn.Module` que has escrito tu:
+The usual pattern for validating an `nn.Module` you wrote yourself:
 
     ref = ReferenceRMSNorm(320)
-    mine = MiRMSNorm(320)
-    copy_parameters(ref, mine)          # mismos pesos exactos
-    assert_close(mine(x), ref(x))       # entonces la salida debe coincidir
+    mine = MyRMSNorm(320)
+    copy_parameters(ref, mine)          # exactly the same weights
+    assert_close(mine(x), ref(x))       # then the output must match
 
-Copiar los pesos es imprescindible: dos modulos con la misma arquitectura pero inicializados
-distinto dan salidas distintas y el test no diria nada. Lo que se compara es la FUNCION que
-calcula el modulo, no sus valores iniciales.
+Copying the weights is essential: two modules with the same architecture but different
+initializations produce different outputs and the test would say nothing. What is being
+compared is the FUNCTION the module computes, not its initial values.
 """
 
 from __future__ import annotations
@@ -20,20 +20,20 @@ import torch
 
 
 def load_exercises(test_file: str) -> Any:
-    """Carga el `ejercicios.py` del modulo al que pertenece este test.
+    """Load the `exercises.py` of the module this test belongs to.
 
-    Uso, siempre igual, al principio de cada `test_NN.py`:
+    Usage, always the same, at the top of every `test_NN.py`:
 
         from llmfs.testing import load_exercises
-        ej = load_exercises(__file__)
+        ex = load_exercises(__file__)
 
-    A diferencia del bridge, aqui NO hay red de seguridad: los tests validan TU codigo,
-    asi que si un ejercicio no esta hecho el test tiene que ponerse rojo.
+    Unlike the bridge, there is NO safety net here: the tests validate YOUR code, so if an
+    exercise is not done the test has to go red.
 
-    Excepcion: con `LLMFS_TEST_REFERENCE=1` se devuelve `llmfs.reference` en lugar de tus
-    ejercicios. Eso hace que la suite entera valide el propio curso: si un test falla en
-    ese modo, el test esta mal escrito o la referencia esta mal, y en cualquier caso es un
-    bug del repo y no tuyo. Es lo que corre `make test-reference`.
+    Exception: with `LLMFS_TEST_REFERENCE=1` it returns `llmfs.reference` instead of your
+    exercises. That makes the whole suite validate the course itself: if a test fails in
+    that mode, either the test is badly written or the reference is wrong, and either way
+    it is a bug in the repo and not yours. That is what `make test-reference` runs.
     """
     import os
 
@@ -44,38 +44,38 @@ def load_exercises(test_file: str) -> Any:
 
     from llmfs.bridge import exercises
 
-    modulo = exercises(test_file)
-    if modulo is None:
+    module = exercises(test_file)
+    if module is None:
         raise AssertionError(
-            "No se ha podido importar ejercicios.py de este modulo. "
-            "Mira el traceback de mas arriba: casi siempre es un error de sintaxis."
+            "Could not import this module's exercises.py. "
+            "Look at the traceback above: it is almost always a syntax error."
         )
-    return modulo
+    return module
 
 
 def copy_parameters(source: torch.nn.Module, target: torch.nn.Module) -> None:
-    """Copia los pesos de `source` a `target`.
+    """Copy the weights from `source` into `target`.
 
-    Falla con un mensaje util si los nombres o las formas no coinciden, que es la forma
-    habitual de descubrir que tu modulo tiene la arquitectura mal montada.
+    Fails with a useful message if the names or shapes do not match, which is the usual way
+    of discovering that your module has the architecture wired up wrong.
     """
     src_state = source.state_dict()
     dst_state = target.state_dict()
 
-    solo_ref = sorted(set(src_state) - set(dst_state))
-    solo_tuyo = sorted(set(dst_state) - set(src_state))
-    if solo_ref or solo_tuyo:
+    only_ref = sorted(set(src_state) - set(dst_state))
+    only_yours = sorted(set(dst_state) - set(src_state))
+    if only_ref or only_yours:
         raise AssertionError(
-            "Los parametros no coinciden con los de la referencia.\n"
-            f"  te faltan  : {solo_ref}\n"
-            f"  te sobran  : {solo_tuyo}\n"
-            "Revisa los nombres de los submodulos en el docstring del ejercicio."
+            "The parameters do not match the reference's.\n"
+            f"  missing in yours : {only_ref}\n"
+            f"  extra in yours   : {only_yours}\n"
+            "Check the submodule names in the exercise docstring."
         )
 
     for name, tensor in src_state.items():
         if tensor.shape != dst_state[name].shape:
             raise AssertionError(
-                f"`{name}` tiene forma {tuple(dst_state[name].shape)} y deberia tener "
+                f"`{name}` has shape {tuple(dst_state[name].shape)} and should have "
                 f"{tuple(tensor.shape)}."
             )
     target.load_state_dict(src_state)
@@ -86,19 +86,19 @@ def assert_close(
     expected: torch.Tensor,
     rtol: float = 1e-5,
     atol: float = 1e-6,
-    what: str = "el resultado",
+    what: str = "the result",
 ) -> None:
-    """`torch.allclose` con un mensaje de error que sirve para depurar.
+    """`torch.allclose` with an error message you can actually debug with.
 
-    Informa de la forma, del error maximo y de donde esta, en vez del `assert False`
-    pelado que no dice nada.
+    Reports the shape, the maximum error and where it is, instead of the bare
+    `assert False` that tells you nothing.
     """
     actual = actual if isinstance(actual, torch.Tensor) else torch.as_tensor(actual)
     expected = expected if isinstance(expected, torch.Tensor) else torch.as_tensor(expected)
 
     if actual.shape != expected.shape:
         raise AssertionError(
-            f"{what} tiene forma {tuple(actual.shape)} y se esperaba {tuple(expected.shape)}."
+            f"{what} has shape {tuple(actual.shape)} and {tuple(expected.shape)} was expected."
         )
 
     a32, e32 = actual.detach().float(), expected.detach().float()
@@ -110,31 +110,31 @@ def assert_close(
     pos = torch.unravel_index(torch.tensor(idx), diff.shape)
     pos_txt = tuple(int(p) for p in pos)
     raise AssertionError(
-        f"{what} no coincide con la referencia.\n"
-        f"  forma           : {tuple(actual.shape)}\n"
-        f"  error maximo    : {diff.max().item():.3e} en la posicion {pos_txt}\n"
-        f"  tuyo / esperado : {a32.flatten()[idx].item():.6f} / {e32.flatten()[idx].item():.6f}\n"
-        f"  error medio     : {diff.mean().item():.3e}"
+        f"{what} does not match the reference.\n"
+        f"  shape           : {tuple(actual.shape)}\n"
+        f"  max error       : {diff.max().item():.3e} at position {pos_txt}\n"
+        f"  yours / expected: {a32.flatten()[idx].item():.6f} / {e32.flatten()[idx].item():.6f}\n"
+        f"  mean error      : {diff.mean().item():.3e}"
     )
 
 
 def assert_scalar_close(
-    actual: Any, expected: Any, rtol: float = 1e-5, atol: float = 1e-6, what: str = "el valor"
+    actual: Any, expected: Any, rtol: float = 1e-5, atol: float = 1e-6, what: str = "the value"
 ) -> None:
-    """Como `assert_close` pero para escalares de python.
+    """Like `assert_close` but for python scalars.
 
-    Hace `detach()` de lo que llegue: los tests comparan perdidas que suelen venir con
-    grafo de autograd colgando, y `float()` sobre esos tensores lanza un UserWarning.
+    It calls `detach()` on whatever arrives: the tests compare losses that usually come with
+    an autograd graph attached, and `float()` on those tensors raises a UserWarning.
     """
     a = float(actual.detach()) if isinstance(actual, torch.Tensor) else float(actual)
     e = float(expected.detach()) if isinstance(expected, torch.Tensor) else float(expected)
     if abs(a - e) <= atol + rtol * abs(e):
         return
-    raise AssertionError(f"{what}: {a!r}, se esperaba {e!r} (error {abs(a - e):.3e})")
+    raise AssertionError(f"{what}: {a!r}, expected {e!r} (error {abs(a - e):.3e})")
 
 
 def seeded_generator(seed: int = 0, device: torch.device | str = "cpu") -> torch.Generator:
-    """Generador reproducible. Los tests comparan contra referencia, asi que hace falta."""
+    """A reproducible generator. The tests compare against the reference, so it is needed."""
     gen = torch.Generator(device=str(device))
     gen.manual_seed(seed)
     return gen

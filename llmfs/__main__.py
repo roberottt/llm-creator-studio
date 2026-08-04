@@ -1,4 +1,4 @@
-"""Punto de entrada de `python -m llmfs`."""
+"""Entry point for `python -m llmfs`."""
 
 from llmfs.cli import main
 

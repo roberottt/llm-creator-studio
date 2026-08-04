@@ -52,13 +52,13 @@ def test_device_imprime_el_hardware(capsys):
 def test_status_pinta_los_18_modulos(capsys):
     assert main(["status"]) == 0
     salida = capsys.readouterr().out
-    assert "00_que_es_un_llm" in salida and "17_extra" in salida
+    assert "00_what_is_an_llm" in salida and "17_extra" in salida
     assert "0/18 modulos completos" in salida
 
 
 def test_next_apunta_al_primer_modulo_pendiente(capsys):
     assert main(["next"]) == 0
-    assert "00_que_es_un_llm" in capsys.readouterr().out
+    assert "00_what_is_an_llm" in capsys.readouterr().out
 
 
 def test_un_modulo_todavia_no_escrito_avisa_sin_reventar(monkeypatch, capsys):
@@ -86,7 +86,7 @@ def test_modulo_desconocido_devuelve_codigo_2():
 def test_los_comandos_de_fases_futuras_explican_donde_se_construyen(capsys):
     """`sample` todavia no existe; tiene que decir en que modulo se construye."""
     assert main(["sample"]) == 2
-    assert "14_inferencia" in capsys.readouterr().out
+    assert "14_inference" in capsys.readouterr().out
 
 
 def test_train_ya_no_es_un_stub():
