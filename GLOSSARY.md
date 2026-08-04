@@ -1,170 +1,167 @@
-# Glosario
+# Glossary
 
-Los términos que aparecen en el curso, explicados en una o dos frases y en el orden en que
-te los vas a encontrar. Si estás leyendo un `THEORY.md` y algo no te suena, está aquí.
+The terms that appear in the course, explained in one or two sentences and in the order you
+are going to meet them. If you are reading a `THEORY.md` and something is unfamiliar, it is
+here.
 
-Entre paréntesis, el módulo donde se explica a fondo.
-
----
-
-## Lo básico
-
-**Token** — La unidad mínima de texto que maneja el modelo. Puede ser un carácter, una
-palabra o (lo habitual) un trozo de palabra. `"tokenización"` podría ser tres tokens:
-`token`, `iza`, `ción`. Nuestro modelo final maneja 4096 tokens distintos. *(módulo 03)*
-
-**Vocabulario** (`vocab_size`) — Cuántos tokens distintos conoce el modelo. Es un número
-que eliges tú al diseñarlo, no algo que se descubra.
-
-**Modelo de lenguaje** — Una función que, dado un texto, devuelve la probabilidad de cada
-token posible como continuación. Eso es todo lo que es. *(módulo 00)*
-
-**Autorregresivo** — Que genera de uno en uno, metiendo cada salida en la entrada del
-siguiente paso. Es la razón de que generar texto sea lento y no se pueda paralelizar.
-
-**Contexto** (`context_length`, *ventana*) — Cuántos tokens hacia atrás puede mirar el
-modelo. El nuestro, 512. Doblar el contexto cuadruplica el coste de la atención.
-
-**Distribución de probabilidad** — Una lista de números no negativos que suman 1. La salida
-de un modelo de lenguaje siempre es una de estas, sobre el vocabulario entero.
-
-**Muestrear** (*sample*) — Elegir un token al azar respetando sus probabilidades, en lugar
-de coger siempre el más probable. *(módulos 00 y 14)*
+In parentheses, the module where it is explained in depth.
 
 ---
 
-## Entrenamiento
+## The basics
 
-**Parámetro** (*peso*) — Cada número que la red ajusta durante el entrenamiento. Nuestro
-modelo tiene 8.933.440. GPT-4 tiene del orden de un millón de veces más.
+**Token** — The minimum unit of text the model handles. It can be a character, a word or
+(usually) a piece of a word. `"tokenization"` might be three tokens: `token`, `iza`, `tion`.
+Our final model handles 4096 distinct tokens. *(module 03)*
 
-**Embedding** — El vector de números que representa a un token. Tokens que aparecen en
-contextos parecidos acaban con vectores parecidos, y ahí está la capacidad de generalizar
-que una tabla de conteos no tiene. *(módulo 05)*
+**Vocabulary** (`vocab_size`) — How many distinct tokens the model knows. It is a number you
+choose when designing it, not something that gets discovered.
 
-**Logit** — La puntuación en bruto que el modelo da a cada token antes de convertirla en
-probabilidad. Puede ser cualquier número real, positivo o negativo.
+**Language model** — A function that, given a text, returns the probability of every possible
+token as a continuation. That is all it is. *(module 00)*
 
-**Softmax** — La función que convierte logits en probabilidades: exponencia cada uno y
-divide entre la suma. Exponenciar es lo que permite trabajar con números negativos.
+**Autoregressive** — Generating one at a time, feeding each output into the input of the next
+step. It is the reason generating text is slow and cannot be parallelized.
 
-**Pérdida** (*loss*) — Cómo de mal lo está haciendo el modelo. Concretamente
-`-ln(probabilidad que le dio al token correcto)`. Si acierta con probabilidad 1, la pérdida
-es 0. Entrenar es minimizar este número. *(módulo 05)*
+**Context** (`context_length`, *window*) — How many tokens back the model can look. Ours, 512.
+Doubling the context quadruples the cost of attention.
 
-**Cross-entropy** — El nombre técnico de esa pérdida. *(módulo 05)*
+**Probability distribution** — A list of non-negative numbers that add up to 1. The output of
+a language model is always one of these, over the whole vocabulary.
 
-**Perplejidad** — `e` elevado a la pérdida. Se interpreta como "entre cuántas opciones está
-dudando el modelo, en la práctica". Perplejidad 10 ≈ está dudando entre 10 tokens.
-*(módulo 15)*
-
-**Gradiente** — La derivada de la pérdida respecto a un parámetro. Dice en qué dirección
-mover ese parámetro para que la pérdida baje. *(módulo 02)*
-
-**Backpropagation** (*backward*) — El algoritmo que calcula todos los gradientes de golpe,
-recorriendo la red hacia atrás. Cuesta unas 2 veces lo que cuesta el forward,
-independientemente de cuántos parámetros haya. *(módulo 02)*
-
-**Forward** — Pasar los datos por la red y obtener la salida.
-
-**Epoch** (*época*) — Una pasada completa por todo el conjunto de datos.
-
-**Batch** — Un grupo de muestras que se procesan a la vez. Ir de una en una desaprovecha
-la GPU.
-
-**Learning rate** (`lr`, *tasa de aprendizaje*) — Cuánto se mueven los parámetros en cada
-paso. El hiperparámetro que más veces arruina un entrenamiento. *(módulo 11)*
-
-**Optimizador** — El algoritmo que decide cómo aplicar los gradientes. Usaremos AdamW.
-*(módulo 11)*
-
-**Overfitting** (*sobreajuste*) — Cuando el modelo memoriza los datos de entrenamiento en
-vez de aprender patrones. Se detecta porque la pérdida de entrenamiento baja y la de
-validación no.
-
-**Hiperparámetro** — Un número que eliges tú (learning rate, número de capas), a diferencia
-de un parámetro, que lo aprende el modelo.
+**Sample** — Picking a token at random respecting its probabilities, instead of always taking
+the most likely one. *(modules 00 and 14)*
 
 ---
 
-## La arquitectura
+## Training
 
-**Transformer** — La arquitectura de todos los LLM modernos, publicada en 2017. Su idea
-central es la atención. *(módulos 06-10)*
+**Parameter** (*weight*) — Every number the network adjusts during training. Our model has
+8,933,440. GPT-4 has on the order of a million times more.
 
-**Atención** (*self-attention*) — El mecanismo que deja que cada token mire a los anteriores
-y decida a cuáles hacer caso. *(módulo 06)*
+**Embedding** — The vector of numbers that represents a token. Tokens that appear in similar
+contexts end up with similar vectors, and that is where the ability to generalize —which a
+table of counts does not have— comes from. *(module 05)*
 
-**Query, Key, Value** (Q, K, V) — Las tres proyecciones de la atención. Metáfora útil: la
-*query* es la pregunta que lanza un token, la *key* es la etiqueta con la que cada token se
-anuncia, y el *value* es el contenido que aporta si resulta elegido. *(módulo 06)*
+**Logit** — The raw score the model gives each token before turning it into a probability. It
+can be any real number, positive or negative.
 
-**Cabeza** (*head*) — La atención se hace varias veces en paralelo con proyecciones
-distintas, para que cada "cabeza" pueda especializarse. El nuestro tiene 8. *(módulo 06)*
+**Softmax** — The function that turns logits into probabilities: it exponentiates each one and
+divides by the sum. Exponentiating is what lets you work with negative numbers.
 
-**Máscara causal** — Impide que un token mire a los que vienen después. Sin ella el modelo
-haría trampa: vería la respuesta. *(módulo 06)*
+**Loss** — How badly the model is doing. Concretely `-ln(the probability it gave the correct
+token)`. If it gets it right with probability 1, the loss is 0. Training is minimizing this
+number. *(module 05)*
 
-**Normalización** (LayerNorm, RMSNorm) — Reescala los valores dentro de la red para que no
-crezcan ni se encojan descontroladamente capa a capa. *(módulo 07)*
+**Cross-entropy** — The technical name of that loss. *(module 05)*
 
-**Conexión residual** — Sumar la entrada de un bloque a su salida (`x + f(x)`). Es lo que
-permite entrenar redes profundas: da al gradiente un camino directo hasta abajo.
-*(módulo 07)*
+**Perplexity** — `e` raised to the loss. It is read as "how many options the model is
+hesitating between, in practice". Perplexity 10 ≈ it is hesitating between 10 tokens.
+*(module 15)*
 
-**FFN / MLP** — La parte de cada bloque que no es atención: dos o tres capas lineales con
-una no-linealidad en medio. Suele tener más parámetros que la atención. *(módulo 08)*
+**Gradient** — The derivative of the loss with respect to a parameter. It says which direction
+to move that parameter in so the loss goes down. *(module 02)*
 
-**GELU, SwiGLU** — Funciones de activación, la parte "no lineal" sin la cual toda la red
-colapsaría a una única multiplicación de matrices. *(módulo 08)*
+**Backpropagation** (*backward*) — The algorithm that computes every gradient at once, walking
+the network backwards. It costs about 2 times what the forward costs, regardless of how many
+parameters there are. *(module 02)*
 
-**Embedding posicional / RoPE** — Cómo se le dice al modelo en qué posición está cada
-token. La atención por sí sola no distingue el orden. *(módulo 09)*
+**Forward** — Passing the data through the network and getting the output.
 
-**Weight tying** — Reutilizar la matriz de embeddings como matriz de salida. Ahorra 1,3
-millones de parámetros en nuestro modelo. *(módulo 10)*
+**Epoch** — One complete pass over the whole dataset.
 
----
+**Batch** — A group of samples processed at once. Going one at a time wastes the GPU.
 
-## Rendimiento y hardware
+**Learning rate** (`lr`) — How far the parameters move at each step. The hyperparameter that
+ruins the most training runs. *(module 11)*
 
-**FLOP** — Una operación en coma flotante. Se usa para medir cuánto cuesta entrenar algo.
+**Optimizer** — The algorithm that decides how to apply the gradients. We will use AdamW.
+*(module 11)*
 
-**MFU** (*Model FLOPs Utilization*) — Qué fracción de la potencia teórica de tu GPU estás
-aprovechando de verdad. Un modelo pequeño rara vez pasa del 20%. *(módulos 01 y 12)*
+**Overfitting** — When the model memorizes the training data instead of learning patterns. You
+detect it because the training loss goes down and the validation one does not.
 
-**fp32 / fp16 / bf16** — Formatos numéricos de 32 y 16 bits. fp16 ocupa la mitad y va el
-doble de rápido, pero su rango es tan estrecho que los gradientes se van a cero.
-*(módulo 01)*
-
-**GradScaler** — El truco que hace viable fp16: multiplica la pérdida por un número grande
-antes del backward para que los gradientes no desaparezcan. *(módulo 11)*
-
-**AMP** (*Automatic Mixed Precision*) — Hacer algunas operaciones en 16 bits y otras en 32,
-automáticamente.
-
-**KV cache** — Guardar las keys y values ya calculadas para no recalcularlas en cada token
-generado. Hace la generación varias veces más rápida. *(módulo 14)*
-
-**Chinchilla** — El resultado de 2022 que dice cuántos tokens conviene usar para entrenar
-un modelo de un tamaño dado (aproximadamente 20 por parámetro). *(módulo 12)*
-
-**Cuantización** — Guardar los pesos con menos bits (int8 en vez de fp16) para que el
-modelo ocupe menos. *(módulo 17)*
+**Hyperparameter** — A number you choose (learning rate, number of layers), as opposed to a
+parameter, which the model learns.
 
 ---
 
-## Post-entrenamiento
+## The architecture
 
-**Pretraining** — La fase larga: aprender lenguaje prediciendo el siguiente token sobre
-muchísimo texto. Es lo que hacemos hasta el módulo 13.
+**Transformer** — The architecture of every modern LLM, published in 2017. Its central idea is
+attention. *(modules 06-10)*
 
-**SFT** (*Supervised Fine-Tuning*) — Seguir entrenando un modelo ya preentrenado sobre
-ejemplos de instrucción y respuesta, para que obedezca en vez de limitarse a continuar
-texto. *(módulo 16)*
+**Attention** (*self-attention*) — The mechanism that lets each token look at the previous ones
+and decide which to pay attention to. *(module 06)*
 
-**LoRA** — Entrenar solo unas matrices pequeñas añadidas al modelo en lugar de todos sus
-pesos. Mucho más barato. *(módulo 16)*
+**Query, Key, Value** (Q, K, V) — The three projections of attention. A useful metaphor: the
+*query* is the question a token asks, the *key* is the label each token advertises itself with,
+and the *value* is the content it contributes if it gets chosen. *(module 06)*
 
-**RLHF** — Ajustar el modelo con preferencias humanas. No lo haremos, pero es una de las
-cosas que separa esto de un modelo comercial. *(módulo 17)*
+**Head** — Attention is done several times in parallel with different projections, so each
+"head" can specialize. Ours has 8. *(module 06)*
+
+**Causal mask** — It stops a token looking at the ones that come after. Without it the model
+would cheat: it would see the answer. *(module 06)*
+
+**Normalization** (LayerNorm, RMSNorm) — Rescales the values inside the network so they do not
+grow or shrink uncontrollably layer after layer. *(module 07)*
+
+**Residual connection** — Adding a block's input to its output (`x + f(x)`). It is what makes
+deep networks trainable: it gives the gradient a direct path to the bottom. *(module 07)*
+
+**FFN / MLP** — The part of each block that is not attention: two or three linear layers with a
+non-linearity in between. It usually has more parameters than the attention. *(module 08)*
+
+**GELU, SwiGLU** — Activation functions, the "non-linear" part without which the whole network
+would collapse into a single matrix multiplication. *(module 08)*
+
+**Positional embedding / RoPE** — How the model is told what position each token is in.
+Attention on its own does not distinguish the order. *(module 09)*
+
+**Weight tying** — Reusing the embedding matrix as the output matrix. It saves 1.3 million
+parameters in our model. *(module 10)*
+
+---
+
+## Performance and hardware
+
+**FLOP** — One floating point operation. It is used to measure how much training something
+costs.
+
+**MFU** (*Model FLOPs Utilization*) — What fraction of your GPU's theoretical power you are
+really using. A small model rarely goes above 20%. *(modules 01 and 12)*
+
+**fp32 / fp16 / bf16** — 32- and 16-bit numeric formats. fp16 takes half the space and runs
+twice as fast, but its range is so narrow that gradients go to zero. *(module 01)*
+
+**GradScaler** — The trick that makes fp16 viable: it multiplies the loss by a large number
+before the backward so the gradients do not disappear. *(module 11)*
+
+**AMP** (*Automatic Mixed Precision*) — Doing some operations in 16 bits and others in 32,
+automatically.
+
+**KV cache** — Saving the keys and values already computed so they are not recomputed for every
+generated token. It makes generation several times faster. *(module 14)*
+
+**Chinchilla** — The 2022 result that says how many tokens it is worth using to train a model
+of a given size (about 20 per parameter). *(module 12)*
+
+**Quantization** — Storing the weights with fewer bits (int8 instead of fp16) so the model
+takes less space. *(module 17)*
+
+---
+
+## Post-training
+
+**Pretraining** — The long phase: learning language by predicting the next token over an
+enormous amount of text. It is what we do up to module 13.
+
+**SFT** (*Supervised Fine-Tuning*) — Carrying on training an already pretrained model on
+instruction-and-answer examples, so it obeys instead of merely continuing text. *(module 16)*
+
+**LoRA** — Training only a few small matrices added to the model instead of all its weights.
+Much cheaper. *(module 16)*
+
+**RLHF** — Adjusting the model with human preferences. We will not do it, but it is one of the
+things that separates this from a commercial model. *(module 17)*

@@ -1,296 +1,302 @@
-# CLAUDE.md — instrucciones para sesiones de Claude Code en este repo
+# CLAUDE.md — instructions for Claude Code sessions in this repo
 
-## Qué es esto
+## What this is
 
-Un **curso-repositorio** para aprender a construir un LLM desde cero programando en
-PyTorch. No es una librería ni un tutorial para leer: el usuario abre VSCode, lee la
-teoría, implementa funciones marcadas con `NotImplementedError` y ejecuta tests hasta que
-pasan. El objetivo final es un GPT de **8.933.440 parámetros** entrenado por él sobre
-TinyStories hasta que genere historias cortas coherentes en inglés.
+A **course-repository** for learning to build an LLM from scratch by programming in PyTorch.
+It is not a library and not a tutorial to read: the user opens VSCode, reads the theory,
+implements functions marked with `NotImplementedError` and runs tests until they pass. The
+final goal is a GPT of **8,933,440 parameters** trained by them on TinyStories until it
+generates coherent short stories in English.
 
-## EL PUNTO MÁS IMPORTANTE: a quién le hablas
+**This branch (`english`) is the English version of the course. `main` holds the Spanish
+one.** Everything here — prose, identifiers, file names, test names, CLI messages — is in
+English. Nothing is bilingual: do not reintroduce Spanish on this branch, and do not port
+translations back to `main` unless asked.
 
-El usuario es **ingeniero de software con experiencia** (Python, git, CLI, arquitectura)
-pero su **base en LLMs y machine learning es baja**, y el curso está pensado para gente en
-esa misma situación. Separa las dos cosas o te equivocarás en una de las dos direcciones:
+## THE MOST IMPORTANT POINT: who you are talking to
 
-- **No le expliques programación.** Qué es un bucle, qué es una clase, qué hace `dict.get`.
-  Eso le hace perder el tiempo.
-- **Sí explícale todo lo de ML desde cero.** Qué es un logit, por qué se normaliza, qué
-  significa que un gradiente "se vaya a cero". Nada se da por sabido.
+The user is an **experienced software engineer** (Python, git, CLI, architecture) but their
+**background in LLMs and machine learning is low**, and the course is aimed at people in that
+same situation. Keep the two apart or you will get one of them wrong:
 
-La primera versión de este repo se escribió demasiado técnica y hubo que reescribirla. El
-brief original pedía teoría "densa, sin analogías, 400-900 palabras"; esa instrucción quedó
-**derogada** el 2026-07-30 tras ver el material. Lo que manda es lo de abajo.
+- **Do not explain programming to them.** What a loop is, what a class is, what `dict.get`
+  does. That wastes their time.
+- **Do explain everything about ML from scratch.** What a logit is, why things are normalized,
+  what it means for a gradient to "go to zero". Nothing is assumed.
 
-### Estructura obligatoria de cada explicación: intuición → ejemplo → fórmula
+The first version of this repo was written far too technically and had to be rewritten. The
+original brief asked for theory that was "dense, no analogies, 400-900 words"; that
+instruction was **repealed** on 2026-07-30 after seeing the material. What governs is what
+follows.
 
-Cada concepto de ML entra **tres veces y en este orden**:
+### Mandatory structure of every explanation: intuition → example → formula
 
-1. **Qué problema resuelve**, en lenguaje llano. Sin fórmulas, sin jerga sin definir.
-2. **Un ejemplo con números pequeños** que el lector pueda seguir a mano. Matrices de 2×3,
-   tres palabras, cuatro conteos. Números concretos, no símbolos.
-3. **La fórmula formal**, conectada explícitamente con el ejemplo anterior.
+Every ML concept enters **three times and in this order**:
 
-La matemática **no se elimina ni se esconde**: deja de ser lo primero que se lee. Un
-`THEORY.md` que abre con `C_token ≈ 6N + 12·n_layers·T·d_model` está mal escrito aunque la
-fórmula sea correcta.
+1. **What problem it solves**, in plain language. No formulas, no undefined jargon.
+2. **An example with small numbers** the reader can follow by hand. 2×3 matrices, three words,
+   four counts. Concrete numbers, not symbols.
+3. **The formal formula**, connected explicitly to the previous example.
 
-### Estructura obligatoria de cada docstring de ejercicio
+The mathematics is **neither removed nor hidden**: it just stops being the first thing you
+read. A `THEORY.md` that opens with `C_token ≈ 6N + 12·n_layers·T·d_model` is badly written
+even if the formula is correct.
 
-Es la misma idea aplicada al código, y se estableció el 2026-07-31 después de que el usuario
-dijera "yo leo esto y no sé qué tengo que hacer". El diagnóstico: los docstrings explicaban
-**qué** era la función y **por qué** hacía falta, pero nunca **qué teclear**.
+### Mandatory structure of every exercise docstring
 
-El orden es fijo, y **`QUÉ TIENES QUE ESCRIBIR` va primero, antes que cualquier teoría**:
+It is the same idea applied to code, and it was established on 2026-07-31 after the user said
+"I read this and I do not know what I have to do". The diagnosis: the docstrings explained
+**what** the function was and **why** it was needed, but never **what to type**.
+
+The order is fixed, and **`WHAT YOU HAVE TO WRITE` goes first, before any theory**:
 
 ```
-<Una frase: qué hace la función>
+<One sentence: what the function does>
 
-QUÉ TIENES QUE ESCRIBIR
------------------------
-<Pasos numerados con el código concreto a teclear, indentado. No pseudocódigo:
- las líneas reales, con los nombres reales de las variables.>
+WHAT YOU HAVE TO WRITE
+----------------------
+<Numbered steps with the concrete code to type, indented. Not pseudocode:
+ the real lines, with the real variable names.>
 
-QUÉ TIENE QUE SALIR / COMPRUÉBALO CON...
-----------------------------------------
-<Números concretos que el lector pueda verificar a mano>
+WHAT SHOULD COME OUT / CHECK IT WITH...
+---------------------------------------
+<Concrete numbers the reader can verify by hand>
 
-POR QUÉ / DE DÓNDE SALE ESA FÓRMULA
+WHY / WHERE THAT FORMULA COMES FROM
 -----------------------------------
-<La intuición, ahora que ya sabe qué está escribiendo>
+<The intuition, now that they know what they are writing>
 
-CUIDADO CON... / LOS ERRORES QUE HAY QUE EVITAR
------------------------------------------------
-<Las trampas, y sobre todo las silenciosas: las que no dan error y degradan el resultado>
+WATCH OUT FOR... / THE MISTAKES TO AVOID
+----------------------------------------
+<The traps, and above all the silent ones: the ones that raise no error and degrade the
+ result>
 
 Args: / Returns: / Raises:
 ```
 
-Los 62 docstrings siguen este formato. Al añadir uno nuevo, el barrido de comprobación es:
+All 62 docstrings follow this format. When adding a new one, the sweep to check is:
 
 ```python
-# recorre CURRICULUM y verifica que cada símbolo tiene la sección
-"QUÉ TIENES QUE ESCRIBIR" in ast.get_docstring(nodo)
+# walk CURRICULUM and verify that each symbol has the section
+"WHAT YOU HAVE TO WRITE" in ast.get_docstring(node)
 ```
 
-Dos reglas que salieron de escribirlos:
+Two rules that came out of writing them:
 
-- **El código de los pasos tiene que compilar con lo que el alumno tiene importado.** Si tu
-  paso usa `math.sqrt` y `exercises.py` no importa `math`, el paso está mal. Pasó de verdad
-  en el módulo 12 (se cambió a `** 0.5`) y en el 01 (faltaba `import time` en el fichero).
-- **Los números de ejemplo se miden, no se estiman.** Los del módulo 17 se inventaron
-  plausibles y estaban mal por un factor de 5; hay que ejecutar la referencia y copiar.
+- **The code in the steps has to compile with what the student has imported.** If your step
+  uses `math.sqrt` and `exercises.py` does not import `math`, the step is wrong. It really
+  happened in module 12 (changed to `** 0.5`) and in 01 (the file was missing `import time`).
+- **The example numbers are measured, not estimated.** Module 17's were invented to look
+  plausible and were off by a factor of 5; you have to run the reference and copy.
 
-## Reglas de escritura, innegociables
+## Writing rules, non-negotiable
 
-- **Toda la prosa en español**: teoría, docstrings, comentarios, mensajes de la CLI,
-  nombres de los tests. **Los identificadores del código en inglés**: `causal_mask`,
-  `n_heads`, `class MultiHeadAttention`. Esta mezcla es deliberada.
-- **La prosa de los `.py` va sin tildes ni `ñ`**: `tamanyo`, `ensenyar`, `pequenyo`. Dos
-  excepciones, y solo dos: los **títulos de sección en mayúsculas** de los docstrings sí las
-  llevan (`QUÉ TIENES QUE ESCRIBIR`, `POR QUÉ ESA FÓRMULA`) porque son los puntos de anclaje
-  al leer en diagonal, y los emoji de la CLI, que viven en `progress.py`. Los `.md` llevan
-  tildes normales en todas partes.
-- **Cada `THEORY.md` abre con `## Por qué importa este módulo`**, ANTES de cualquier
-  concepto: qué problema resuelve, qué sabrás al terminar, y cuánto cuesta. Hay un test que
-  lo verifica. Alguien que no sabe de LLMs no puede juzgar si merece la pena leer cuatro
-  horas sobre atención si no le dices primero que es LA pieza que separa un modelo mediocre
-  de ChatGPT.
-- **Mínimo 900 palabras por `THEORY.md`, sin techo.** El límite superior se quitó el
-  2026-07-31: cada concepto se explica lo que haga falta, con ejemplos concretos.
-- **Cada `SOLUTION.md` termina con `## El código completo`**: la implementación entera de
-  todos los ejercicios del módulo, copiable. Hay un test que lo verifica. El brief original
-  decía "no el código pelado"; esa instrucción quedó derogada el 2026-07-31. Quien se
-  atasca necesita ver el código, no leer sobre él.
-- **El mismo registro en los docstrings de `exercises.py`, en `SOLUTION.md`, en las pistas
-  de `hints.py` y en los mensajes de la CLI.**
-- **Todo docstring de ejercicio abre con `QUÉ TIENES QUE ESCRIBIR`**, y después vienen el
-  ejemplo, el porqué y las trampas. Ver la sección de abajo: es innegociable y hay un
-  barrido que lo comprueba.
-- **Todo término de ML que aparezca debe estar en `GLOSSARY.md`**, y cada `THEORY.md`
-  enlaza allí al final.
-- Analogías: permitidas si son **mecánicas y verificables** (la ruleta para el muestreo, el
-  reparto de una recta [0,1]). Prohibidas las místicas ("es como un cerebro", "entiende").
-- **Honestidad intelectual obligatoria.** Donde hay debate abierto (pre-norm vs post-norm,
-  si las leyes de escala se sostienen, qué construye realmente un modelo por dentro) se dice
-  que lo hay, en una sección `## Dónde está el debate` al final de cada `THEORY.md`. Se
-  citan los papers originales con enlace, en la tupla `references` de `curriculum.py` y en
-  el `THEORY.md`.
-- **Ejecuta lo que escribas.** Cada `demo.py` y cada test tiene que correr de verdad antes
-  de darlo por hecho. Nada de código que "debería funcionar".
-- **Valida los tests contra la referencia** con `make test-reference` antes de dar un módulo
-  por terminado. Si un test falla en ese modo, el test está mal escrito o la referencia está
-  mal: en ambos casos es un bug del curso, no del alumno.
+- **All the prose in English**: theory, docstrings, comments, CLI messages, test names. The
+  code identifiers are in English too — on this branch there is no mixing, everything is one
+  language.
+- **Plain ASCII in the `.py` files' prose.** No smart quotes, no em dashes in code comments,
+  no accented characters: the CLI is read in terminals with all sorts of encodings. The
+  section titles in capitals of the docstrings (`WHAT YOU HAVE TO WRITE`, `WHY THAT FORMULA`)
+  are the anchor points for skim reading and must stay exactly as written. The `.md` files may
+  use normal typographic characters (–, ×, →, …) freely.
+- **Every `THEORY.md` opens with `## Why this module matters`**, BEFORE any concept: what
+  problem it solves, what you will know at the end, and what it costs. There is a test that
+  verifies it. Someone who does not know about LLMs cannot judge whether four hours on
+  attention are worth it unless you first tell them it is THE piece that separates a mediocre
+  model from ChatGPT.
+- **At least 900 words per `THEORY.md`, no ceiling.** The upper limit was removed on
+  2026-07-31: every concept gets explained for as long as it needs, with concrete examples.
+- **Every `SOLUTION.md` ends with `## The complete code`**: the entire implementation of every
+  exercise in the module, copy-pasteable. There is a test that verifies it. The original brief
+  said "not the bare code"; that instruction was repealed on 2026-07-31. Whoever gets stuck
+  needs to see the code, not read about it.
+- **The same register in the `exercises.py` docstrings, in `SOLUTION.md`, in the `hints.py`
+  hints and in the CLI messages.**
+- **Every exercise docstring opens with `WHAT YOU HAVE TO WRITE`**, and after that come the
+  example, the why and the traps. See the section above: it is non-negotiable and there is a
+  sweep that checks it.
+- **Every ML term that appears must be in `GLOSSARY.md`**, and every `THEORY.md` links there
+  at the end.
+- Analogies: allowed if they are **mechanical and verifiable** (the roulette wheel for
+  sampling, splitting up the [0,1] line). Mystical ones are forbidden ("it is like a brain",
+  "it understands").
+- **Intellectual honesty is mandatory.** Where there is open debate (pre-norm vs post-norm,
+  whether the scaling laws hold, what a model really builds inside) you say so, in a
+  `## Where the debate is` section at the end of every `THEORY.md`. The original papers are
+  cited with a link, in the `references` tuple of `curriculum.py` and in the `THEORY.md`.
+- **Run what you write.** Every `demo.py` and every test has to actually run before you call it
+  done. No code that "should work".
+- **Validate the tests against the reference** with `make test-reference` before calling a
+  module finished. If a test fails in that mode, either the test is badly written or the
+  reference is wrong: in both cases it is a course bug, not a student bug.
 
-## Arquitectura: tres capas que no hay que confundir
+## Architecture: three layers not to be confused
 
 ```
-modules/NN_*/exercises.py   ← lo que ESCRIBE EL USUARIO (plantillas con NotImplementedError)
-llmfs/reference/             ← implementaciones canónicas, completas y correctas
-llmfs/{model,train,infer}/   ← el código que de verdad entrena, construido sobre el bridge
+modules/NN_*/exercises.py   ← what THE USER WRITES (templates with NotImplementedError)
+llmfs/reference/            ← canonical implementations, complete and correct
+llmfs/{model,train,infer}/  ← the code that really trains, built on top of the bridge
 ```
 
-`llmfs/bridge.py` es la pieza clave. Cuando el código de producción necesita
-`MultiHeadAttention`, llama a `bridge.resolve("06_attention", "MultiHeadAttention")`, que:
+`llmfs/bridge.py` is the key piece. When the production code needs `MultiHeadAttention`, it
+calls `bridge.resolve("06_attention", "MultiHeadAttention")`, which:
 
-1. carga `modules/06_attention/exercises.py`,
-2. comprueba con AST si el símbolo sigue siendo la plantilla (`raise NotImplementedError`
-   o `pass` como único cuerpo) — ver `bridge.looks_unimplemented`,
-3. ejecuta el probe de `llmfs/probes.py` si hay uno registrado,
-4. devuelve la implementación del usuario si pasa, y si no la de `llmfs.reference`,
-   avisando **una vez** por stderr.
+1. loads `modules/06_attention/exercises.py`,
+2. checks with AST whether the symbol is still the template (`raise NotImplementedError` or
+   `pass` as the only body) — see `bridge.looks_unimplemented`,
+3. runs the probe from `llmfs/probes.py` if one is registered,
+4. returns the user's implementation if it passes, and otherwise the one from `llmfs.reference`,
+   warning **once** on stderr.
 
-Consecuencia: **el usuario nunca se queda bloqueado**, y cuando su ejercicio está bien, el
-modelo final entrena con SU código. El aviso por stderr es deliberado y no se debe silenciar.
+Consequence: **the user never gets blocked**, and when their exercise is right, the final model
+trains with THEIR code. The stderr warning is deliberate and must not be silenced.
 
-Variables de entorno útiles: `LLMFS_FORCE_REFERENCE=1` (ignora los ejercicios),
-`LLMFS_BRIDGE_VERBOSE=1` (avisa también cuando usa el código del usuario),
+Useful environment variables: `LLMFS_FORCE_REFERENCE=1` (ignores the exercises),
+`LLMFS_BRIDGE_VERBOSE=1` (also warns when it uses the user's code),
 `LLMFS_DEVICE=cpu|cuda|mps`, `LLMFS_AMP=0|1`, `LLMFS_ROOT`.
 
-## Hardware objetivo — respétalo en cada decisión
+## Target hardware — respect it in every decision
 
 | | |
 |---|---|
-| PC principal | Intel i7 7700K, 16 GB RAM, **RTX 2060 6 GB (Turing, sm_75)** |
-| Portátil | MacBook Pro M5, 16 GB RAM, backend **MPS** |
+| Main PC | Intel i7 7700K, 16 GB RAM, **RTX 2060 6 GB (Turing, sm_75)** |
+| Laptop | MacBook Pro M5, 16 GB RAM, **MPS** backend |
 
-Todo lo específico de hardware vive en `llmfs/device.py` y en ningún otro sitio. Lo que hay
-que tener presente:
+Everything hardware-specific lives in `llmfs/device.py` and nowhere else. What has to be kept
+in mind:
 
-- **sm_75 no tiene bfloat16 en hardware.** Se usa `float16` + `GradScaler`. Y ojo:
-  `torch.cuda.is_bf16_supported()` devuelve `True` en Turing contando emulación por
-  software, así que **no se usa**; se mira la compute capability directamente.
-- **Sin FlashAttention-2** (pide sm_80+). `F.scaled_dot_product_attention` cae solo al
-  backend `memory_efficient`, que sí funciona en Turing.
-- **`torch.compile` desactivado por defecto.** En Turing falla a compilar con frecuencia.
-  Flag opcional (`compile: true` en el YAML), nunca por defecto.
-- **MPS**: `PYTORCH_ENABLE_MPS_FALLBACK=1` lo fija `llmfs/__init__.py` *antes* de importar
-  torch. fp32 por defecto, fp16 opcional. Algunos ops caen a CPU silenciosamente.
-- El tensor de logits (`batch × ctx × 4096`) es el mayor consumidor de memoria de la
-  tirada final, por encima de las activaciones. Si hay OOM en la 2060, ahí es donde mirar.
+- **sm_75 has no bfloat16 in hardware.** `float16` + `GradScaler` is used. And careful:
+  `torch.cuda.is_bf16_supported()` returns `True` on Turing counting software emulation, so it
+  **is not used**; the compute capability is checked directly.
+- **No FlashAttention-2** (it requires sm_80+). `F.scaled_dot_product_attention` falls back on
+  its own to the `memory_efficient` backend, which does work on Turing.
+- **`torch.compile` off by default.** On Turing it frequently fails to compile. An optional
+  flag (`compile: true` in the YAML), never by default.
+- **MPS**: `PYTORCH_ENABLE_MPS_FALLBACK=1` is set by `llmfs/__init__.py` *before* importing
+  torch. fp32 by default, fp16 optional. Some ops fall back to CPU silently.
+- The logits tensor (`batch × ctx × 4096`) is the biggest memory consumer of the final run,
+  above the activations. If there is an OOM on the 2060, that is where to look.
 
-## Comandos
+## Commands
 
 ```bash
 make install          # uv sync --extra compare
-make test             # suite completa (tests/ + modules/)
-make test-fast        # sin los marcados @pytest.mark.slow
-uv run pytest tests/  # solo la infraestructura del paquete
+make test             # complete suite (tests/ + modules/)
+make test-fast        # without the ones marked @pytest.mark.slow
+uv run pytest tests/  # only the package infrastructure
 
-uv run python -m llmfs status        # tabla de progreso (corre los tests)
+uv run python -m llmfs status        # progress table (runs the tests)
 uv run python -m llmfs status --cached
-uv run python -m llmfs next          # qué módulo toca y qué ejercicio
-uv run python -m llmfs check 05      # tests del módulo 05 con pistas
-uv run python -m llmfs demo 05       # experimento del módulo 05
-uv run python -m llmfs hint 05 -e 2  # pista progresiva (repetir para más nivel)
-uv run python -m llmfs device        # hardware detectado
+uv run python -m llmfs next          # which module comes next and which exercise
+uv run python -m llmfs check 05      # module 05 tests with hints
+uv run python -m llmfs demo 05       # module 05 experiment
+uv run python -m llmfs hint 05 -e 2  # progressive hint (repeat for a deeper level)
+uv run python -m llmfs device        # detected hardware
 ```
 
-El estado del currículo **no se declara en ningún sitio**: se calcula ejecutando los tests.
-`.llmfs_progress.json` es solo caché (y está en `.gitignore`).
+The curriculum state **is not declared anywhere**: it is computed by running the tests.
+`.llmfs_progress.json` is only a cache (and it is in `.gitignore`).
 
-## Cómo añadir un módulo
+## How to add a module
 
-1. Registrarlo en `llmfs/curriculum.py`: `Module(...)` con sus `Exercise(...)`,
-   `est_minutes` honesto y `references` con enlaces a los papers.
-2. Crear `modules/NN_nombre/` con **los cinco ficheros**: `THEORY.md`, `exercises.py`,
-   `demo.py`, `test_NN.py`, `SOLUTION.md`. Hay un test que verifica que no falta ninguno.
-   El `THEORY.md` sigue la estructura intuición → ejemplo numérico → fórmula, cierra con
-   `## Dónde está el debate` y enlaza al `GLOSSARY.md`.
-3. Implementar las piezas en `llmfs/reference/` y reexportarlas en
-   `llmfs/reference/__init__.py`. **Los nombres de ejercicio son únicos en todo el curso**
-   (hay un test); el bridge resuelve por nombre plano.
-4. Registrar probes en `llmfs/probes.py` para los ejercicios donde "escrito pero devuelve
-   basura" sea un riesgo real (formas de tensores, sobre todo).
-5. Escribir las tres pistas en `llmfs/hints.py`: conceptual → técnica → estructural.
-   La tercera no da la solución escrita. Añadir los términos nuevos a `GLOSSARY.md`.
-6. `exercises.py`: el docstring de módulo abre con **CÓMO SE HACE ESTE MÓDULO** (los 5
-   pasos), **QUÉ VAS A CONSTRUIR** (un diagrama de cómo encajan los ejercicios) y
-   **VOCABULARIO QUE VAS A NECESITAR** (cada término de ML que aparezca, definido en una
-   línea). Los docstrings de cada ejercicio llevan formas de entrada/salida y la fórmula,
-   cuerpo `raise NotImplementedError(...)`.
-7. `test_NN.py`: valida contra `llmfs.reference` o contra el equivalente de PyTorch
-   (`nn.MultiheadAttention`, `F.layer_norm`...) con `torch.allclose`. **No vale comprobar
-   solo que no peta.** Los tests se importan con `from llmfs.bridge import exercises` y
-   `ej = exercises(__file__)`, nunca con `sys.path`.
-8. `demo.py`: experimento ejecutable que visualiza el concepto. Guarda figuras en
-   `runs/figures/` vía `llmfs.paths.figures_dir()`. Tiene que correr en cuda, mps y cpu.
-9. Regenerar el bloque de código de `SOLUTION.md` con
-   `uv run python scripts/regenerate_solutions.py` (lo extrae de `llmfs/reference/`, así que
-   nunca diverge). Si el ejercicio necesita una función auxiliar o un import que no está en
-   `exercises.py`, añadirlo a `AUXILIARES` o `IMPORTS` de ese script.
-10. Correr `make test` y `make test-soluciones` antes de dar la fase por terminada. El
-   segundo pega cada solución sobre su `exercises.py` y corre los tests: es la única forma
-   de garantizar que el código de las soluciones se puede copiar y funciona.
+1. Register it in `llmfs/curriculum.py`: `Module(...)` with its `Exercise(...)`, an honest
+   `est_minutes` and `references` with links to the papers.
+2. Create `modules/NN_name/` with **the five files**: `THEORY.md`, `exercises.py`, `demo.py`,
+   `test_NN.py`, `SOLUTION.md`. There is a test that verifies none is missing. The `THEORY.md`
+   follows the intuition → numeric example → formula structure, closes with
+   `## Where the debate is` and links to `GLOSSARY.md`.
+3. Implement the pieces in `llmfs/reference/` and re-export them in
+   `llmfs/reference/__init__.py`. **Exercise names are unique across the whole course** (there
+   is a test); the bridge resolves by plain name.
+4. Register probes in `llmfs/probes.py` for the exercises where "written but returns garbage"
+   is a real risk (tensor shapes, above all).
+5. Write the three hints in `llmfs/hints.py`: conceptual → technical → structural. The third
+   one does not give the written solution. Add the new terms to `GLOSSARY.md`.
+6. `exercises.py`: the module docstring opens with **HOW TO DO THIS MODULE** (the 5 steps),
+   **WHAT YOU ARE GOING TO BUILD** (a diagram of how the exercises fit together) and
+   **VOCABULARY YOU ARE GOING TO NEED** (every ML term that appears, defined in one line). The
+   docstrings of each exercise carry the input/output shapes and the formula, with a
+   `raise NotImplementedError(...)` body.
+7. `test_NN.py`: validates against `llmfs.reference` or against the PyTorch equivalent
+   (`nn.MultiheadAttention`, `F.layer_norm`...) with `torch.allclose`. **Checking only that it
+   does not blow up is not enough.** The tests import with
+   `from llmfs.testing import load_exercises` and `ex = load_exercises(__file__)`, never with
+   `sys.path`.
+8. `demo.py`: an executable experiment that visualizes the concept. It saves figures to
+   `runs/figures/` via `llmfs.paths.figures_dir()`. It has to run on cuda, mps and cpu.
+9. Regenerate the `SOLUTION.md` code block with
+   `uv run python scripts/regenerate_solutions.py` (it extracts it from `llmfs/reference/`, so
+   it never diverges). If the exercise needs a helper function or an import that is not in
+   `exercises.py`, add it to that script's `HELPERS` or `IMPORTS`.
+10. Run `make test` and `make test-solutions` before calling the phase finished. The second one
+   pastes each solution over its `exercises.py` and runs the tests: it is the only way to
+   guarantee the solutions' code can be copied and works.
 
-## Dependencias
+## Dependencies
 
 `torch`, `numpy`, `datasets`, `matplotlib`, `pytest`, `tqdm`, `pyyaml`, `rich`, `regex`.
 
-- `regex` (no el `re` de la stdlib) porque el pre-tokenizador estilo GPT-4 del módulo 02
-  usa `\p{L}`.
-- `tiktoken` está en el extra `[compare]` y **solo** se usa en la comparativa de
-  compresión del módulo 02.
-- **Nada de `transformers` ni de HuggingFace para el modelo.** `datasets` se usa
-  únicamente para descargar TinyStories.
+- `regex` (not the stdlib's `re`) because module 02's GPT-4-style pre-tokenizer uses `\p{L}`.
+- `tiktoken` is in the `[compare]` extra and is used **only** in module 02's compression
+  comparison.
+- **No `transformers` and no HuggingFace for the model.** `datasets` is used solely to download
+  TinyStories.
 
-## Estado del currículo
+## Curriculum state
 
-**18 módulos, numerados 00-17, 62 ejercicios, ~42 h de trabajo estimado.**
+**18 modules, numbered 00-17, 62 exercises, ~42 h of estimated work.**
 
-El `00_what_is_an_llm` se añadió el 2026-07-30 (no estaba en el brief original) y renumeró
-todo lo demás: lo que el brief llamaba módulo NN es ahora NN+1. Es un módulo conceptual sin
-torch donde se construye un generador de texto por conteo, y sirve de ancla para todo lo
-que viene: el bucle autorregresivo del módulo 14 es literalmente el mismo.
+`00_what_is_an_llm` was added on 2026-07-30 (it was not in the original brief) and renumbered
+everything else: what the brief called module NN is now NN+1. It is a conceptual module without
+torch where a text generator by counting is built, and it works as an anchor for everything
+that follows: module 14's autoregressive loop is literally the same one.
 
-| Fase | Contenido | Estado |
+| Phase | Content | State |
 |---|---|---|
-| 1 | Esqueleto, `llmfs`, CLI, bridge, tests de infraestructura | ✅ hecho |
-| 2 | Módulos 00-04 (fundamentos) | ✅ hecho |
-| 3 | Módulos 05-10 (baselines + arquitectura) | ✅ hecho |
-| 4 | Módulos 11-13 (entrenamiento) | ✅ hecho |
-| 5 | Módulos 14-17 (uso y evaluación) | ✅ hecho |
+| 1 | Skeleton, `llmfs`, CLI, bridge, infrastructure tests | ✅ done |
+| 2 | Modules 00-04 (foundations) | ✅ done |
+| 3 | Modules 05-10 (baselines + architecture) | ✅ done |
+| 4 | Modules 11-13 (training) | ✅ done |
+| 5 | Modules 14-17 (use and evaluation) | ✅ done |
 
-Al retomar: `make test` y `make test-reference` tienen que estar en verde antes de tocar
-nada. `llmfs status` es siempre la fuente de verdad de qué módulos existen.
+When picking this up again: `make test` and `make test-reference` have to be green before
+touching anything. `llmfs status` is always the source of truth for which modules exist.
 
-**Las Partes 0, I y II están terminadas: módulos 00-10.** El modelo está montado y auditado;
-`GPT(ModelConfig())` da 8.933.440 parámetros exactos y `expected_param_count` coincide con
+**Parts 0, I and II are finished: modules 00-10.** The model is assembled and audited;
+`GPT(ModelConfig())` gives exactly 8,933,440 parameters and `expected_param_count` matches
 `count_parameters`.
 
-**EL CURSO ESTÁ COMPLETO: los 18 módulos, 62 ejercicios.** 98 tests de infraestructura y
-518 del curso contra la referencia, todos en verde. 17 figuras generadas de ejecuciones
-reales.
+**THE COURSE IS COMPLETE: all 18 modules, 62 exercises.** 98 infrastructure tests and 518
+course tests against the reference, all green. 17 figures generated from real runs.
 
-`uv run python -m llmfs train --config tiny_char` entrena de verdad (~70 s en MPS, pérdida
-de 3,2 a 1,60, 112k tokens/s) y genera Shakespeare reconocible.
+`uv run python -m llmfs train --config tiny_char` really trains (~70 s on MPS, loss from 3.2 to
+1.60, 112k tokens/s) and generates recognizable Shakespeare.
 
-Lo que queda pendiente, si se retoma:
-- El pipeline de TinyStories con BPE real (`llmfs/data/prepare.py` solo tiene
-  `prepare_shakespeare`; `preparar()` lanza `NotImplementedError` para el resto).
-- El comando `llmfs sample` sigue siendo un stub (`_LATER` en `llmfs/cli.py`).
-- El servidor FastAPI del módulo 17 se describe en la teoría pero no se implementa.
-- La tirada real de 500M tokens en la RTX 2060 no se ha ejecutado (no hay hardware CUDA
-  aquí). Los tiempos del README para esa tirada están marcados como estimación.
+What is left, if this gets picked up again:
+- The TinyStories pipeline with real BPE (`llmfs/data/prepare.py` only has
+  `prepare_shakespeare`; `prepare()` raises `NotImplementedError` for the rest).
+- The `llmfs sample` command is still a stub (`_LATER` in `llmfs/cli.py`).
+- The module 17 FastAPI server is described in the theory but not implemented.
+- The real 500M-token run on the RTX 2060 has not been executed (there is no CUDA hardware
+  here). The README times for that run are marked as an estimate.
 
-Hallazgos que conviene no repetir:
-- `named_parameters()` **deduplica por defecto** (`remove_duplicate=True`). La creencia común
-  de que devuelve los pesos atados dos veces es falsa.
-- Un test que pasa `modelo(idx, idx)` (targets sin desplazar) produce una fuga de información
-  y una pérdida por debajo de `ln(V)`. El síntoma es idéntico a una máscara causal rota, así
-  que ante ese síntoma hay que mirar primero cómo se monta el batch.
-- `x in lista_de_tensores` revienta con "Boolean value of Tensor is ambiguous", porque `in`
-  usa `==` y en tensores eso devuelve comparación elemento a elemento. Comparar por `id()`.
-- El guardia `test_ningun_fichero_de_test_define_dos_veces_el_mismo_test` ha cazado ya
-  **nueve** duplicados de `test_coincide_con_la_referencia`. Al escribir un `test_NN.py` con
-  varios ejercicios, nombrar cada test con el ejercicio al que pertenece
-  (`test_adamw_coincide_con_la_referencia`), nunca genérico.
+Findings worth not repeating:
+- `named_parameters()` **deduplicates by default** (`remove_duplicate=True`). The common belief
+  that it returns tied weights twice is false.
+- A test that passes `model(idx, idx)` (unshifted targets) produces an information leak and a
+  loss below `ln(V)`. The symptom is identical to a broken causal mask, so faced with that
+  symptom you have to look first at how the batch is assembled.
+- `x in list_of_tensors` blows up with "Boolean value of Tensor is ambiguous", because `in`
+  uses `==` and on tensors that returns an elementwise comparison. Compare by `id()`.
+- The guard `test_no_test_file_defines_the_same_test_twice` has already caught **nine**
+  duplicates of `test_matches_the_reference`. When writing a `test_NN.py` with several
+  exercises, name each test after the exercise it belongs to
+  (`test_adamw_matches_the_reference`), never generically.
 
-Los directorios de `llmfs/` (`model/`, `train/`, `infer/`, `eval/`, `viz/`, `tokenizer/`,
-`data/`) se crean en la fase que los llena, no antes: en este repo no existe nada que no
-funcione. `llmfs status` es siempre la fuente de verdad de qué hay hecho.
+The `llmfs/` directories (`model/`, `train/`, `infer/`, `eval/`, `viz/`, `tokenizer/`, `data/`)
+are created in the phase that fills them, not before: in this repo nothing exists that does not
+work. `llmfs status` is always the source of truth for what is done.
 
-Los subcomandos `llmfs train`, `llmfs sample` y `llmfs data` existen como stubs que
-explican en qué módulo se construyen. Al implementarlos, quitar la entrada
-correspondiente de `_LATER` en `llmfs/cli.py`.
+The `llmfs train`, `llmfs sample` and `llmfs data` subcommands exist as stubs that explain in
+which module they are built. When implementing them, remove the corresponding entry from
+`_LATER` in `llmfs/cli.py`.

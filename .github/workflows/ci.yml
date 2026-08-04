@@ -12,19 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Instalar uv
+      - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
           version: "latest"
 
-      - name: Instalar Python
+      - name: Install Python
         run: uv python install 3.11
 
-      - name: Instalar dependencias
+      - name: Install dependencies
         run: uv sync --extra compare
 
-      - name: Tests de infraestructura (tienen que estar siempre en verde)
+      - name: Infrastructure tests (must always be green)
         run: uv run pytest tests/
 
-      - name: Tests de referencia del curso (salud del curso, siempre en verde)
+      - name: Course reference tests (course health, always green)
         run: LLMFS_TEST_REFERENCE=1 uv run pytest modules/

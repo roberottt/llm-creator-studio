@@ -71,3 +71,72 @@ hours, not one that maximizes MFU.
 
 On the M5 with MPS the numbers are flatter across dtypes, because the memory is unified and
 there is no PCIe traffic to amortize; fp16 wins less than it would on a discrete GPU.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def matmul_flops(size: int) -> int:
+    return 2 * size**3
+
+
+def measure_matmul_tflops(
+    cfg: DeviceConfig | None = None,
+    size: int = 2048,
+    dtype: torch.dtype | None = None,
+    warmup: int = 3,
+    iters: int = 10,
+) -> float:
+    cfg = cfg or get_device()
+    if dtype is None:
+        dtype = cfg.amp_dtype or torch.float32
+
+    a = torch.randn(size, size, device=cfg.device, dtype=dtype)
+    b = torch.randn(size, size, device=cfg.device, dtype=dtype)
+
+    for _ in range(warmup):
+        a @ b
+    cfg.synchronize()
+
+    start = time.perf_counter()
+    for _ in range(iters):
+        a @ b
+    cfg.synchronize()
+    elapsed = time.perf_counter() - start
+
+    return (matmul_flops(size) * iters) / elapsed / 1e12
+
+
+def transformer_flops_per_token(
+    n_layers: int,
+    d_model: int,
+    d_ff: int,
+    context_length: int,
+    vocab_size: int,
+    n_ffn_matrices: int = 3,
+    include_backward: bool = True,
+) -> int:
+    attention_params = 4 * d_model**2
+    ffn_params = n_ffn_matrices * d_model * d_ff
+    matmul_params = n_layers * (attention_params + ffn_params)
+    matmul_params += d_model * vocab_size  # the final projection to logits
+
+    forward = 2 * matmul_params + 4 * n_layers * context_length * d_model
+    return int(3 * forward if include_backward else forward)
+
+
+def estimate_tokens_per_second(tflops: float, flops_per_token: int, mfu: float = 0.4) -> float:
+    if flops_per_token <= 0:
+        raise ValueError("flops_per_token must be positive")
+    return tflops * 1e12 * mfu / flops_per_token
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

@@ -1,7 +1,7 @@
 [project]
 name = "llmfs"
 version = "0.1.0"
-description = "LLM desde cero: curso-repositorio para construir un GPT de ~9M de parametros en PyTorch"
+description = "LLM from scratch: a course-repository for building a ~9M parameter GPT in PyTorch"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -19,9 +19,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Solo para las comparativas explicitas del modulo 02. El modelo NUNCA usa esto.
+# Only for the explicit comparisons of module 02. The model NEVER uses this.
 compare = ["tiktoken>=0.7"]
-# Solo para el modulo 16 (servir el modelo).
+# Only for module 16 (serving the model).
 serve = ["fastapi>=0.110", "uvicorn>=0.29"]
 
 [project.scripts]

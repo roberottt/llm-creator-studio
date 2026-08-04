@@ -1,38 +1,38 @@
-# El juguete: GPT diminuto a nivel caracter sobre tiny-shakespeare.
+# The toy: tiny character-level GPT on tiny-shakespeare.
 #
-# Para que sirve: validar el pipeline entero (datos -> modelo -> bucle -> muestreo) en
-# menos de un minuto y en cualquier maquina, incluida CPU. Si algo esta roto, se ve aqui
-# y no cuatro horas despues de lanzar la tirada de verdad.
+# What it is for: validating the whole pipeline (data -> model -> loop -> sampling) in
+# under a minute and on any machine, CPU included. If something is broken, you see it here
+# and not four hours after launching the real run.
 #
-# Con esta config el modelo tiene ~0,8M parametros y deberia bajar de perdida ~4,17
-# (que es ln(65), el suelo de adivinar al azar) a ~1,5 en unos pocos miles de pasos.
+# With this config the model has ~0.8M parameters and should drop from a loss of ~4.17
+# (which is ln(65), the floor of guessing at random) to ~1.5 in a few thousand steps.
 
 name: tiny_char
 
-# --------------------------------------------------------------------- modelo
-vocab_size: 65            # los caracteres unicos de tiny-shakespeare
+# --------------------------------------------------------------------- model
+vocab_size: 65            # the unique characters of tiny-shakespeare
 n_layers: 4
 d_model: 128
 n_heads: 4                # head_dim = 32
-d_ff: 384                 # ceil_64(2/3 * 4 * 128) = ceil_64(341,3) = 384
+d_ff: 384                 # ceil_64(2/3 * 4 * 128) = ceil_64(341.3) = 384
 context_length: 128
 norm: rmsnorm
 pos: rope
 activation: swiglu
 tie_embeddings: true
-dropout: 0.1              # 1MB de texto: aqui SI hace falta regularizar
+dropout: 0.1              # 1MB of text: here regularizing IS needed
 bias: false
 
-# --------------------------------------------------------------------- datos
+# --------------------------------------------------------------------- data
 dataset: tinyshakespeare
 tokenizer: char
 data_dir: data
 val_fraction: 0.05
 num_workers: 2
 
-# --------------------------------------------------------------------- entrenamiento
+# --------------------------------------------------------------------- training
 optimizer: adamw
-lr: 3.0e-3                # un modelo pequenyo aguanta (y necesita) un lr mas alto
+lr: 3.0e-3                # a small model tolerates (and needs) a higher lr
 betas: [0.9, 0.95]
 weight_decay: 0.1
 grad_clip: 1.0
@@ -40,8 +40,8 @@ warmup_steps: 100
 schedule: cosine
 min_lr_ratio: 0.1
 batch_size: 32
-grad_accum: 1             # 32 x 1 x 128 = 4.096 tokens por paso
-max_tokens: 12_000_000    # ~2.929 pasos
+grad_accum: 1             # 32 x 1 x 128 = 4,096 tokens per step
+max_tokens: 12_000_000    # ~2,929 steps
 eval_interval: 250
 eval_iters: 40
 log_interval: 25

@@ -1,90 +1,89 @@
-# LLM desde cero
+# LLM from scratch
 
-Un **curso-repositorio** para construir un GPT de 8.933.440 parámetros programando en
-PyTorch, y entrenarlo en tu propio hardware hasta que escriba historias cortas coherentes.
+A **course-repository** for building a GPT of 8,933,440 parameters by programming in PyTorch,
+and training it on your own hardware until it writes coherent short stories.
 
-No es un tutorial para leer. Abres el repo en VSCode, lees la teoría, implementas funciones
-marcadas con `NotImplementedError`, y ejecutas tests hasta que pasan.
+It is not a tutorial to read. You open the repo in VSCode, read the theory, implement functions
+marked with `NotImplementedError`, and run tests until they pass.
 
 ```bash
 make install
 uv run python -m llmfs next
 ```
 
-## Cómo funciona
+## How it works
 
-Cada módulo tiene cinco ficheros y el bucle es siempre el mismo:
+Every module has five files and the loop is always the same:
 
 ```
-THEORY.md      →  lees (10-15 min)
-exercises.py  →  implementas
-llmfs check NN →  rojo → llmfs hint NN -e 1   →  verde → siguiente
-llmfs demo NN  →  ves el concepto en gráficas y números
-SOLUTION.md    →  la explicación, Y el código completo para copiar si te bloqueas
+THEORY.md      →  you read (10-15 min)
+exercises.py   →  you implement
+llmfs check NN →  red → llmfs hint NN -e 1   →  green → next
+llmfs demo NN  →  you see the concept in charts and numbers
+SOLUTION.md    →  the explanation, AND the complete code to copy if you get stuck
 ```
 
-**Si te atascas de verdad, cada `SOLUTION.md` termina con el código entero**, listo para
-copiar y pegar. Un test verifica que ese código compila, usa solo nombres que tienes
-disponibles, y pasa los tests del módulo. Copiarlo no es hacer trampa: hacer trampa sería
-copiarlo sin haberlo intentado.
+**If you really get stuck, every `SOLUTION.md` ends with the whole code**, ready to copy and
+paste. A test verifies that this code compiles, uses only names you have available, and passes
+the module's tests. Copying it is not cheating: cheating would be copying it without having
+tried.
 
-**Los tests comparan contra referencia, no contra "no peta".** Tu `MultiHeadAttention` se
-valida con `torch.allclose` contra `nn.MultiheadAttention`; tu `AdamW` contra
-`torch.optim.AdamW`; tu `layer_norm` contra `F.layer_norm`.
+**The tests compare against a reference, not against "it did not blow up".** Your
+`MultiHeadAttention` is validated with `torch.allclose` against `nn.MultiheadAttention`; your
+`AdamW` against `torch.optim.AdamW`; your `layer_norm` against `F.layer_norm`.
 
-**Nunca te quedas bloqueado.** Existe `llmfs/reference/` con todo implementado. Si tu
-ejercicio del módulo 6 está a medias, los módulos 7 en adelante usan la referencia
-automáticamente y te avisan por stderr. Y cuando tu ejercicio está bien, **el modelo final
-entrena con tu código**.
+**You never get blocked.** There is an `llmfs/reference/` with everything implemented. If your
+module 6 exercise is half done, modules 7 onwards use the reference automatically and warn you
+on stderr. And when your exercise is right, **the final model trains with your code**.
 
-## El currículo
+## The curriculum
 
-**18 módulos, 62 ejercicios, ~42 h de trabajo** (sin contar tiempo de GPU).
+**18 modules, 62 exercises, ~42 h of work** (not counting GPU time).
 
-### Parte 0 — Antes de empezar
+### Part 0 — Before you start
 
-| | módulo | qué construyes | tiempo |
+| | module | what you build | time |
 |---|---|---|---|
-| 00 | **Qué es un LLM** | un generador de texto por conteo, sin torch | 1 h |
+| 00 | **What is an LLM** | a text generator by counting, without torch | 1 h |
 
-### Parte I — Fundamentos
+### Part I — Foundations
 
-| | módulo | qué construyes | tiempo |
+| | module | what you build | time |
 |---|---|---|---|
-| 01 | Entorno y hardware | mides los TFLOPS reales de tu GPU | 45 min |
-| 02 | Autodiferenciación | un motor de autograd escalar, estilo micrograd | 3 h |
-| 03 | Tokenización | BPE desde cero, vocabulario de 4096 | 4 h |
-| 04 | Datos | memmap uint16 y el dataloader de ventanas | 2 h |
+| 01 | Environment and hardware | you measure your GPU's real TFLOPS | 45 min |
+| 02 | Autodifferentiation | a scalar autograd engine, micrograd style | 3 h |
+| 03 | Tokenization | BPE from scratch, a 4096-token vocabulary | 4 h |
+| 04 | Data | uint16 memmap and the window dataloader | 2 h |
 
-### Parte II — Arquitectura
+### Part II — Architecture
 
-| | módulo | qué construyes | tiempo |
+| | module | what you build | time |
 |---|---|---|---|
-| 05 | Baselines | bigrama, MLP de Bengio, cross-entropy | 2 h |
-| 06 | **Self-attention** | Q/K/V, máscara causal, multi-head | 4 h |
-| 07 | Normalización | LayerNorm → RMSNorm, pre-norm vs post-norm | 1,5 h |
-| 08 | FFN y activaciones | GELU, SwiGLU, el factor 2/3 | 1,5 h |
-| 09 | Posición y RoPE | sinusoidales → RoPE, extrapolación | 2,5 h |
-| 10 | **El GPT completo** | weight tying, init escalada, **8.933.440 params** | 3 h |
+| 05 | Baselines | bigram, Bengio's MLP, cross-entropy | 2 h |
+| 06 | **Self-attention** | Q/K/V, causal mask, multi-head | 4 h |
+| 07 | Normalization | LayerNorm → RMSNorm, pre-norm vs post-norm | 1.5 h |
+| 08 | FFN and activations | GELU, SwiGLU, the 2/3 factor | 1.5 h |
+| 09 | Position and RoPE | sinusoidal → RoPE, extrapolation | 2.5 h |
+| 10 | **The full GPT** | weight tying, scaled init, **8,933,440 params** | 3 h |
 
-### Parte III — Entrenamiento
+### Part III — Training
 
-| | módulo | qué construyes | tiempo |
+| | module | what you build | time |
 |---|---|---|---|
-| 11 | El bucle | AdamW desde cero, warmup+coseno, clipping | 4 h |
-| 12 | Eficiencia y escalado | MFU, Chinchilla | 2 h |
-| 13 | **La tirada real** | overfit a un batch, y entrenas de verdad | 1 h |
+| 11 | The loop | AdamW from scratch, warmup+cosine, clipping | 4 h |
+| 12 | Efficiency and scaling | MFU, Chinchilla | 2 h |
+| 13 | **The real run** | overfit on a batch, and you train for real | 1 h |
 
-### Parte IV — Uso y evaluación
+### Part IV — Use and evaluation
 
-| | módulo | qué construyes | tiempo |
+| | module | what you build | time |
 |---|---|---|---|
-| 14 | Inferencia | temperatura, top-k, top-p, **KV cache** | 3 h |
-| 15 | Evaluación | perplejidad, bits/byte, batería TinyStories | 2 h |
-| 16 | Post-training | chat template, SFT, **LoRA desde cero** | 3 h |
-| 17 | Extras y límites | int8, y qué te separa de un modelo frontier | 2 h |
+| 14 | Inference | temperature, top-k, top-p, **KV cache** | 3 h |
+| 15 | Evaluation | perplexity, bits/byte, TinyStories battery | 2 h |
+| 16 | Post-training | chat template, SFT, **LoRA from scratch** | 3 h |
+| 17 | Extras and limits | int8, and what separates you from a frontier model | 2 h |
 
-## El modelo final
+## The final model
 
 ```yaml
 vocab_size: 4096      n_layers: 6       d_model: 320
@@ -93,115 +92,114 @@ norm: rmsnorm         pos: rope         activation: swiglu
 tie_embeddings: true  dropout: 0.0
 ```
 
-| componente | parámetros |
+| component | parameters |
 |---|---|
-| embeddings (4096 × 320) | 1.310.720 |
-| atención (6 × 4 × 320²) | 2.457.600 |
-| SwiGLU (6 × 3 × 320 × 896) | 5.160.960 |
-| RMSNorm (13 × 320) | 4.160 |
-| lm_head (atada) | 0 |
-| **TOTAL** | **8.933.440** |
+| embeddings (4096 × 320) | 1,310,720 |
+| attention (6 × 4 × 320²) | 2,457,600 |
+| SwiGLU (6 × 3 × 320 × 896) | 5,160,960 |
+| RMSNorm (13 × 320) | 4,160 |
+| lm_head (tied) | 0 |
+| **TOTAL** | **8,933,440** |
 
-## Tiempos medidos
+## Measured times
 
-Todo lo de abajo está **medido de verdad**, no estimado. En un MacBook Pro M5 (MPS):
+Everything below is **really measured**, not estimated. On a MacBook Pro M5 (MPS):
 
-| | tiempo |
+| | time |
 |---|---|
-| suite de tests completa | **4,6 s** |
-| `llmfs demo 06` (entrena atención y saca heatmaps) | 15 s |
-| `llmfs demo 13` (entrenamiento completo) | 40 s |
-| **`llmfs train --config tiny_char`** (1500 pasos) | **70 s** |
-| `llmfs demo 16` (SFT real) | 30 s |
+| complete test suite | **4.6 s** |
+| `llmfs demo 06` (trains attention and produces heatmaps) | 15 s |
+| `llmfs demo 13` (complete training run) | 40 s |
+| **`llmfs train --config tiny_char`** (1500 steps) | **70 s** |
+| `llmfs demo 16` (real SFT) | 30 s |
 
-El entrenamiento de `tiny_char` va a **112k tokens/s** y baja la pérdida de 3,2 a 1,60.
+The `tiny_char` training runs at **112k tokens/s** and takes the loss from 3.2 to 1.60.
 
-### La tirada final de TinyStories
+### The final TinyStories run
 
-En la RTX 2060 (Turing, 51,6 TFLOPS fp16), con 500M tokens:
+On the RTX 2060 (Turing, 51.6 TFLOPS fp16), with 500M tokens:
 
 ```
-FLOPs = 6 × 7,62M × 500M ≈ 2,3·10¹⁶
+FLOPs = 6 × 7.62M × 500M ≈ 2.3·10¹⁶
 ```
 
-Con una MFU realista del 10-15%: **entre 2 y 5 horas**. El número real lo dará tu propia
-medición en los primeros minutos — el entrenador imprime tokens/s, MFU y ETA cada pocos
-pasos.
+With a realistic MFU of 10-15%: **between 2 and 5 hours**. The real number will come from your
+own measurement in the first few minutes — the trainer prints tokens/s, MFU and ETA every few
+steps.
 
-Antes de lanzarla, dos cosas: el overfit a un batch (30 s) y `--max-steps 100` para ver el
-ritmo real.
+Before launching it, two things: the overfit on a batch (30 s) and `--max-steps 100` to see the
+real pace.
 
 ## Hardware
 
-Todo corre en **CUDA, MPS y CPU sin cambios**. La detección y la política de precisión viven
-en `llmfs/device.py` y en ningún otro sitio.
+Everything runs on **CUDA, MPS and CPU without changes**. Detection and the precision policy
+live in `llmfs/device.py` and nowhere else.
 
-**RTX 2060 (Turing, sm_75):** sin bfloat16 en hardware, así que fp16 + `GradScaler`. Ojo:
-`torch.cuda.is_bf16_supported()` devuelve `True` en Turing contando emulación por software,
-por eso el código mira la compute capability directamente. Sin FlashAttention-2 (pide sm_80),
-pero `F.scaled_dot_product_attention` cae solo al backend *memory-efficient*.
-`torch.compile` desactivado por defecto: en Turing falla a compilar con frecuencia.
+**RTX 2060 (Turing, sm_75):** no bfloat16 in hardware, so fp16 + `GradScaler`. Careful:
+`torch.cuda.is_bf16_supported()` returns `True` on Turing counting software emulation, which is
+why the code looks at the compute capability directly. No FlashAttention-2 (it needs sm_80),
+but `F.scaled_dot_product_attention` falls back on its own to the *memory-efficient* backend.
+`torch.compile` off by default: on Turing it frequently fails to compile.
 
-**Apple Silicon (MPS):** `PYTORCH_ENABLE_MPS_FALLBACK=1` se fija antes de importar torch.
-fp32 por defecto. Algunos ops caen a CPU en silencio, y esa es la causa más común de
-lentitud inexplicable en Mac.
+**Apple Silicon (MPS):** `PYTORCH_ENABLE_MPS_FALLBACK=1` is set before importing torch. fp32 by
+default. Some ops fall back to CPU silently, and that is the most common cause of unexplained
+slowness on a Mac.
 
-## Comandos
+## Commands
 
 ```bash
 make install                    # uv sync --extra compare
-make test                       # tu progreso (rojo hasta que implementes: es lo normal)
-make test-reference             # salud del curso (siempre verde)
-make test-soluciones            # comprueba que el código de las soluciones se puede copiar
+make test                       # your progress (red until you implement: that is normal)
+make test-reference             # course health (always green)
+make test-solutions             # checks that the solutions' code can be copied
 
-llmfs status                    # tabla de progreso, calculada ejecutando los tests
-llmfs next                      # qué módulo toca y qué ejercicio
-llmfs check 06                  # tests del módulo 06
-llmfs hint 06 -e 2              # pista progresiva (repite para más nivel)
-llmfs demo 06                   # el experimento del módulo
-llmfs device                    # hardware detectado
-llmfs train --config tiny_char  # entrena de verdad
+llmfs status                    # progress table, computed by running the tests
+llmfs next                      # which module comes next and which exercise
+llmfs check 06                  # module 06 tests
+llmfs hint 06 -e 2              # progressive hint (repeat for a deeper level)
+llmfs demo 06                   # the module's experiment
+llmfs device                    # detected hardware
+llmfs train --config tiny_char  # trains for real
 ```
 
-**El estado del currículo no se declara en ningún sitio**: se calcula ejecutando los tests.
+**The curriculum state is not declared anywhere**: it is computed by running the tests.
 
-## Sobre la honestidad intelectual
+## About intellectual honesty
 
-Cada `THEORY.md` cierra con una sección **"Dónde está el debate"**, y no es de adorno. A lo
-largo del curso vas a leer que:
+Every `THEORY.md` closes with a **"Where the debate is"** section, and it is not decoration.
+Throughout the course you are going to read that:
 
-- SwiGLU funciona mejor y **su propio autor escribe** que no tiene explicación.
-- Adam domina sin que nadie sepa bien por qué; la justificación habitual no resiste el
-  análisis.
-- Los coeficientes de Chinchilla tienen intervalos de confianza mucho más amplios de lo que
-  se reportó, según un reanálisis de 2024.
-- La evaluación por benchmarks está contaminada, y separar "ha aprendido" de "lo ha visto"
-  es técnicamente difícil.
-- La normalización sola ya rescata el gradiente casi tanto como los residuales — el
-  argumento habitual es verdad a medias, y el demo del módulo 07 lo mide.
+- SwiGLU works better and **its own author writes** that there is no explanation for it.
+- Adam dominates without anyone quite knowing why; the usual justification does not survive
+  analysis.
+- Chinchilla's coefficients have much wider confidence intervals than was reported, according
+  to a 2024 reanalysis.
+- Benchmark evaluation is contaminated, and separating "it has learned" from "it has seen it"
+  is technically hard.
+- Normalization alone already rescues the gradient almost as much as the residuals — the usual
+  argument is half true, and module 07's demo measures it.
 
-Esa parte no suele aparecer en los tutoriales, y es la que más sirve para leer papers con
-criterio.
+That part does not usually appear in tutorials, and it is the one that helps most for reading
+papers with judgement.
 
-## Dependencias
+## Dependencies
 
 `torch`, `numpy`, `datasets`, `matplotlib`, `pytest`, `tqdm`, `pyyaml`, `rich`, `regex`.
 
-`tiktoken` va en el extra `[compare]` y solo se usa en la comparativa del módulo 03.
-**Nada de `transformers` ni HuggingFace para el modelo**: `datasets` solo descarga
-TinyStories.
+`tiktoken` goes in the `[compare]` extra and is only used in the module 03 comparison.
+**No `transformers` or HuggingFace for the model**: `datasets` only downloads TinyStories.
 
-## Empezar
+## Getting started
 
 ```bash
 make install
 uv run python -m llmfs next
 ```
 
-El módulo 00 no tiene torch, ni matrices, ni derivadas: construyes un generador de texto con
-diccionarios y una división. Y ves el bucle autorregresivo funcionando antes de saber qué es
-un transformer.
+Module 00 has no torch, no matrices, no derivatives: you build a text generator with
+dictionaries and one division. And you see the autoregressive loop working before knowing what
+a transformer is.
 
-## Licencia
+## License
 
-MIT. Ver [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
