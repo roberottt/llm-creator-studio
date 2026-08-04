@@ -1,18 +1,13 @@
 # LLM desde cero
 
-> **IMPORTANTE — ¿prefieres el curso en inglés?**
-> La rama [`english`](https://github.com/roberottt/llm-creator-studio/tree/english) contiene
-> exactamente el mismo curso, íntegramente traducido al inglés: teoría, ejercicios,
-> soluciones, pistas y mensajes de la CLI. Mismo temario, mismos 18 módulos, mismos 62
-> ejercicios.
+> **IMPORTANT — looking for the English version?**
+> The [`english`](https://github.com/roberottt/llm-creator-studio/tree/english) branch has
+> this exact same course, fully translated into English: theory, exercises, solutions, hints
+> and CLI messages. Same syllabus, same 18 modules, same 62 exercises.
 >
 > ```bash
 > git checkout english
 > ```
->
-> *Looking for the English version? Everything in this course is also available, fully
-> translated, on the [`english`](https://github.com/roberottt/llm-creator-studio/tree/english)
-> branch.*
 
 Un **curso-repositorio** para construir un GPT de 8.933.440 parámetros programando en
 PyTorch, y entrenarlo en tu propio hardware hasta que escriba historias cortas coherentes.
