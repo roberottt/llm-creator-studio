@@ -1,40 +1,40 @@
-"""Modulo 11 - El bucle de entrenamiento.
+"""Module 11 - The training loop.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 11` -> `llmfs hint 11 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 11` -> `llmfs hint 11 -e N`
+-> `SOLUTION.md` has the complete code.
 
-El ejercicio 1 es el mas largo del curso. Los otros tres son cortos.
+Exercise 1 is the longest in the course. The other three are short.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Las cuatro piezas que hacen que un entrenamiento funcione a escala:
+The four pieces that make a training run work at scale:
 
-    AdamWScratch        (ej. 1)  el optimizador, desde cero
-    lr_at_step          (ej. 2)  como cambia el learning rate durante la tirada
-    clip_grad_norm      (ej. 3)  que un batch raro no destruya horas de trabajo
-    build_param_groups  (ej. 4)  que parametros decaen y cuales no
+    AdamWScratch        (ex. 1)  the optimizer, from scratch
+    lr_at_step          (ex. 2)  how the learning rate changes during the run
+    clip_grad_norm      (ex. 3)  stopping an odd batch destroying hours of work
+    build_param_groups  (ex. 4)  which parameters decay and which do not
 
-Cuando esten las cuatro en verde, el modelo final entrenara con TU optimizador.
+When all four are green, the final model will train with YOUR optimizer.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **optimizador**: el algoritmo que decide como aplicar los gradientes a los pesos.
-- **learning rate** (lr): cuanto se mueven los pesos en cada paso. El hiperparametro que
-  mas entrenamientos arruina.
-- **momento**: una media movil de los gradientes recientes, para suavizar el ruido.
-- **weight decay**: empujar los pesos hacia cero para que no crezcan sin control.
-- **warmup**: subir el learning rate despacio en los primeros pasos.
-- **AMP / GradScaler**: entrenar en 16 bits multiplicando la perdida por un numero grande
-  para que los gradientes no se vayan a cero.
-- **grupos de parametros**: subconjuntos con hiperparametros distintos. PyTorch los acepta
-  como lista de dicts.
+- **optimizer**: the algorithm that decides how to apply the gradients to the weights.
+- **learning rate** (lr): how far the weights move on each step. The hyperparameter that
+  ruins the most training runs.
+- **momentum**: a running average of the recent gradients, to smooth out the noise.
+- **weight decay**: pushing the weights towards zero so they do not grow without control.
+- **warmup**: raising the learning rate slowly over the first steps.
+- **AMP / GradScaler**: training in 16 bits by multiplying the loss by a large number so the
+  gradients do not go to zero.
+- **parameter groups**: subsets with different hyperparameters. PyTorch accepts them as a
+  list of dicts.
 
-    llmfs demo 11     compara tu AdamW con el de PyTorch y mide el recorte
+    llmfs demo 11     compares your AdamW with PyTorch's and measures the clipping
 """
 
 from __future__ import annotations
@@ -47,14 +47,14 @@ import torch.nn as nn
 
 
 class AdamWScratch(torch.optim.Optimizer):
-    """AdamW desde cero. Hereda de `torch.optim.Optimizer` y solo hay que escribir `step`.
+    """AdamW from scratch. It inherits from `torch.optim.Optimizer` and you only write `step`.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    El `__init__` YA ESTÁ HECHO. Tu unico trabajo es el metodo `step()`, y tiene una estructura
-    fija: dos bucles anidados (por grupo, por parametro) y dentro seis operaciones.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    The `__init__` IS ALREADY DONE. Your only job is the `step()` method, and it has a fixed
+    structure: two nested loops (per group, per parameter) and six operations inside.
 
-        1. El esqueleto de los dos bucles:
+        1. The skeleton of the two loops:
 
                @torch.no_grad()
                def step(self, closure=None):
@@ -72,7 +72,7 @@ class AdamWScratch(torch.optim.Optimizer):
                                continue
                            grad = p.grad
 
-        2. El estado de ese parametro, creandolo la primera vez:
+        2. That parameter's state, creating it the first time:
 
                            state = self.state[p]
                            if len(state) == 0:
@@ -84,106 +84,109 @@ class AdamWScratch(torch.optim.Optimizer):
                            t = state["step"]
                            m, v = state["exp_avg"], state["exp_avg_sq"]
 
-        3. EL WEIGHT DECAY, DESACOPLADO (esto va sobre el parametro, NO sobre el gradiente):
+        3. THE WEIGHT DECAY, DECOUPLED (this goes on the parameter, NOT on the gradient):
 
                            if wd != 0.0:
                                p.mul_(1.0 - lr * wd)
 
-        4. Las dos medias moviles:
+        4. The two running averages:
 
                            m.mul_(beta1).add_(grad, alpha=1 - beta1)
                            v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-        5. La correccion de sesgo:
+        5. The bias correction:
 
                            bias1 = 1 - beta1 ** t
                            bias2 = 1 - beta2 ** t
                            step_size = lr / bias1
                            denom = (v.sqrt() / math.sqrt(bias2)).add_(eps)
 
-        6. La actualizacion:
+        6. The update:
 
                            p.addcdiv_(m, denom, value=-step_size)
 
-        7. Y fuera de todos los bucles: `return loss`
+        7. And outside all the loops: `return loss`
 
-    QUÉ HACE ADAM, EN DOS IDEAS
-    ---------------------------
-    **Momento.** En vez de moverse segun el gradiente de ESTE paso, usa una media movil de los
-    recientes (eso es `m`). Cada batch es una muestra distinta y sus gradientes son ruidosos;
-    promediar cancela el ruido.
+    WHAT ADAM DOES, IN TWO IDEAS
+    ----------------------------
+    **Momentum.** Instead of moving along THIS step's gradient, it uses a running average of
+    the recent ones (that is `m`). Each batch is a different sample and its gradients are
+    noisy; averaging cancels the noise.
 
-    **Escalado por dimension.** Lleva tambien una media movil del gradiente AL CUADRADO (`v`) y
-    divide por su raiz. Un parametro con gradientes siempre grandes se mueve poco; uno que casi
-    nunca recibe senyal se mueve mucho cuando la recibe. Cada parametro acaba con su propio
-    learning rate efectivo, y por eso un unico `lr` global funciona para todo el modelo.
+    **Per-dimension scaling.** It also keeps a running average of the SQUARED gradient (`v`)
+    and divides by its square root. A parameter with always-large gradients moves little; one
+    that almost never receives signal moves a lot when it does. Each parameter ends up with
+    its own effective learning rate, which is why a single global `lr` works for the whole
+    model.
 
-    LAS FÓRMULAS, con t el numero de paso EMPEZANDO EN 1
-    ----------------------------------------------------
+    THE FORMULAS, with t the step number STARTING AT 1
+    -------------------------------------------------
         m = beta1*m + (1-beta1)*g
         v = beta2*v + (1-beta2)*g²
 
-        m_hat = m / (1 - beta1^t)          <- la correccion de sesgo
+        m_hat = m / (1 - beta1^t)          <- the bias correction
         v_hat = v / (1 - beta2^t)
 
         p -= lr * m_hat / (sqrt(v_hat) + eps)
-        p -= lr * weight_decay * p         <- por separado, ver mas abajo
+        p -= lr * weight_decay * p         <- separately, see below
 
-    En el paso 5 de arriba la correccion esta reordenada (`lr/bias1` y `sqrt(v)/sqrt(bias2)`)
-    para ahorrar una division por tensor. Es la misma formula.
+    In step 5 above the correction is rearranged (`lr/bias1` and `sqrt(v)/sqrt(bias2)`) to
+    save one division per tensor. It is the same formula.
 
-    CÓMO SE ESCRIBE UN OPTIMIZADOR EN PYTORCH
-    -----------------------------------------
-    **`self.param_groups`** son los grupos del ejercicio 4: cada uno con sus propios parametros
-    y su propio `weight_decay`. Por eso los hiperparametros se leen DENTRO del bucle de grupos y
-    no una vez al principio.
+    HOW YOU WRITE AN OPTIMIZER IN PYTORCH
+    -------------------------------------
+    **`self.param_groups`** are exercise 4's groups: each with its own parameters and its own
+    `weight_decay`. That is why the hyperparameters are read INSIDE the group loop and not
+    once at the start.
 
-    **`self.state[p]`** es un `defaultdict` por parametro donde guardas m, v y el contador. La
-    primera vez que tocas un parametro esta vacio (`len(state) == 0`) y hay que inicializarlo.
-    PyTorch lo serializa solo en `optimizer.state_dict()`, que es lo que permite reanudar un
-    entrenamiento a mitad.
+    **`self.state[p]`** is a per-parameter `defaultdict` where you store m, v and the counter.
+    The first time you touch a parameter it is empty (`len(state) == 0`) and it has to be
+    initialized. PyTorch serializes it for you in `optimizer.state_dict()`, which is what
+    makes resuming a training run halfway through possible.
 
-    **El `@torch.no_grad()`** es obligatorio. Estas modificando parametros que tienen
-    `requires_grad=True`; sin el estarias construyendo grafo de autograd sobre las propias
-    actualizaciones, y ademas de estar mal se comeria la memoria.
+    **The `@torch.no_grad()`** is mandatory. You are modifying parameters that have
+    `requires_grad=True`; without it you would be building an autograd graph over the updates
+    themselves, which besides being wrong would eat memory.
 
-    LOS TRES ERRORES QUE HAY QUE EVITAR
-    -----------------------------------
-    **Empezar t en 0.** Con t=0, `1 - beta^0 = 0` y divides por cero. Incrementa
-    `state["step"]` ANTES de usarlo.
+    THE THREE MISTAKES TO AVOID
+    ---------------------------
+    **Starting t at 0.** With t=0, `1 - beta^0 = 0` and you divide by zero. Increment
+    `state["step"]` BEFORE using it.
 
-    **Olvidar la correccion de sesgo.** `m` y `v` empiezan en cero, asi que los primeros pasos
-    subestiman las magnitudes. Con beta2=0.95, tras un paso `v` vale solo el 5% de g², y dividir
-    por su raiz daria un paso 4,5 veces mayor de lo debido. Sin correccion, el entrenamiento
-    puede diverger en los primeros pasos y no lo achacaras nunca a esto.
+    **Forgetting the bias correction.** `m` and `v` start at zero, so the first steps
+    underestimate the magnitudes. With beta2=0.95, after one step `v` is only 5% of g², and
+    dividing by its square root would give a step 4.5 times larger than it should be. Without
+    the correction, training can diverge in the first steps and you will never blame this.
 
-    **Sumar el weight decay al gradiente.** Es LA diferencia entre Adam+L2 y AdamW:
+    **Adding the weight decay to the gradient.** That is THE difference between Adam+L2 and
+    AdamW:
 
-        Adam + L2:  grad = grad + wd * p     <- MAL, no es lo que queremos
-        AdamW:      p.mul_(1 - lr * wd)      <- directamente sobre el parametro
+        Adam + L2:  grad = grad + wd * p     <- WRONG, not what we want
+        AdamW:      p.mul_(1 - lr * wd)      <- directly on the parameter
 
-    Si lo sumas al gradiente, el decaimiento pasa por la division por `sqrt(v)` y su efecto real
-    acaba dependiendo de la magnitud de los gradientes de ese parametro. Desacoplado es uniforme
-    y predecible. Hay un test que distingue las dos versiones.
+    If you add it to the gradient, the decay goes through the division by `sqrt(v)` and its
+    real effect ends up depending on the magnitude of that parameter's gradients. Decoupled it
+    is uniform and predictable. There is a test that tells the two versions apart.
 
-    LAS OPERACIONES IN-PLACE (recomendado, no obligatorio)
-    ------------------------------------------------------
-    Con 8,9 millones de parametros, reservar tensores nuevos en cada paso se nota. Las versiones
-    in-place acaban en guion bajo:
+    THE IN-PLACE OPERATIONS (recommended, not mandatory)
+    ----------------------------------------------------
+    With 8.9 million parameters, allocating new tensors on every step shows. The in-place
+    versions end in an underscore:
 
-        m.mul_(beta1).add_(grad, alpha=1 - beta1)           # m = beta1*m + (1-beta1)*g
+        m.mul_(beta1).add_(grad, alpha=1 - beta1)            # m = beta1*m + (1-beta1)*g
         v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)  # v = beta2*v + (1-beta2)*g²
         p.addcdiv_(m, denom, value=-step_size)               # p -= step_size * m/denom
 
-    Si te resultan cripticas, escribelo con operaciones normales primero (`m = beta1*m + ...`) y
-    optimiza despues. El test compara resultados, no estilo. Pero ojo: con la version no in-place
-    tienes que volver a guardar el resultado en `state["exp_avg"]`, porque estarias creando
-    tensores nuevos en vez de modificar los de siempre.
+    If they look cryptic, write it with normal operations first (`m = beta1*m + ...`) and
+    optimize afterwards. The test compares results, not style. But watch out: with the
+    non-in-place version you have to store the result back into `state["exp_avg"]`, because
+    you would be creating new tensors instead of modifying the existing ones.
 
-    CÓMO SABER SI ESTÁ BIEN
-    -----------------------
-    El test entrena el mismo problema 50 pasos con tu optimizador y con `torch.optim.AdamW`, y
-    compara los pesos finales. Tienen que coincidir con `torch.allclose`.
+    HOW TO KNOW IF IT IS RIGHT
+    --------------------------
+    The test trains the same problem for 50 steps with your optimizer and with
+    `torch.optim.AdamW`, and compares the final weights. They have to match with
+    `torch.allclose`.
     """
 
     def __init__(
@@ -195,31 +198,31 @@ class AdamWScratch(torch.optim.Optimizer):
         weight_decay: float = 0.0,
     ) -> None:
         if lr < 0.0:
-            raise ValueError(f"lr no puede ser negativo: {lr}")
+            raise ValueError(f"lr cannot be negative: {lr}")
         if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
-            raise ValueError(f"las betas deben estar en [0, 1): {betas}")
+            raise ValueError(f"the betas must be in [0, 1): {betas}")
         if eps < 0.0:
-            raise ValueError(f"eps no puede ser negativo: {eps}")
+            raise ValueError(f"eps cannot be negative: {eps}")
 
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
         super().__init__(params, defaults)
 
     @torch.no_grad()
     def step(self, closure: Any = None) -> Any:
-        """Un paso de optimizacion. Las instrucciones completas estan en el docstring de la clase.
+        """One optimization step. The full instructions are in the class docstring.
 
-        El `closure` es una convencion de PyTorch que casi nadie usa, pero se respeta por
-        compatibilidad. Si no es None, se llama dentro de `torch.enable_grad()` y se devuelve su
-        resultado:
+        The `closure` is a PyTorch convention almost nobody uses, but it is respected for
+        compatibility. If it is not None, it is called inside `torch.enable_grad()` and its
+        result is returned:
 
             loss = None
             if closure is not None:
                 with torch.enable_grad():
                     loss = closure()
-            ... el resto ...
+            ... the rest ...
             return loss
         """
-        raise NotImplementedError("TODO: modulo 11, ejercicio 1 - AdamWScratch.step")
+        raise NotImplementedError("TODO: module 11, exercise 1 - AdamWScratch.step")
 
 
 def lr_at_step(
@@ -230,238 +233,239 @@ def lr_at_step(
     min_lr_ratio: float = 0.1,
     schedule: str = "cosine",
 ) -> float:
-    """El learning rate que toca en un paso dado: warmup lineal + decaimiento coseno.
+    """The learning rate for a given step: linear warmup + cosine decay.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres tramos, en este orden (el orden importa: el warmup se comprueba primero).
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three segments, in this order (the order matters: warmup gets checked first).
 
-        1. El suelo, que se usa en todos los tramos:
+        1. The floor, used in every segment:
 
                min_lr = lr * min_lr_ratio
 
-        2. WARMUP. Si `step < warmup_steps`:
+        2. WARMUP. If `step < warmup_steps`:
 
                return lr * (step + 1) / warmup_steps
 
-        3. Si `schedule == "constant"`, ya has terminado: `return lr`.
+        3. If `schedule == "constant"`, you are done: `return lr`.
 
-        4. El progreso, acotado a [0, 1]:
+        4. The progress, clamped to [0, 1]:
 
-               progreso = (step - warmup_steps) / max(1, max_steps - warmup_steps)
-               progreso = min(1.0, max(0.0, progreso))
+               progress = (step - warmup_steps) / max(1, max_steps - warmup_steps)
+               progress = min(1.0, max(0.0, progress))
 
-        5. Y segun el schedule:
+        5. And according to the schedule:
 
                if schedule == "cosine":
-                   coef = 0.5 * (1.0 + math.cos(math.pi * progreso))
+                   coef = 0.5 * (1.0 + math.cos(math.pi * progress))
                elif schedule == "linear":
-                   coef = 1.0 - progreso
+                   coef = 1.0 - progress
                else:
-                   raise ValueError(f"schedule desconocido: {schedule}")
+                   raise ValueError(f"unknown schedule: {schedule}")
 
                return min_lr + (lr - min_lr) * coef
 
-    COMPRUEBA LOS EXTREMOS A MANO
+    CHECK THE ENDPOINTS BY HAND
+    ---------------------------
+    It is the way to know the formula is right without running anything:
+
+        progress = 0  ->  cos(0) = 1   ->  coef = 1  ->  returns lr          OK
+        progress = 1  ->  cos(pi) = -1 ->  coef = 0  ->  returns min_lr      OK
+
+    If it comes out backwards, you left out the `0.5 * (1 + ...)` and you are using the raw
+    cosine, which runs from 1 to -1 instead of 1 to 0.
+
+    THE `+1` IN THE WARMUP
+    ----------------------
+    `lr * (step + 1) / warmup_steps` instead of `lr * step / warmup_steps`. Without it, step 0
+    would have an lr of exactly zero: a step that learns nothing and is wasted. It is a minor
+    detail but the tests check it.
+
+    WHY WARMUP EXISTS
+    -----------------
+    In the first steps Adam's moments are nearly empty and its estimates are extremely noisy
+    (it is the same problem the bias correction fixes, but the correction does not fully solve
+    it). And on top of that the freshly initialized weights produce large gradients. Starting
+    at full lr usually produces a loss spike the model sometimes never recovers from.
+
+    WHY A COSINE AND NOT A STRAIGHT LINE
+    ------------------------------------
+    It drops slowly at the start (you still want to move fast and explore), fast in the
+    middle, and slowly again at the end (fine-tuning in a good region). The difference from
+    linear is small but consistent across every paper that has measured it.
+
+    WHY IT DOES NOT DECAY TO ZERO
     -----------------------------
-    Es la forma de saber que la formula esta bien sin ejecutar nada:
+    `min_lr_ratio=0.1` leaves a 10% floor. Below a certain point the model stops learning
+    entirely and every extra step is wasted compute. If you are going to stop, better to stop.
 
-        progreso = 0  ->  cos(0) = 1   ->  coef = 1  ->  devuelve lr          OK
-        progreso = 1  ->  cos(pi) = -1 ->  coef = 0  ->  devuelve min_lr      OK
-
-    Si te sale al reves, te has dejado el `0.5 * (1 + ...)` y estas usando el coseno crudo, que
-    va de 1 a -1 en vez de 1 a 0.
-
-    EL `+1` DEL WARMUP
-    ------------------
-    `lr * (step + 1) / warmup_steps` en vez de `lr * step / warmup_steps`. Sin el, el paso 0
-    tendria lr exactamente cero: un paso que no aprende nada y esta desperdiciado. Es un detalle
-    menor pero los tests lo comprueban.
-
-    POR QUÉ EXISTE EL WARMUP
-    ------------------------
-    En los primeros pasos los momentos de Adam estan casi vacios y sus estimaciones son
-    ruidosisimas (es el mismo problema que arregla la correccion de sesgo, pero la correccion no
-    lo resuelve del todo). Y ademas los pesos recien inicializados producen gradientes grandes.
-    Arrancar a lr completo suele producir un pico de perdida del que a veces el modelo no se
-    recupera nunca.
-
-    POR QUÉ UN COSENO Y NO UNA RECTA
-    --------------------------------
-    Baja despacio al principio (todavia interesa moverse rapido y explorar), deprisa en medio, y
-    otra vez despacio al final (afinando en una zona buena). La diferencia frente a lineal es
-    pequenya pero consistente en todos los papers que lo han medido.
-
-    POR QUÉ NO SE DECAE HASTA CERO
-    ------------------------------
-    `min_lr_ratio=0.1` deja un suelo del 10%. Por debajo de cierto punto el modelo deja de
-    aprender del todo y cada paso extra es computo tirado. Si vas a parar, mejor parar.
-
-    DOS PROTECCIONES QUE NO SON DECORATIVAS
+    TWO PROTECTIONS THAT ARE NOT DECORATIVE
     ---------------------------------------
-    El `max(1, ...)` del denominador evita dividir por cero si `max_steps <= warmup_steps`.
-    El acotado a [0, 1] hace que llamar con `step > max_steps` devuelva `min_lr` en vez de
-    empezar a SUBIR otra vez (el coseno es periodico: con progreso > 1 volveria a crecer).
+    The `max(1, ...)` in the denominator avoids dividing by zero if
+    `max_steps <= warmup_steps`. The clamp to [0, 1] means calling with `step > max_steps`
+    returns `min_lr` instead of starting to RISE again (the cosine is periodic: with progress
+    > 1 it would grow again).
 
     Args:
-        step: el paso actual, empezando en 0.
-        max_steps: el total de pasos de la tirada.
-        lr: el learning rate maximo, el del pico.
-        warmup_steps: cuantos pasos dura la subida.
-        min_lr_ratio: la fraccion de `lr` que es el suelo.
-        schedule: "cosine" (por defecto), "linear" o "constant".
+        step: the current step, starting at 0.
+        max_steps: the total number of steps in the run.
+        lr: the maximum learning rate, the peak one.
+        warmup_steps: how many steps the ramp lasts.
+        min_lr_ratio: the fraction of `lr` that is the floor.
+        schedule: "cosine" (default), "linear" or "constant".
 
     Returns:
-        El learning rate de ese paso.
+        That step's learning rate.
 
     Raises:
-        ValueError: si `schedule` no es ninguno de los tres.
+        ValueError: if `schedule` is none of the three.
     """
-    raise NotImplementedError("TODO: modulo 11, ejercicio 2 - lr_at_step")
+    raise NotImplementedError("TODO: module 11, exercise 2 - lr_at_step")
 
 
 def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float:
-    """Recorta los gradientes para que su norma GLOBAL no pase de `max_norm`.
+    """Clips the gradients so their GLOBAL norm does not exceed `max_norm`.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-        1. Reune los gradientes que existen:
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+        1. Gather the gradients that exist:
 
                grads = [p.grad for p in parameters if p.grad is not None]
                if not grads:
                    return 0.0
 
-        2. La norma global, como si todos fueran UN SOLO vector gigante:
+        2. The global norm, as if they were all ONE giant vector:
 
                total = torch.sqrt(sum((g.detach() ** 2).sum() for g in grads))
                total_norm = float(total)
 
-        3. El recorte, solo si hace falta:
+        3. The clipping, only if needed:
 
                if max_norm > 0 and total_norm > max_norm:
                    factor = max_norm / (total_norm + 1e-6)
                    for g in grads:
                        g.mul_(factor)
 
-        4. `return total_norm`   <- la norma ANTES de recortar
+        4. `return total_norm`   <- the norm BEFORE clipping
 
-    Ojo con el paso 1: `parameters` puede ser un generador (`model.parameters()` lo es), y un
-    generador se agota al recorrerlo. Si lo recorres dos veces, la segunda esta vacio. Por eso
-    se materializa la lista de gradientes UNA vez y se trabaja siempre sobre ella.
+    Watch out in step 1: `parameters` can be a generator (`model.parameters()` is one), and a
+    generator is exhausted once you walk it. If you walk it twice, the second time it is
+    empty. That is why the list of gradients is materialized ONCE and everything works over
+    it.
 
-    QUÉ PROBLEMA RESUELVE
-    ---------------------
-    Ocasionalmente un batch produce gradientes enormes: una secuencia rara, un token muy poco
-    frecuente, una linea corrupta del dataset. Sin proteccion, ese UNICO batch puede dar un
-    salto que destruya horas de entrenamiento, y lo veras como un pico vertical en la curva de
-    perdida del que el modelo tarda mucho en recuperarse (o no se recupera).
+    WHAT PROBLEM IT SOLVES
+    ----------------------
+    Occasionally a batch produces enormous gradients: an odd sequence, a very rare token, a
+    corrupted line in the dataset. Without protection, that SINGLE batch can take a jump that
+    destroys hours of training, and you will see it as a vertical spike in the loss curve the
+    model takes a long time to recover from (or never does).
 
-    POR QUÉ LA NORMA GLOBAL Y NO UNA POR TENSOR
-    -------------------------------------------
-    Recortar cada tensor por separado cambiaria la DIRECCION del gradiente conjunto, que es
-    justo lo que no quieres tocar. El gradiente te dice hacia donde ir; tu solo estas limitando
-    CUANTO avanzas en esa direccion. Multiplicando todos los tensores por el mismo escalar, la
-    direccion se conserva exactamente.
+    WHY THE GLOBAL NORM AND NOT ONE PER TENSOR
+    ------------------------------------------
+    Clipping each tensor separately would change the DIRECTION of the combined gradient, which
+    is exactly what you do not want to touch. The gradient tells you which way to go; you are
+    only limiting HOW FAR you move in that direction. By multiplying every tensor by the same
+    scalar, the direction is preserved exactly.
 
-    Hay un test que lo comprueba: el vector normalizado antes y despues del recorte tiene que
-    ser identico.
+    There is a test that checks it: the normalized vector before and after clipping has to be
+    identical.
 
-    POR QUÉ SE DEVUELVE LA NORMA **ANTES** DE RECORTAR
-    --------------------------------------------------
-    Es lo que hace `torch.nn.utils.clip_grad_norm_`, y es lo util. Si la registras en el log y
-    ves que sube de forma sostenida, el entrenamiento se esta desestabilizando y te enteras
-    ANTES de que reviente. Si devolvieses la norma posterior verias `max_norm` clavado y no te
-    enterarias de nada.
+    WHY THE NORM **BEFORE** CLIPPING IS RETURNED
+    --------------------------------------------
+    It is what `torch.nn.utils.clip_grad_norm_` does, and it is the useful one. If you log it
+    and see it rising steadily, training is destabilizing and you find out BEFORE it blows up.
+    If you returned the post-clipping norm you would see `max_norm` pinned and learn nothing.
 
-    EL `1e-6` Y EL `.detach()`
-    --------------------------
-    El `1e-6` del denominador evita dividir por cero si la norma es minuscula. Nunca pasa en la
-    practica, pero cuesta cinco caracteres.
+    THE `1e-6` AND THE `.detach()`
+    ------------------------------
+    The `1e-6` in the denominator avoids dividing by zero if the norm is tiny. It never
+    happens in practice, but it costs five characters.
 
-    El `.detach()` al calcular la norma: los gradientes no requieren gradiente, asi que ahora
-    mismo da igual. Es la costumbre correcta y evita sorpresas si alguna vez usas grafos de
-    orden superior.
+    The `.detach()` when computing the norm: gradients do not require gradient, so right now
+    it makes no difference. It is the correct habit and it avoids surprises if you ever use
+    higher-order graphs.
 
     Args:
-        parameters: los parametros del modelo (`model.parameters()`).
-        max_norm: el umbral. Si es <= 0, no recorta nada (pero sigue devolviendo la norma).
+        parameters: the model's parameters (`model.parameters()`).
+        max_norm: the threshold. If it is <= 0, nothing is clipped (but the norm is still
+            returned).
 
     Returns:
-        La norma global ANTES de recortar. `0.0` si no hay ningun gradiente.
+        The global norm BEFORE clipping. `0.0` if there is no gradient at all.
     """
-    raise NotImplementedError("TODO: modulo 11, ejercicio 3 - clip_grad_norm")
+    raise NotImplementedError("TODO: module 11, exercise 3 - clip_grad_norm")
 
 
 def build_param_groups(model: nn.Module, weight_decay: float = 0.1) -> list[dict[str, Any]]:
-    """Separa los parametros en dos grupos: con weight decay y sin el.
+    """Splits the parameters into two groups: with weight decay and without it.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cinco lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Five lines.
 
-        1. Las dos listas:
+        1. The two lists:
 
                decay, no_decay = [], []
 
-        2. El reparto, saltando lo congelado:
+        2. The split, skipping anything frozen:
 
                for param in model.parameters():
                    if not param.requires_grad:
                        continue
                    (decay if param.dim() >= 2 else no_decay).append(param)
 
-        3. Los dos grupos, EN ESTE ORDEN (hay tests que dependen del orden):
+        3. The two groups, IN THIS ORDER (there are tests that depend on the order):
 
                return [
                    {"params": decay, "weight_decay": weight_decay},
                    {"params": no_decay, "weight_decay": 0.0},
                ]
 
-    LA REGLA, y es sorprendentemente simple
+    THE RULE, and it is surprisingly simple
     ---------------------------------------
-        Parametros de 2 dimensiones o mas   ->  CON weight decay
-        Parametros de 1 dimension           ->  SIN weight decay
+        Parameters with 2 dimensions or more  ->  WITH weight decay
+        Parameters with 1 dimension           ->  WITHOUT weight decay
 
-    O sea: las matrices decaen, y los sesgos y las escalas de normalizacion no. `param.dim()` da
-    el numero de dimensiones: una matriz de pesos tiene 2, un sesgo tiene 1.
+    That is: the matrices decay, and the biases and normalization scales do not.
+    `param.dim()` gives the number of dimensions: a weight matrix has 2, a bias has 1.
 
-    POR QUÉ ESA REGLA
-    -----------------
-    El weight decay empuja los pesos hacia cero. En una matriz de proyeccion tiene sentido:
-    penalizar magnitudes grandes reduce el sobreajuste.
+    WHY THAT RULE
+    -------------
+    Weight decay pushes weights towards zero. On a projection matrix that makes sense:
+    penalizing large magnitudes reduces overfitting.
 
-    En la escala de un RMSNorm no tiene NINGUNO. Ese parametro arranca en 1 y su trabajo es
-    reescalar la salida de la capa; empujarlo hacia cero es empujar la salida hacia cero, que es
-    exactamente lo contrario de lo que hace falta.
+    On an RMSNorm's scale it makes NONE. That parameter starts at 1 and its job is to rescale
+    the layer's output; pushing it towards zero is pushing the output towards zero, which is
+    exactly the opposite of what is needed.
 
-    Lo mismo con los sesgos: son desplazamientos, no magnitudes que convenga limitar.
+    The same goes for biases: they are offsets, not magnitudes worth limiting.
 
-    Aplicar decay a todo es un error frecuente, NO da ningun error visible, y degrada el
-    resultado. Solo se detecta comparando dos entrenamientos completos, que es caro. Por eso
-    merece la pena tenerlo bien de entrada.
+    Applying decay to everything is a common mistake, it produces NO visible error, and it
+    degrades the result. It can only be detected by comparing two complete training runs,
+    which is expensive. That is why it is worth getting right from the start.
 
-    EL FORMATO QUE ESPERA PYTORCH
-    -----------------------------
-    Una lista de diccionarios, cada uno con al menos la clave `"params"`. Cualquier clave
-    adicional (`lr`, `betas`, `weight_decay`...) sobreescribe el valor por defecto del
-    optimizador SOLO para ese grupo. Es el mecanismo estandar de PyTorch, y es lo que lee tu
-    `AdamWScratch.step` cuando hace `for group in self.param_groups`.
+    THE FORMAT PYTORCH EXPECTS
+    --------------------------
+    A list of dictionaries, each with at least the `"params"` key. Any extra key (`lr`,
+    `betas`, `weight_decay`...) overrides the optimizer's default value for that group ONLY.
+    It is PyTorch's standard mechanism, and it is what your `AdamWScratch.step` reads when it
+    does `for group in self.param_groups`.
 
-    DOS DETALLES
-    ------------
-    **Saltar `requires_grad=False`.** Esos parametros no se van a actualizar; meterlos en el
-    optimizador solo gasta memoria de estado (dos tensores por parametro). En el modulo 16, con
-    LoRA, esto pasa de detalle a esencial: casi todo el modelo esta congelado.
+    TWO DETAILS
+    -----------
+    **Skipping `requires_grad=False`.** Those parameters are not going to be updated; putting
+    them in the optimizer only wastes state memory (two tensors per parameter). In module 16,
+    with LoRA, this goes from a detail to essential: almost the whole model is frozen.
 
-    **Los pesos atados.** `model.parameters()` ya deduplica por identidad, asi que el embedding
-    atado aparece UNA sola vez y va al grupo con decay (tiene 2 dimensiones). No hay que hacer
-    nada especial.
+    **Tied weights.** `model.parameters()` already deduplicates by identity, so the tied
+    embedding appears ONCE and goes into the decay group (it has 2 dimensions). Nothing
+    special needs doing.
 
     Args:
-        model: el modelo.
-        weight_decay: el valor para el grupo que si decae.
+        model: the model.
+        weight_decay: the value for the group that does decay.
 
     Returns:
-        La lista de dos grupos, el primero con decay y el segundo sin el, EN ESE ORDEN.
+        The list of two groups, the first with decay and the second without, IN THAT ORDER.
     """
-    raise NotImplementedError("TODO: modulo 11, ejercicio 4 - build_param_groups")
+    raise NotImplementedError("TODO: module 11, exercise 4 - build_param_groups")

@@ -1,209 +1,205 @@
-# 11 — El bucle de entrenamiento
+# 11 — The training loop
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque tener un modelo no es tenerlo entrenado.**
+**Because having a model is not the same as having it trained.**
 
-Ya sabes construir un GPT que produce logits y medir cuánto se equivoca. Falta la parte que
-convierte eso en aprendizaje: cómo se mueven 8,9 millones de parámetros para que la pérdida
-baje.
+You already know how to build a GPT that produces logits and how to measure how wrong it is.
+What is missing is the part that turns that into learning: how 8.9 million parameters move
+so the loss goes down.
 
-El bucle en sí lo escribiste en el módulo 02 con tu motor de autodiff: predecir, medir,
-gradientes, mover, repetir. Lo que se añade aquí son cuatro piezas que hacen que ese bucle
-funcione **a escala** en vez de divergir a los cincuenta pasos.
+You wrote the loop itself in module 02 with your autodiff engine: predict, measure,
+gradients, move, repeat. What gets added here are four pieces that make that loop work **at
+scale** instead of diverging after fifty steps.
 
-Cada una resuelve un problema concreto que verías si no estuviera. Y las cuatro son las que
-te van a permitir depurar un entrenamiento que va mal en vez de cambiar números al azar.
+Each one solves a concrete problem you would see if it were not there. And all four are what
+will let you debug a training run that is going wrong instead of changing numbers at random.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué un solo learning rate vale para toda la red (y qué hace Adam para conseguirlo)
-- Qué es el warmup y por qué sin él el modelo a veces no se recupera nunca
-- Cómo evitar que **un solo batch raro** destruya horas de entrenamiento
-- Qué parámetros NO deben decaer, y por qué aplicárselo a todos es un error silencioso
-- Un detalle de AMP que se olvida siempre y hace que el entrenamiento se arrastre
+- Why a single learning rate works for the whole network (and what Adam does to achieve it)
+- What warmup is and why without it the model sometimes never recovers
+- How to stop **a single odd batch** from destroying hours of training
+- Which parameters must NOT decay, and why applying it to all of them is a silent error
+- An AMP detail that always gets forgotten and makes training crawl
 
-### Cuánto cuesta
+### What it costs
 
-4 horas. El primer ejercicio (AdamW desde cero) es el más largo del curso; los otros tres
-son cortos.
+4 hours. The first exercise (AdamW from scratch) is the longest in the course; the other
+three are short.
 
 ---
 
-## El bucle, en cuatro líneas
+## The loop, in four lines
 
 ```
-para cada paso:
-    predecir y medir la pérdida       (forward)
-    calcular los gradientes           (backward)
-    mover los parámetros              (paso del optimizador)
-    poner los gradientes a cero
+for each step:
+    predict and measure the loss       (forward)
+    compute the gradients              (backward)
+    move the parameters                (optimizer step)
+    zero the gradients
 ```
 
-Eso es todo. Ya lo escribiste en el módulo 02 con tu motor de autodiff. El resto del
-módulo son cuatro piezas que hacen que ese bucle funcione a escala.
+That is all. You already wrote it in module 02 with your autodiff engine. The rest of the
+module is four pieces that make that loop work at scale.
 
-## Pieza 1: el optimizador
+## Piece 1: the optimizer
 
-La versión más simple de "mover los parámetros" es el descenso de gradiente:
-
-```
-p ← p − lr · gradiente
-```
-
-Funciona, y tiene un problema serio. Piensa en dos parámetros de tu modelo: uno del
-embedding de la palabra `the`, que aparece en casi todas las frases, y otro del embedding
-de una palabra rara. El primero recibe gradientes grandes constantemente; el segundo, casi
-nunca. Con un único `lr` para ambos, o el primero da saltos absurdos o el segundo no se
-mueve nunca.
-
-**Adam** resuelve esto con dos ideas.
-
-**Momento.** En vez de moverse según el gradiente de este paso, se usa una media móvil de
-los recientes:
+The simplest version of "move the parameters" is gradient descent:
 
 ```
-m = 0,9·m + 0,1·gradiente
+p ← p − lr · gradient
 ```
 
-Como cada batch es una muestra distinta, sus gradientes son ruidosos. Promediar cancela el
-ruido y deja la dirección consistente.
+It works, and it has a serious problem. Think about two parameters in your model: one from
+the embedding of the word `the`, which appears in almost every sentence, and one from the
+embedding of a rare word. The first receives large gradients constantly; the second, almost
+never. With a single `lr` for both, either the first takes absurd jumps or the second never
+moves.
 
-**Escalado por dimensión.** Se lleva también una media móvil del gradiente **al cuadrado**,
-y se divide por su raíz:
+**Adam** solves this with two ideas.
+
+**Momentum.** Instead of moving along this step's gradient, a running average of the recent
+ones is used:
 
 ```
-v = 0,95·v + 0,05·gradiente²
-paso = m / √v
+m = 0.9·m + 0.1·gradient
 ```
 
-Un parámetro con gradientes consistentemente grandes tiene $v$ grande y se mueve poco. Uno
-que casi nunca recibe señal tiene $v$ pequeño y se mueve mucho cuando la recibe. **Cada
-parámetro acaba con su propio learning rate efectivo**, y por eso un único `lr` global
-funciona.
+Since each batch is a different sample, its gradients are noisy. Averaging cancels the noise
+and leaves the consistent direction.
 
-### La corrección de sesgo
+**Per-dimension scaling.** A running average of the **squared** gradient is also kept, and
+you divide by its square root:
 
-$m$ y $v$ empiezan en cero, así que los primeros pasos subestiman las magnitudes reales.
-Con $\beta_2 = 0{,}95$, tras un paso $v$ vale solo el 5% de $g^2$: dividir por su raíz daría
-un paso 4,5 veces mayor de lo debido.
+```
+v = 0.95·v + 0.05·gradient²
+step = m / √v
+```
 
-La corrección lo arregla exactamente:
+A parameter with consistently large gradients has a large $v$ and moves little. One that
+almost never receives signal has a small $v$ and moves a lot when it does. **Each parameter
+ends up with its own effective learning rate**, which is why a single global `lr` works.
+
+### The bias correction
+
+$m$ and $v$ start at zero, so the first steps underestimate the real magnitudes. With
+$\beta_2 = 0.95$, after one step $v$ is only 5% of $g^2$: dividing by its square root would
+give a step 4.5 times larger than it should be.
+
+The correction fixes it exactly:
 
 $$\hat{m} = \frac{m}{1-\beta_1^t}, \qquad \hat{v} = \frac{v}{1-\beta_2^t}$$
 
-En el paso 1 con $\beta_2 = 0{,}95$: $1 - 0{,}95 = 0{,}05$, y dividir por 0,05 multiplica
-por 20, que es justo el factor que faltaba. Según avanza $t$, $\beta^t \to 0$ y la corrección
-se desvanece sola.
+At step 1 with $\beta_2 = 0.95$: $1 - 0.95 = 0.05$, and dividing by 0.05 multiplies by 20,
+which is exactly the missing factor. As $t$ advances, $\beta^t \to 0$ and the correction
+fades away by itself.
 
-Sin ella, los primeros pasos dan saltos enormes y el entrenamiento puede diverger antes de
-empezar.
+Without it, the first steps take enormous jumps and training can diverge before it begins.
 
-### La W de AdamW
+### The W in AdamW
 
-*Weight decay* es empujar los pesos hacia cero para que no crezcan sin control. Hay dos
-formas de hacerlo, y la diferencia importa:
-
-```
-Adam + L2:   g ← g + λ·p       luego Adam procesa g
-AdamW:       p ← p − lr·λ·p    directamente, aparte de Adam
-```
-
-En la primera, el decaimiento pasa por la división por $\sqrt{v}$, así que su efecto real
-depende de la magnitud de los gradientes de ese parámetro. Un peso con gradientes grandes
-apenas decae; uno con gradientes pequeños decae muchísimo. Nadie quiere eso.
-
-Loshchilov y Hutter (2019) lo desacoplaron y funcionó mejor de forma consistente. De ahí la
-W.
-
-## Pieza 2: el planificador del learning rate
-
-El `lr` no es constante durante el entrenamiento. Tiene dos tramos.
-
-**Warmup: subir despacio al principio.** En los primeros pasos, los momentos de Adam están
-casi vacíos y sus estimaciones son ruidosas; además los pesos están recién inicializados y
-los gradientes son grandes. Arrancar a `lr` completo suele producir un pico de pérdida del
-que a veces el modelo no se recupera. Se sube linealmente de 0 a `lr` durante 500 pasos.
-
-**Coseno: bajar al final.** Al principio interesa moverse rápido; al final, afinar. El
-coseno baja despacio, luego deprisa, luego despacio otra vez:
-
-$$\text{lr}(t) = \text{lr}_{\min} + (\text{lr} - \text{lr}_{\min}) \cdot \frac{1 + \cos(\pi \cdot \text{progreso})}{2}$$
-
-No se decae hasta cero, sino hasta el 10% del `lr` inicial: por debajo de cierto punto el
-modelo deja de aprender del todo y se desperdicia cómputo.
-
-## Pieza 3: el recorte de gradientes
-
-Ocasionalmente un batch produce gradientes enormes — una secuencia rara, un token muy poco
-frecuente. Sin protección, ese único batch puede dar un salto que destruya horas de
-entrenamiento.
-
-La solución: calcular la norma **global** de todos los gradientes juntos, como si fueran un
-solo vector, y si supera un umbral, multiplicarlos todos por el mismo factor.
+*Weight decay* is pushing the weights towards zero so they do not grow without control. There
+are two ways of doing it, and the difference matters:
 
 ```
-norma = √(Σ ‖g_i‖²)
-si norma > max_norm:  todos los g ×= max_norm / norma
+Adam + L2:   g ← g + λ·p       then Adam processes g
+AdamW:       p ← p − lr·λ·p    directly, separately from Adam
 ```
 
-**Global, no por tensor.** Recortar cada tensor por separado cambiaría la *dirección* del
-gradiente conjunto, que es justo lo que no quieres: el gradiente apunta a dónde ir, y solo
-estás limitando cuánto avanzas. Con la norma global la dirección se conserva exactamente.
+In the first, the decay goes through the division by $\sqrt{v}$, so its real effect depends
+on the magnitude of that parameter's gradients. A weight with large gradients barely decays;
+one with small gradients decays enormously. Nobody wants that.
 
-## Pieza 4: qué parámetros decaen y cuáles no
+Loshchilov and Hutter (2019) decoupled it and it worked better consistently. Hence the W.
 
-Weight decay **solo en las matrices** (parámetros de 2 dimensiones o más). Sesgos y escalas
-de normalización, no.
+## Piece 2: the learning-rate scheduler
 
-Piénsalo: la escala de un RMSNorm arranca en 1 y su trabajo es reescalar la salida.
-Empujarla hacia cero es empujar la salida de la capa hacia cero, que es exactamente lo
-contrario de lo que hace falta.
+The `lr` is not constant during training. It has two segments.
 
-Aplicar decay a todo es un error frecuente, **no da ningún error visible** y degrada el
-resultado. Solo se detecta comparando dos entrenamientos completos.
+**Warmup: rising slowly at the start.** In the first steps, Adam's moments are nearly empty
+and its estimates are noisy; on top of that the weights are freshly initialized and the
+gradients are large. Starting at full `lr` usually produces a loss spike that the model
+sometimes never recovers from. It rises linearly from 0 to `lr` over 500 steps.
 
-## Y la precisión mixta
+**Cosine: falling at the end.** At the start you want to move fast; at the end, to
+fine-tune. The cosine drops slowly, then fast, then slowly again:
 
-En la RTX 2060 (Turing, sin bf16) el entrenamiento va en fp16, cuyo rango se acaba por abajo
-en $6\times10^{-5}$. Los gradientes de las capas profundas son menores que eso y se
-convierten en cero.
+$$\text{lr}(t) = \text{lr}_{\min} + (\text{lr} - \text{lr}_{\min}) \cdot \frac{1 + \cos(\pi \cdot \text{progress})}{2}$$
 
-`GradScaler` lo resuelve: multiplica la pérdida por ~65.000 antes del backward, con lo que
-todos los gradientes suben al rango representable, y divide antes del paso del optimizador.
-Si algún valor se desborda, descarta ese paso y baja el factor.
+It does not decay to zero, but to 10% of the initial `lr`: below a certain point the model
+stops learning entirely and compute is wasted.
 
-**Hay un detalle que se olvida y es silencioso:** con AMP hay que **desescalar los
-gradientes antes de recortarlos**. Si no, su norma está multiplicada por 65.000 y estarías
-recortando a un umbral 65.000 veces más pequeño del que crees. El entrenamiento se arrastra
-sin que nada lo indique.
+## Piece 3: gradient clipping
+
+Occasionally a batch produces enormous gradients — an odd sequence, a very rare token.
+Without protection, that single batch can take a jump that destroys hours of training.
+
+The fix: compute the **global** norm of all the gradients together, as if they were one
+vector, and if it exceeds a threshold, multiply them all by the same factor.
+
+```
+norm = √(Σ ‖g_i‖²)
+if norm > max_norm:  every g ×= max_norm / norm
+```
+
+**Global, not per tensor.** Clipping each tensor separately would change the *direction* of
+the combined gradient, which is exactly what you do not want: the gradient points where to
+go, and you are only limiting how far you step. With the global norm the direction is
+preserved exactly.
+
+## Piece 4: which parameters decay and which do not
+
+Weight decay **only on the matrices** (parameters with 2 dimensions or more). Biases and
+normalization scales, no.
+
+Think about it: an RMSNorm's scale starts at 1 and its job is to rescale the output. Pushing
+it towards zero is pushing the layer's output towards zero, which is exactly the opposite of
+what is needed.
+
+Applying decay to everything is a common mistake, it **produces no visible error** and it
+degrades the result. It can only be detected by comparing two complete training runs.
+
+## And mixed precision
+
+On the RTX 2060 (Turing, no bf16) training runs in fp16, whose range runs out at the bottom
+at $6\times10^{-5}$. The gradients of the deep layers are smaller than that and become zero.
+
+`GradScaler` solves it: it multiplies the loss by ~65,000 before the backward pass, which
+raises every gradient into the representable range, and divides before the optimizer step. If
+some value overflows, it discards that step and lowers the factor.
+
+**There is a detail that gets forgotten and is silent:** with AMP you have to **unscale the
+gradients before clipping them**. Otherwise their norm is multiplied by 65,000 and you would
+be clipping to a threshold 65,000 times smaller than you think. Training crawls with nothing
+to indicate it.
 
 ```python
-scaler.unscale_(optimizer)      # esto primero
-clip_grad_norm(params, 1.0)     # y ahora sí
+scaler.unscale_(optimizer)      # this first
+clip_grad_norm(params, 1.0)     # and now the clipping
 ```
 
-## Dónde está el debate
+## Where the debate is
 
-Adam **domina sin que nadie sepa bien por qué**. La justificación habitual —que aproxima
-información de segundo orden— no resiste el análisis: $\sqrt{v}$ no es la diagonal del
-Hessiano ni nada parecido. Hay trabajos que sugieren que su ventaja real está en la
-invariancia de escala, o en cómo interactúa con la normalización. Sigue abierto.
+Adam **dominates without anyone really knowing why**. The usual justification — that it
+approximates second-order information — does not survive analysis: $\sqrt{v}$ is not the
+Hessian's diagonal or anything like it. There is work suggesting its real advantage lies in
+scale invariance, or in how it interacts with normalization. It is still open.
 
-Sobre el **warmup** pasa algo parecido: es imprescindible en la práctica y las explicaciones
-son post-hoc. Hay resultados que sugieren que con pre-norm y una inicialización cuidadosa se
-puede prescindir de él, lo que apunta a que compensa problemas de otras partes de la
-arquitectura.
+The same goes for **warmup**: it is essential in practice and the explanations are post-hoc.
+There are results suggesting that with pre-norm and careful initialization you can do without
+it, which points to it compensating for problems in other parts of the architecture.
 
-Y sobre los **hiperparámetros** de nuestro config: `lr=1e-3`, `betas=(0.9, 0.95)`,
-`weight_decay=0.1`, `warmup=500`. Son valores estándar heredados de GPT-2/GPT-3 y ajustados
-a ojo para esta escala. No son óptimos; son razonables. Un barrido de hiperparámetros
-probablemente encontraría algo mejor, y costaría más cómputo que el propio entrenamiento.
+And about our config's **hyperparameters**: `lr=1e-3`, `betas=(0.9, 0.95)`,
+`weight_decay=0.1`, `warmup=500`. They are standard values inherited from GPT-2/GPT-3 and
+eyeballed for this scale. They are not optimal; they are reasonable. A hyperparameter sweep
+would probably find something better, and it would cost more compute than the training run
+itself.
 
 ---
 
-**Para ampliar:** Loshchilov & Hutter 2019,
+**Further reading:** Loshchilov & Hutter 2019,
 [Decoupled Weight Decay Regularization](https://arxiv.org/abs/1711.05101) · Kingma & Ba
 2015, [Adam](https://arxiv.org/abs/1412.6980) · Micikevicius et al. 2018,
-[Mixed Precision Training](https://arxiv.org/abs/1710.03740). Términos sueltos, en
+[Mixed Precision Training](https://arxiv.org/abs/1710.03740). Stray terms are in
 [GLOSSARY.md](../../GLOSSARY.md).
