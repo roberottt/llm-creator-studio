@@ -1,44 +1,44 @@
-"""Modulo 09 - Informacion posicional y RoPE.
+"""Module 09 - Positional information and RoPE.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa en orden -> `llmfs check 09` -> `llmfs hint 09 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement in order -> `llmfs check 09` -> `llmfs hint 09 -e N`
+-> `SOLUTION.md` has the complete code.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-La forma de decirle al modelo en que posicion esta cada token:
+The way of telling the model what position each token is in:
 
-    sinusoidal_embeddings  (ej. 1)  la tabla del paper de 2017 (historico)
-    rope_frequencies       (ej. 2)  precalcular los angulos de rotacion
+    sinusoidal_embeddings  (ex. 1)  the 2017 paper's table (historical)
+    rope_frequencies       (ex. 2)  precompute the rotation angles
             |
             v
-    apply_rope             (ej. 3)  rotar Q y K. UNA LINEA, pero solo despues del ej. 2
+    apply_rope             (ex. 3)  rotate Q and K. ONE LINE, but only after ex. 2
 
-El ejercicio 2 es el que cuesta. El 3 es una linea.
+Exercise 2 is the hard one. Exercise 3 is a single line.
 
-EL PROBLEMA QUE RESUELVE
-========================
+THE PROBLEM IT SOLVES
+=====================
 
-Vuelve a mirar la formula de la atencion (modulo 06): es una suma ponderada, y una suma no
-tiene orden. Para el mecanismo de atencion, "el perro muerde al hombre" y "el hombre muerde
-al perro" producen exactamente lo mismo.
+Look again at the attention formula (module 06): it is a weighted sum, and a sum has no
+order. To the attention mechanism, "the dog bites the man" and "the man bites the dog"
+produce exactly the same thing.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **embedding posicional**: la informacion que le dice al modelo donde esta cada token.
-- **posicion absoluta / relativa**: "soy el token 7" frente a "estoy dos posiciones detras
-  de aquel". La relativa generaliza mejor.
-- **RoPE** (Rotary Position Embedding): en vez de SUMAR algo al vector, lo ROTA un angulo
-  proporcional a la posicion.
-- **head_dim**: la dimension de cada cabeza de atencion. En nuestro modelo, 40. RoPE trabaja
-  sobre esto, no sobre las 320 de d_model.
-- **extrapolar**: usar el modelo con secuencias mas largas que las que vio al entrenar.
+- **positional embedding**: the information that tells the model where each token is.
+- **absolute / relative position**: "I am token 7" versus "I am two positions behind that
+  one". The relative one generalizes better.
+- **RoPE** (Rotary Position Embedding): instead of ADDING something to the vector, it
+  ROTATES it by an angle proportional to the position.
+- **head_dim**: the dimension of each attention head. In our model, 40. RoPE works on this,
+  not on d_model's 320.
+- **extrapolate**: using the model with sequences longer than the ones it saw in training.
 
-    llmfs demo 09     dibuja las frecuencias y mide la extrapolacion de verdad
+    llmfs demo 09     draws the frequencies and measures extrapolation for real
 """
 
 from __future__ import annotations
@@ -49,72 +49,74 @@ import torch
 
 
 def sinusoidal_embeddings(seq_len: int, d_model: int, base: float = 10000.0) -> torch.Tensor:
-    """La tabla de senos y cosenos del paper de 2017.
+    """The 2017 paper's table of sines and cosines.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cinco lineas, sin bucles.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Five lines, no loops.
 
-        1. Las posiciones, como columna:
+        1. The positions, as a column:
 
                position = torch.arange(seq_len, dtype=torch.float32).unsqueeze(1)   # (T, 1)
 
-        2. Las frecuencias, una por cada PAR de dimensiones:
+        2. The frequencies, one per PAIR of dimensions:
 
                div_term = torch.exp(
                    torch.arange(0, d_model, 2, dtype=torch.float32)
                    * (-math.log(base) / d_model)
                )                                                                    # (d/2,)
 
-        3. La tabla vacia:
+        3. The empty table:
 
                embeddings = torch.zeros(seq_len, d_model)
 
-        4. Rellena intercalando:
+        4. Fill it, interleaving:
 
                embeddings[:, 0::2] = torch.sin(position * div_term)
                embeddings[:, 1::2] = torch.cos(position * div_term)
 
-        5. Devuelvela.
+        5. Return it.
 
-    CÓMO FUNCIONA
-    -------------
-    `position * div_term` emite `(T,1)` por `(d/2,)` y da `(T, d/2)`: todos los angulos de
-    todas las posiciones de golpe, sin bucles.
+    HOW IT WORKS
+    ------------
+    `position * div_term` broadcasts `(T,1)` against `(d/2,)` and gives `(T, d/2)`: every
+    angle of every position at once, with no loops.
 
-    `[:, 0::2]` significa "todas las filas, columnas desde 0 de dos en dos", o sea las pares.
-    Y `[:, 1::2]` las impares. Es la forma de intercalar seno y coseno sin escribir un `for`.
+    `[:, 0::2]` means "every row, columns from 0 in steps of two", that is, the even ones.
+    And `[:, 1::2]` the odd ones. It is the way to interleave sine and cosine without writing
+    a `for`.
 
-    EL TRUCO DEL PASO 2, QUE MERECE LA PENA CONOCER
-    -----------------------------------------------
-    `exp(-log(base) * 2i/d)` es matematicamente identico a `base ** (-2i/d)`, pero mucho mas
-    ESTABLE. Elevar 10000 a una potencia negativa grande pierde precision en coma flotante;
-    hacerlo pasando por logaritmos, no.
+    THE TRICK IN STEP 2, WORTH KNOWING
+    ----------------------------------
+    `exp(-log(base) * 2i/d)` is mathematically identical to `base ** (-2i/d)`, but far more
+    STABLE. Raising 10000 to a large negative power loses floating-point precision; going
+    through logarithms does not.
 
-    Regla general que te servira en otros sitios: si ves una potencia con exponente grande,
-    `exp(log(...))` suele ser mejor.
+    A general rule that will serve you elsewhere: if you see a power with a large exponent,
+    `exp(log(...))` is usually better.
 
-    LA IDEA: UN CONTADOR BINARIO
-    ----------------------------
-    Al contar en binario, cada bit oscila a un ritmo distinto:
+    THE IDEA: A BINARY COUNTER
+    --------------------------
+    When counting in binary, each bit oscillates at a different rate:
 
-        0000    el bit de la derecha cambia en cada paso
-        0001    el siguiente, cada dos
-        0010    el siguiente, cada cuatro
+        0000    the rightmost bit changes at every step
+        0001    the next one, every two
+        0010    the next one, every four
 
-    La combinacion de todos identifica un numero de forma unica. Aqui es lo mismo pero con
-    ondas continuas: los primeros pares de dimensiones oscilan rapido (distinguen posiciones
-    vecinas) y los ultimos lentisimo (distinguen el principio del final).
+    The combination of all of them identifies a number uniquely. Here it is the same but with
+    continuous waves: the first pairs of dimensions oscillate fast (distinguishing
+    neighbouring positions) and the last ones extremely slowly (distinguishing the start from
+    the end).
 
     Args:
-        seq_len: cuantas posiciones generar.
-        d_model: la dimension del modelo. Se asume par.
-        base: la constante 10000 del paper.
+        seq_len: how many positions to generate.
+        d_model: the model dimension. Assumed even.
+        base: the paper's constant, 10000.
 
     Returns:
-        Tensor `(seq_len, d_model)`.
+        A `(seq_len, d_model)` tensor.
     """
-    raise NotImplementedError("TODO: modulo 09, ejercicio 1 - sinusoidal_embeddings")
+    raise NotImplementedError("TODO: module 09, exercise 1 - sinusoidal_embeddings")
 
 
 def rope_frequencies(
@@ -123,142 +125,143 @@ def rope_frequencies(
     theta: float = 10000.0,
     device: torch.device | str | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Precalcula las tablas de cosenos y senos que usara RoPE.
+    """Precomputes the cosine and sine tables RoPE will use.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cinco pasos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Five steps.
 
-        1. Valida que `head_dim` sea PAR y lanza `ValueError` si no. (RoPE rota pares: con
-           dimension impar sobraria una.)
+        1. Validate that `head_dim` is EVEN and raise `ValueError` if not. (RoPE rotates
+           pairs: with an odd dimension one would be left over.)
 
-        2. Las frecuencias inversas, una por par:
+        2. The inverse frequencies, one per pair:
 
                inv_freq = 1.0 / (theta ** (
                    torch.arange(0, head_dim, 2, dtype=torch.float32) / head_dim
                ))                                                        # (head_dim/2,)
 
-        3. Todos los angulos de golpe:
+        3. Every angle at once:
 
                positions = torch.arange(max_seq_len, dtype=torch.float32)
                angles = torch.outer(positions, inv_freq)                 # (T, head_dim/2)
 
-        4. DUPLICA por mitades:
+        4. DUPLICATE by halves:
 
                angles = torch.cat([angles, angles], dim=-1)              # (T, head_dim)
 
-        5. Devuelve el coseno y el seno, movidos a `device` si se pide:
+        5. Return the cosine and the sine, moved to `device` if asked:
 
                cos, sin = angles.cos(), angles.sin()
                if device is not None:
                    cos, sin = cos.to(device), sin.to(device)
                return cos, sin
 
-    `torch.outer(a, b)[i,j] = a[i] * b[j]`, que es justo lo que hace falta: todas las
-    combinaciones posicion x frecuencia.
+    `torch.outer(a, b)[i,j] = a[i] * b[j]`, which is exactly what is needed: every
+    position x frequency combination.
 
-    EL PASO 4 ES EL QUE CONFUNDE, Y ÉSTE ES EL PORQUÉ
-    -------------------------------------------------
-    Hay dos formas de emparejar las dimensiones para rotarlas:
+    STEP 4 IS THE CONFUSING ONE, AND THIS IS WHY
+    --------------------------------------------
+    There are two ways of pairing the dimensions for rotation:
 
-        - el paper original empareja CONSECUTIVAS:  (x0,x1), (x2,x3), ...
-        - Llama y HuggingFace emparejan por MITADES: (x0, x_{d/2}), (x1, x_{d/2+1}), ...
+        - the original paper pairs CONSECUTIVE ones:  (x0,x1), (x2,x3), ...
+        - Llama and HuggingFace pair by HALVES:       (x0, x_{d/2}), (x1, x_{d/2+1}), ...
 
-    Usamos el de mitades. Con ese convenio, la dimension `i` y la `i + head_dim/2` forman un par
-    y necesitan EL MISMO angulo. Por eso cada frecuencia aparece DOS veces y las tablas tienen
-    `head_dim` columnas en vez de `head_dim/2`.
+    We use the halves one. With that convention, dimension `i` and dimension `i + head_dim/2`
+    form a pair and need THE SAME angle. That is why each frequency appears TWICE and the
+    tables have `head_dim` columns instead of `head_dim/2`.
 
-    Los dos convenios son equivalentes salvo una permutacion de las dimensiones, que la red
-    aprende sin enterarse. El de mitades gano porque hace que el ejercicio 3 sea UNA LINEA sin
-    reordenar nada.
+    The two conventions are equivalent up to a permutation of the dimensions, which the
+    network learns without noticing. The halves one won because it makes exercise 3 ONE LINE
+    with no reordering.
 
-    QUÉ ESTÁ PASANDO
-    ----------------
-    RoPE no SUMA nada al vector: lo ROTA. El par `i` en la posicion `pos` se rota un angulo
-    `pos * theta^(-2i/head_dim)`.
+    WHAT IS HAPPENING
+    -----------------
+    RoPE does not ADD anything to the vector: it ROTATES it. Pair `i` at position `pos` is
+    rotated by an angle `pos * theta^(-2i/head_dim)`.
 
-    Las frecuencias van de rapida a lenta: los primeros pares giran deprisa y capturan
-    relaciones cortas, los ultimos giran lentisimo y capturan distancias largas.
+    The frequencies run from fast to slow: the first pairs turn quickly and capture short
+    relationships, the last ones turn extremely slowly and capture long distances.
 
     Args:
-        head_dim: la dimension de cada cabeza (40 en el modelo final). Tiene que ser par.
-        max_seq_len: hasta que posicion precalcular.
-        theta: la base, 10000 por defecto.
-        device: donde dejar los tensores.
+        head_dim: each head's dimension (40 in the final model). It has to be even.
+        max_seq_len: up to which position to precompute.
+        theta: the base, 10000 by default.
+        device: where to leave the tensors.
 
     Returns:
-        `(cos, sin)`, ambos de forma `(max_seq_len, head_dim)`.
+        `(cos, sin)`, both of shape `(max_seq_len, head_dim)`.
 
     Raises:
-        ValueError: si `head_dim` es impar.
+        ValueError: if `head_dim` is odd.
     """
-    raise NotImplementedError("TODO: modulo 09, ejercicio 2 - rope_frequencies")
+    raise NotImplementedError("TODO: module 09, exercise 2 - rope_frequencies")
 
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
-    """Aplica la rotacion posicional a Q o a K.
+    """Applies the positional rotation to Q or to K.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    **Un ayudante** (ponlo como funcion aparte en el mismo fichero):
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    **A helper** (put it as a separate function in the same file):
 
         def rotate_half(x):
-            mitad = x.shape[-1] // 2
-            x1, x2 = x[..., :mitad], x[..., mitad:]
+            half = x.shape[-1] // 2
+            x1, x2 = x[..., :half], x[..., half:]
             return torch.cat([-x2, x1], dim=-1)
 
-    **Y la funcion**, tres lineas:
+    **And the function**, three lines:
 
         seq_len = x.shape[-2]
         cos = cos[:seq_len].to(dtype=x.dtype, device=x.device)
         sin = sin[:seq_len].to(dtype=x.dtype, device=x.device)
         return x * cos + rotate_half(x) * sin
 
-    DE DÓNDE SALE ESA ÚLTIMA LÍNEA
-    ------------------------------
-    Rotar un par `(x1, x2)` un angulo `t` es la matriz de rotacion de siempre:
+    WHERE THAT LAST LINE COMES FROM
+    -------------------------------
+    Rotating a pair `(x1, x2)` by an angle `t` is the usual rotation matrix:
 
         x1' = x1*cos(t) - x2*sin(t)
         x2' = x2*cos(t) + x1*sin(t)
 
-    Y ahora comprueba que `x * cos + rotate_half(x) * sin` produce exactamente eso, sabiendo
-    que `rotate_half([a, b]) = [-b, a]`:
+    And now check that `x * cos + rotate_half(x) * sin` produces exactly that, knowing that
+    `rotate_half([a, b]) = [-b, a]`:
 
-        componente 1:  x1*cos + (-x2)*sin  =  x1*cos - x2*sin    OK
-        componente 2:  x2*cos + ( x1)*sin  =  x2*cos + x1*sin    OK
+        component 1:  x1*cos + (-x2)*sin  =  x1*cos - x2*sin    OK
+        component 2:  x2*cos + ( x1)*sin  =  x2*cos + x1*sin    OK
 
-    DOS DETALLES QUE FALLAN SI LOS SALTAS
-    -------------------------------------
-    **El recorte `cos[:seq_len]`.** Las tablas se precalculan hasta `max_seq_len` (512 en el
-    modelo final) y tu secuencia casi nunca mide eso exacto. Sin recortar, el broadcast falla
-    o —peor— acierta por casualidad con las formas equivocadas.
+    TWO DETAILS THAT BREAK IF YOU SKIP THEM
+    ---------------------------------------
+    **The slice `cos[:seq_len]`.** The tables are precomputed up to `max_seq_len` (512 in the
+    final model) and your sequence is almost never exactly that long. Without slicing, the
+    broadcast fails or — worse — succeeds by accident with the wrong shapes.
 
-    **El `.to(dtype=x.dtype)`.** Bajo AMP las tablas estan en fp32 y `x` llega en fp16.
-    Mezclarlos hace que PyTorch promocione, y acabas calculando en la precision que no querias.
+    **The `.to(dtype=x.dtype)`.** Under AMP the tables are in fp32 and `x` arrives in fp16.
+    Mixing them makes PyTorch promote, and you end up computing at a precision you did not
+    want.
 
-    NO HACE FALTA NINGÚN `unsqueeze`
-    --------------------------------
-    `x` es `(B, n_heads, T, head_dim)` y `cos` es `(T, head_dim)`. El broadcast alinea desde la
-    derecha y se encarga solo de las dos primeras dimensiones.
+    NO `unsqueeze` IS NEEDED
+    ------------------------
+    `x` is `(B, n_heads, T, head_dim)` and `cos` is `(T, head_dim)`. The broadcast aligns
+    from the right and takes care of the first two dimensions by itself.
 
-    POR QUÉ FUNCIONA ESTO (la propiedad que justifica RoPE)
-    -------------------------------------------------------
-    El producto escalar de dos vectores rotados depende SOLO de la diferencia de angulos:
+    WHY THIS WORKS (the property that justifies RoPE)
+    -------------------------------------------------
+    The dot product of two rotated vectors depends ONLY on the difference of angles:
 
         <R(m)q, R(n)k> = <q, R(n-m)k>
 
-    O sea: la puntuacion de atencion entre los tokens 5 y 3 es la MISMA que entre el 105 y el
-    103. El modelo aprende "el token de dos posiciones atras", no "el token numero 3". La demo
-    lo comprueba con numeros y sale igual hasta el ultimo decimal.
+    That is: the attention score between tokens 5 and 3 is the SAME as between 105 and 103.
+    The model learns "the token two positions back", not "token number 3". The demo checks it
+    with numbers and it comes out equal to the last decimal.
 
-    Y ademas rotar NO cambia la longitud del vector, cosa que sumar un embedding posicional si
-    hace.
+    And on top of that, rotating does NOT change the vector's length, which adding a
+    positional embedding does.
 
     Args:
-        x: `(B, n_heads, T, head_dim)`, normalmente Q o K.
-        cos, sin: `(max_seq_len, head_dim)`, de `rope_frequencies`.
+        x: `(B, n_heads, T, head_dim)`, usually Q or K.
+        cos, sin: `(max_seq_len, head_dim)`, from `rope_frequencies`.
 
     Returns:
-        Del mismo tamanyo que `x`.
+        The same shape as `x`.
     """
-    raise NotImplementedError("TODO: modulo 09, ejercicio 3 - apply_rope")
+    raise NotImplementedError("TODO: module 09, exercise 3 - apply_rope")

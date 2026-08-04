@@ -1,165 +1,162 @@
-# 09 — Información posicional y RoPE
+# 09 — Positional information and RoPE
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque la atención no sabe qué palabra va antes.**
+**Because attention does not know which word comes first.**
 
-Suena a detalle y es un defecto fatal. Vuelve a mirar la fórmula del módulo 06: es una suma
-ponderada, y una suma no tiene orden. Para el mecanismo de atención,
-*"el perro muerde al hombre"* y *"el hombre muerde al perro"* producen exactamente lo mismo.
+It sounds like a detail and it is a fatal flaw. Look again at module 06's formula: it is a
+weighted sum, and a sum has no order. To the attention mechanism, *"the dog bites the man"*
+and *"the man bites the dog"* produce exactly the same thing.
 
-Aquí se arregla, y se arregla con una idea bastante bonita: en vez de sumarle al vector una
-etiqueta que diga "soy la posición 7", se le aplica una **rotación** cuyo ángulo depende de
-la posición. Eso hace que el modelo aprenda distancias relativas —"el token de dos
-posiciones atrás"— en vez de posiciones absolutas.
+This is where it gets fixed, and it gets fixed with a rather beautiful idea: instead of
+adding a label to the vector saying "I am position 7", a **rotation** is applied whose angle
+depends on the position. That makes the model learn relative distances — "the token two
+positions back" — instead of absolute positions.
 
-Es la técnica que usan Llama, Mistral y prácticamente todo lo moderno.
+It is the technique used by Llama, Mistral and practically everything modern.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué sin esto tu modelo no distingue el orden de las palabras
-- Tres formas de resolverlo, en orden histórico, y qué falla en cada una
-- Qué es RoPE y **la propiedad matemática que lo justifica**, comprobada con números
-- Qué pasa de verdad cuando le pides a un modelo un contexto más largo del que entrenó
+- Why without this your model cannot tell word order apart
+- Three ways of solving it, in historical order, and what fails in each
+- What RoPE is and **the mathematical property that justifies it**, checked with numbers
+- What really happens when you ask a model for a longer context than it trained on
 
-### Cuánto cuesta
+### What it costs
 
-2,5 horas. El tercer ejercicio es una línea de código, pero sólo después de entender el
-segundo.
+2.5 hours. The third exercise is one line of code, but only after understanding the second.
 
 ---
 
-## El problema: la atención no sabe qué va antes
+## The problem: attention does not know what comes first
 
-Vuelve a mirar la fórmula de la atención del módulo 06. Es una suma ponderada de los
-valores, y los pesos salen de productos escalares entre queries y keys.
+Look again at module 06's attention formula. It is a weighted sum of the values, and the
+weights come from dot products between queries and keys.
 
-En ningún sitio aparece la **posición**.
+**Position** appears nowhere.
 
-La consecuencia es brutal y conviene verla: para el mecanismo de atención,
-*"el perro muerde al hombre"* y *"el hombre muerde al perro"* producen exactamente el mismo
-conjunto de vectores de salida, solo que reordenados. Si barajas los tokens de entrada, la
-salida se baraja igual y nada más cambia. A esa propiedad se le llama **equivariancia a
-permutaciones**, y aquí es un defecto fatal: el orden de las palabras es la mitad del
-significado.
+The consequence is brutal and worth seeing: to the attention mechanism, *"the dog bites the
+man"* and *"the man bites the dog"* produce exactly the same set of output vectors, just
+reordered. If you shuffle the input tokens, the output shuffles the same way and nothing
+else changes. That property is called **permutation equivariance**, and here it is a fatal
+flaw: word order is half the meaning.
 
-Hay que meter la posición de alguna forma. Vamos a ver tres, en orden histórico.
+Position has to be injected somehow. Let us look at three ways, in historical order.
 
-## Opción 1: aprender una tabla
+## Option 1: learn a table
 
-La más simple. Una tabla con una fila por posición, que se entrena como cualquier otro
-parámetro, y se **suma** al embedding del token:
+The simplest. A table with one row per position, trained like any other parameter, and
+**added** to the token's embedding:
 
 ```
-entrada = embedding_de_token[id] + embedding_de_posición[i]
+input = token_embedding[id] + position_embedding[i]
 ```
 
-Es lo que hace GPT-2. Funciona bien y no tiene misterio.
+It is what GPT-2 does. It works well and there is no mystery to it.
 
-Tiene dos pegas. La primera es un **techo duro**: si entrenaste con 1024 posiciones, para la
-posición 1025 no hay fila que consultar. El modelo no puede procesarla de ninguna manera, ni
-mal. La segunda es que el modelo aprende posiciones **absolutas** — "esto es el token
-número 7" — cuando lo que suele importar es la relación: "esto está dos palabras antes del
-verbo".
+It has two drawbacks. The first is a **hard ceiling**: if you trained with 1024 positions,
+for position 1025 there is no row to look up. The model cannot process it at all, not even
+badly. The second is that the model learns **absolute** positions — "this is token number 7"
+— when what usually matters is the relationship: "this is two words before the verb".
 
-## Opción 2: senos y cosenos
+## Option 2: sines and cosines
 
-El paper de 2017 propuso una tabla fija, sin parámetros, hecha de senos y cosenos de
-distintas frecuencias:
+The 2017 paper proposed a fixed, parameter-free table made of sines and cosines at different
+frequencies:
 
 $$PE_{(pos, 2i)} = \sin\left(\frac{pos}{10000^{2i/d}}\right), \qquad
 PE_{(pos, 2i+1)} = \cos\left(\frac{pos}{10000^{2i/d}}\right)$$
 
-La intuición es la de un **contador binario**. Fíjate en cómo se cuenta en binario:
+The intuition is that of a **binary counter**. Look at how you count in binary:
 
 ```
-0000    el bit de la derecha cambia en cada paso
-0001    el siguiente, cada dos
-0010    el siguiente, cada cuatro
+0000    the rightmost bit changes at every step
+0001    the next one, every two
+0010    the next one, every four
 0011    ...
 ```
 
-Cada bit oscila a un ritmo distinto, y la combinación de todos identifica un número de forma
-única. Las sinusoidales hacen lo mismo pero con ondas continuas: los primeros pares de
-dimensiones oscilan rápido y distinguen posiciones vecinas; los últimos oscilan lentísimo y
-distinguen el principio del final de la secuencia.
+Each bit oscillates at a different rate, and the combination of all of them identifies a
+number uniquely. The sinusoidals do the same but with continuous waves: the first pairs of
+dimensions oscillate fast and distinguish neighbouring positions; the last ones oscillate
+extremely slowly and distinguish the start of the sequence from the end.
 
-Ventaja sobre la tabla aprendida: está definida para cualquier posición, no hay techo. En la
-práctica la extrapolación tampoco funciona muy bien, pero al menos existe.
+An advantage over the learned table: it is defined for any position, there is no ceiling. In
+practice the extrapolation does not work very well either, but at least it exists.
 
-## Opción 3: RoPE — rotar en vez de sumar
+## Option 3: RoPE — rotate instead of adding
 
-Aquí está la idea que usa nuestro modelo, y Llama, y casi todo lo moderno.
+Here is the idea our model uses, and Llama, and almost everything modern.
 
-**En lugar de sumar algo al vector, se le aplica una rotación cuyo ángulo depende de la
-posición.**
+**Instead of adding something to the vector, a rotation is applied whose angle depends on
+the position.**
 
-Toma un vector de 2 dimensiones y rótalo un ángulo $\theta$. La matriz de rotación de toda la
-vida:
+Take a 2-dimensional vector and rotate it by an angle $\theta$. The good old rotation
+matrix:
 
 $$\begin{pmatrix} x_1' \\ x_2' \end{pmatrix} =
 \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix}
 \begin{pmatrix} x_1 \\ x_2 \end{pmatrix}$$
 
-RoPE parte el vector de cada cabeza en pares y rota cada par un ángulo proporcional a la
-posición. Como en las sinusoidales, cada par tiene su propia velocidad de giro: los primeros
-giran deprisa, los últimos lentísimo.
+RoPE splits each head's vector into pairs and rotates each pair by an angle proportional to
+the position. As with the sinusoidals, each pair has its own rotation speed: the first ones
+turn fast, the last ones extremely slowly.
 
-### Por qué esto es tan buena idea
+### Why this is such a good idea
 
-Y aquí viene la propiedad que lo justifica todo. Las rotaciones tienen una particularidad:
-**el producto escalar de dos vectores rotados depende solo de la diferencia de ángulos.**
+And here comes the property that justifies it all. Rotations have a peculiarity: **the dot
+product of two rotated vectors depends only on the difference of angles.**
 
 $$\langle R(m)\,q,\; R(n)\,k \rangle = \langle q,\; R(n-m)\,k \rangle$$
 
-Traducido a lo que importa: la puntuación de atención entre el token de la posición 5 y el
-de la 3 es **idéntica** a la que habría entre el 105 y el 103. Lo que el modelo aprende no es
-"el token número 3" sino **"el token de dos posiciones atrás"**.
+Translated into what matters: the attention score between the token at position 5 and the
+one at position 3 is **identical** to the one there would be between 105 and 103. What the
+model learns is not "token number 3" but **"the token two positions back"**.
 
-Puedes comprobarlo tú: en la demo se calcula $\langle R(2)q, R(5)k \rangle$ y
-$\langle R(4)q, R(7)k \rangle$ y salen el mismo número hasta el último decimal.
+You can check it yourself: the demo computes $\langle R(2)q, R(5)k \rangle$ and
+$\langle R(4)q, R(7)k \rangle$ and they come out the same to the last decimal.
 
-Y hay un segundo beneficio: rotar **no cambia la longitud del vector**. Sumar un embedding
-posicional sí altera la magnitud, y eso interfiere con los productos escalares de la
-atención. Rotar solo cambia la dirección.
+And there is a second benefit: rotating **does not change the vector's length**. Adding a
+positional embedding does alter the magnitude, and that interferes with attention's dot
+products. Rotating only changes direction.
 
-### Dos detalles de implementación
+### Two implementation details
 
-**Solo se aplica a Q y K, nunca a V.** Lo que debe depender de la posición son las
-*puntuaciones* de atención, no el contenido que se transporta. Y como la posición ya está
-codificada en las puntuaciones, meterla también en los valores sería redundante y dañino.
+**It is applied only to Q and K, never to V.** What has to depend on position is the
+attention *scores*, not the content being transported. And since position is already encoded
+in the scores, injecting it into the values too would be redundant and harmful.
 
-**Se aplica dentro de cada cabeza**, sobre `head_dim` dimensiones (40 en nuestro caso, o sea
-20 pares), no sobre las 320 de `d_model`.
+**It is applied inside each head**, over `head_dim` dimensions (40 in our case, that is, 20
+pairs), not over `d_model`'s 320.
 
-Sobre cómo emparejar las dimensiones hay dos convenios. El paper original empareja
-consecutivas: $(x_0, x_1), (x_2, x_3)\ldots$. Llama y HuggingFace emparejan por mitades:
-$(x_0, x_{d/2}), (x_1, x_{d/2+1})\ldots$. **Son equivalentes salvo una permutación de las
-dimensiones**, que la red aprende sin enterarse, y el de mitades se implementa con
-operaciones vectoriales mucho más limpias. Usamos ese.
+On how to pair the dimensions there are two conventions. The original paper pairs
+consecutive ones: $(x_0, x_1), (x_2, x_3)\ldots$. Llama and HuggingFace pair by halves:
+$(x_0, x_{d/2}), (x_1, x_{d/2+1})\ldots$. **They are equivalent up to a permutation of the
+dimensions**, which the network learns without noticing, and the halves one is implemented
+with much cleaner vector operations. We use that one.
 
-## Dónde está el debate
+## Where the debate is
 
-Se dice mucho que RoPE "extrapola a contextos más largos". Es verdad a medias y conviene
-saber dónde acaba.
+It is often said that RoPE "extrapolates to longer contexts". That is half true and it is
+worth knowing where it ends.
 
-RoPE tiene la propiedad relativa, sí, pero un modelo entrenado con contexto 512 y evaluado
-con 4096 **se degrada bastante**. La razón es que las frecuencias lentas apenas completan
-una fracción de vuelta dentro del rango entrenado, así que los ángulos grandes son
-literalmente territorio no visto. Hay toda una familia de técnicas para extender el contexto
-después de entrenar —interpolación de posiciones, NTK-aware scaling, YaRN— que existen
-precisamente porque la extrapolación directa no basta.
+RoPE does have the relative property, yes, but a model trained with a context of 512 and
+evaluated at 4096 **degrades considerably**. The reason is that the slow frequencies barely
+complete a fraction of a turn within the trained range, so large angles are literally unseen
+territory. There is a whole family of techniques for extending the context after training —
+position interpolation, NTK-aware scaling, YaRN — that exist precisely because direct
+extrapolation is not enough.
 
-Más de fondo: no está claro *por qué* la codificación posicional relativa funciona mejor que
-la absoluta. Hay argumentos razonables sobre generalización, y hay evidencia de que los
-transformers con máscara causal **infieren cierta información posicional por su cuenta**
-incluso sin ninguna codificación explícita, porque la propia máscara rompe la simetría. Hay
-trabajos que entrenan modelos causales sin codificación posicional alguna y funcionan
-sorprendentemente bien. O sea que ni siquiera está claro cuánto de necesario es todo esto.
+More fundamentally: it is not clear *why* relative positional encoding works better than
+absolute. There are reasonable arguments about generalization, and there is evidence that
+causally masked transformers **infer some positional information on their own** even with no
+explicit encoding, because the mask itself breaks the symmetry. There is work training
+causal models with no positional encoding at all and they work surprisingly well. So it is
+not even clear how necessary all this is.
 
 ---
 
-**Para ampliar:** Su et al. 2021, [RoFormer](https://arxiv.org/abs/2104.09864) (RoPE) ·
-Press et al. 2021, [ALiBi](https://arxiv.org/abs/2108.12409) (otra alternativa, que sesga las
-puntuaciones en vez de rotar) · Vaswani et al. 2017 (las sinusoidales originales).
-Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+**Further reading:** Su et al. 2021, [RoFormer](https://arxiv.org/abs/2104.09864) (RoPE) ·
+Press et al. 2021, [ALiBi](https://arxiv.org/abs/2108.12409) (another alternative, which
+biases the scores instead of rotating) · Vaswani et al. 2017 (the original sinusoidals).
+Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).
