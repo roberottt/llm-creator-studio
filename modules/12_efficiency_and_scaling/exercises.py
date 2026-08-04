@@ -1,38 +1,38 @@
-"""Modulo 12 - Eficiencia y leyes de escala.
+"""Module 12 - Efficiency and scaling laws.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 12` -> `llmfs hint 12 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement -> `llmfs check 12` -> `llmfs hint 12 -e N`
+-> `SOLUTION.md` has the complete code.
 
-Ninguna de las tres funciones tiene mas de cinco lineas de codigo. La dificultad esta en
-entender que significan los numeros.
+None of the three functions is more than five lines of code. The difficulty is in
+understanding what the numbers mean.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-    model_flops_per_token          (ej. 1)  cuanto cuesta un token, desglosado
-    compute_mfu                    (ej. 2)  que fraccion de tu GPU aprovechas
-    chinchilla_optimal_allocation  (ej. 3)  como repartir el presupuesto de computo
+    model_flops_per_token          (ex. 1)  what a token costs, broken down
+    compute_mfu                    (ex. 2)  what fraction of your GPU you are using
+    chinchilla_optimal_allocation  (ex. 3)  how to split the compute budget
 
-El ejercicio 3 reproduce un resultado que en 2022 demostro que la industria entera estaba
-entrenando mal sus modelos. Y lo vas a verificar contra modelos historicos reales.
+Exercise 3 reproduces a result that in 2022 showed the entire industry was training its
+models wrong. And you are going to check it against real historical models.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **MFU** (Model FLOPs Utilization): tokens/s x FLOPs por token, dividido por el pico de tu
-  hardware. Nadie llega a 1.
-- **presupuesto de computo**: cuantos FLOPs totales te puedes permitir gastar entrenando.
-- **Chinchilla**: el paper de 2022 que midio como repartir ese presupuesto entre tamanyo de
-  modelo y cantidad de datos. Respuesta: ~20 tokens por parametro.
-- **parametros no-embedding**: el total menos la tabla de embeddings. Es lo que usan las
-  leyes de escala, porque los embeddings escalan distinto.
-- **sobreentrenado / infraentrenado**: por encima o por debajo de esos 20 tokens por
-  parametro. Ninguna de las dos cosas es necesariamente mala: depende de tu objetivo.
+- **MFU** (Model FLOPs Utilization): tokens/s x FLOPs per token, divided by your hardware's
+  peak. Nobody reaches 1.
+- **compute budget**: how many total FLOPs you can afford to spend on training.
+- **Chinchilla**: the 2022 paper that measured how to split that budget between model size
+  and amount of data. Answer: ~20 tokens per parameter.
+- **non-embedding parameters**: the total minus the embedding table. It is what the scaling
+  laws use, because embeddings scale differently.
+- **over-trained / under-trained**: above or below those 20 tokens per parameter. Neither is
+  necessarily bad: it depends on your objective.
 
-    llmfs demo 12     mide tu MFU real y reproduce el resultado de Chinchilla
+    llmfs demo 12     measures your real MFU and reproduces the Chinchilla result
 """
 
 from __future__ import annotations
@@ -41,28 +41,28 @@ from llmfs.config import ModelConfig
 
 
 def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
-    """FLOPs por token, separados en matmuls y atencion.
+    """FLOPs per token, split into matmuls and attention.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Cuatro pasos, todo aritmetica con los campos del config.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Four steps, all arithmetic on the config fields.
 
-        1. Cuantas matrices tiene el FFN:
+        1. How many matrices the FFN has:
 
                n_ffn = 3 if cfg.activation == "swiglu" else 2
 
-        2. Los parametros que participan en multiplicaciones de matriz:
+        2. The parameters that take part in matrix multiplications:
 
                params_matmul = cfg.n_layers * (
                    4 * cfg.d_model**2 + n_ffn * cfg.d_model * cfg.d_ff
                ) + cfg.d_model * cfg.vocab_size
 
-        3. Los dos terminos:
+        3. The two terms:
 
                matmul = 2 * params_matmul
                attention = 4 * cfg.n_layers * cfg.context_length * cfg.d_model
 
-        4. El backward, si toca, y el dict de salida:
+        4. The backward, if applicable, and the output dict:
 
                if include_backward:
                    matmul *= 3
@@ -75,129 +75,132 @@ def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> di
                    "params_matmul": params_matmul,
                }
 
-    DE DÓNDE SALE CADA CONSTANTE
-    ----------------------------
-    **El 2 de `matmul`.** Multiplicar una matriz por un vector hace, por cada peso, una
-    multiplicacion y una suma: 2 operaciones por parametro. De ahi el `2 * params`.
-
-    **El 3 del backward.** El paso hacia atras cuesta aproximadamente el DOBLE que el hacia
-    delante (hay que calcular el gradiente respecto a la entrada y respecto a los pesos, dos
-    matmuls donde el forward hacia uno). Forward + backward = 1 + 2 = 3.
-
-    **El `d*vocab_size` cuenta AUNQUE haya weight tying.** Atar los pesos ahorra MEMORIA, no
-    CALCULO: la multiplicacion final se hace igual, con la misma matriz.
-
-    **El 4 de `attention`.** Son los dos matmuls que NO involucran parametros: `Q@K^T` y
-    `attn@V`. Cada uno cuesta `2 * T * d` por token, y son dos: `4 * T * d` por capa.
-
-    POR QUÉ SE DEVUELVEN SEPARADOS
+    WHERE EACH CONSTANT COMES FROM
     ------------------------------
-    Porque los dos terminos crecen con cosas distintas:
+    **The 2 in `matmul`.** Multiplying a matrix by a vector does, for each weight, one
+    multiplication and one addition: 2 operations per parameter. Hence the `2 * params`.
 
-        matmul     crece con el TAMANYO del modelo (d_model, n_layers, d_ff)
-        attention  crece con el CONTEXTO (context_length)
+    **The 3 of the backward.** The backward pass costs roughly TWICE what the forward does
+    (you have to compute the gradient with respect to the input and with respect to the
+    weights, two matmuls where the forward did one). Forward + backward = 1 + 2 = 3.
 
-    Con nuestra config (T=512) la atencion es un 18% del total. Con T=4096 seria el 64%. Ese
-    desglose te dice al instante si alargar el contexto te va a salir caro, sin tener que
-    probarlo.
+    **The `d*vocab_size` counts EVEN IF there is weight tying.** Tying the weights saves
+    MEMORY, not COMPUTE: the final multiplication happens all the same, with the same matrix.
+
+    **The 4 in `attention`.** Those are the two matmuls that do NOT involve parameters:
+    `Q@K^T` and `attn@V`. Each one costs `2 * T * d` per token, and there are two of them:
+    `4 * T * d` per layer.
+
+    WHY THEY ARE RETURNED SEPARATELY
+    --------------------------------
+    Because the two terms grow with different things:
+
+        matmul     grows with the SIZE of the model (d_model, n_layers, d_ff)
+        attention  grows with the CONTEXT (context_length)
+
+    With our config (T=512) attention is 18% of the total. With T=4096 it would be 64%. That
+    breakdown tells you instantly whether lengthening the context is going to be expensive,
+    without having to try it.
 
     Args:
-        cfg: la configuracion del modelo.
-        include_backward: si incluir el coste del paso hacia atras (True para entrenamiento,
-            False para inferencia pura).
+        cfg: the model configuration.
+        include_backward: whether to include the cost of the backward pass (True for
+            training, False for pure inference).
 
     Returns:
-        Un dict con `matmul`, `attention`, `total` y `params_matmul`.
+        A dict with `matmul`, `attention`, `total` and `params_matmul`.
         `total` = `matmul` + `attention`.
     """
-    raise NotImplementedError("TODO: modulo 12, ejercicio 1 - model_flops_per_token")
+    raise NotImplementedError("TODO: module 12, exercise 1 - model_flops_per_token")
 
 
 def compute_mfu(tokens_per_second: float, flops_per_token: int, peak_tflops: float) -> float:
-    """Model FLOPs Utilization: que fraccion del pico del hardware estas aprovechando.
+    """Model FLOPs Utilization: what fraction of the hardware peak you are using.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Dos lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Two lines.
 
-        1. La validacion (si no, una division por cero silenciosa te da `inf` y no te enteras):
+        1. The validation (otherwise a silent division by zero gives you `inf` and you never
+           find out):
 
                if peak_tflops <= 0:
-                   raise ValueError(f"peak_tflops tiene que ser positivo: {peak_tflops}")
+                   raise ValueError(f"peak_tflops has to be positive: {peak_tflops}")
 
-        2. La formula:
+        2. The formula:
 
                return tokens_per_second * flops_per_token / (peak_tflops * 1e12)
 
-    El `1e12` convierte TeraFLOPS en FLOPS, para que arriba y abajo esten en las mismas
-    unidades. Es el unico sitio donde se puede meter la pata.
+    The `1e12` converts TeraFLOPS into FLOPS, so that the top and the bottom are in the same
+    units. It is the only place where you can get it wrong.
 
-    UN EJEMPLO CON NÚMEROS REALES
-    -----------------------------
-    Los de la tirada del `tiny_char` en el MacBook:
+    AN EXAMPLE WITH REAL NUMBERS
+    ----------------------------
+    The ones from the `tiny_char` run on the MacBook:
 
-        tokens_per_second = 112.000
-        flops_per_token   = 2.6e7        (del ejercicio 1)
+        tokens_per_second = 112,000
+        flops_per_token   = 2.6e7        (from exercise 1)
         peak_tflops       = 14.2         (M5, fp32)
 
-        MFU = 112000 * 2.6e7 / 1.42e13 = 0.205,  o sea el 20,5%
+        MFU = 112000 * 2.6e7 / 1.42e13 = 0.205,  that is 20.5%
 
-    CÓMO SE INTERPRETA
-    ------------------
-        0,4 - 0,5   modelos grandes bien optimizados en A100/H100
-        0,2 - 0,3   modelos medianos
-        0,1 - 0,2   nuestro modelo de 9M
-        < 0,05      algo va mal: mira el dataloader o sube el batch size
+    HOW TO READ IT
+    --------------
+        0.4 - 0.5   large, well-optimized models on A100/H100
+        0.2 - 0.3   mid-sized models
+        0.1 - 0.2   our 9M model
+        < 0.05      something is wrong: look at the dataloader or raise the batch size
 
-    NADIE LLEGA A 1. El pico teorico solo se alcanza con matmuls enormes perfectamente
-    alineados y absolutamente nada mas de por medio. Con un modelo pequenyo la MFU baja es
-    inevitable: las matrices de 320x320 no dan para saturar los tensor cores, y una parte
-    importante del tiempo se va en lanzar kernels en vez de en calcular. No es culpa tuya.
+    NOBODY REACHES 1. The theoretical peak is only reached with enormous, perfectly aligned
+    matmuls and absolutely nothing else in the way. With a small model a low MFU is
+    unavoidable: 320x320 matrices are not enough to saturate the tensor cores, and a
+    significant part of the time goes into launching kernels instead of computing. It is not
+    your fault.
 
-    PARA QUÉ SIRVE DE VERDAD
-    ------------------------
-    No por su valor absoluto, sino porque es COMPARABLE: no depende del modelo ni del hardware.
-    "1200 tokens por segundo" no te dice nada; "18% de MFU" si. Cambias el batch size, activas
-    `torch.compile`, mueves el dataloader a otro hilo, y miras si el numero sube. Es el
-    termometro de las optimizaciones.
+    WHAT IT IS REALLY FOR
+    ---------------------
+    Not for its absolute value, but because it is COMPARABLE: it does not depend on the model
+    or on the hardware. "1200 tokens per second" tells you nothing; "18% MFU" does. You change
+    the batch size, switch on `torch.compile`, move the dataloader to another thread, and see
+    whether the number goes up. It is the thermometer for optimizations.
 
     Args:
-        tokens_per_second: el rendimiento medido, no el teorico.
-        flops_per_token: de `model_flops_per_token(...)["total"]`.
-        peak_tflops: el pico del hardware, de `llmfs device`.
+        tokens_per_second: the measured throughput, not the theoretical one.
+        flops_per_token: from `model_flops_per_token(...)["total"]`.
+        peak_tflops: the hardware peak, from `llmfs device`.
 
     Returns:
-        Una fraccion entre 0 y 1.
+        A fraction between 0 and 1.
 
     Raises:
-        ValueError: si `peak_tflops` no es positivo.
+        ValueError: if `peak_tflops` is not positive.
     """
-    raise NotImplementedError("TODO: modulo 12, ejercicio 2 - compute_mfu")
+    raise NotImplementedError("TODO: module 12, exercise 2 - compute_mfu")
 
 
 def chinchilla_optimal_allocation(
     compute_budget: float, tokens_per_param: float = 20.0
 ) -> dict[str, float]:
-    """Reparte un presupuesto de computo entre parametros y tokens.
+    """Splits a compute budget between parameters and tokens.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas y un dict.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines and a dict.
 
-        1. La validacion:
+        1. The validation:
 
                if compute_budget <= 0:
-                   raise ValueError(f"el presupuesto tiene que ser positivo: {compute_budget}")
+                   raise ValueError(f"the budget has to be positive: {compute_budget}")
 
-        2. Despeja N y saca D:
+        2. Solve for N and get D:
 
                params = (compute_budget / (6 * tokens_per_param)) ** 0.5
                tokens = tokens_per_param * params
 
-           (`** 0.5` es la raiz cuadrada. Se escribe asi para no tener que importar `math`
-           en este fichero, que no lo importa.)
+           (`** 0.5` is the square root. It is written that way so you do not have to import
+           `math` in this file, which does not import it.)
 
-        3. Devuelve las cuatro cosas:
+        3. Return the four things:
 
                return {
                    "params": params,
@@ -206,63 +209,62 @@ def chinchilla_optimal_allocation(
                    "compute": compute_budget,
                }
 
-    DE DÓNDE SALE ESA RAÍZ CUADRADA
-    -------------------------------
-    Del `C = 6ND` del modulo 01 (coste total = 6 x parametros x tokens) mas la restriccion de
-    que quieres `D = k*N`, con k los tokens por parametro:
+    WHERE THAT SQUARE ROOT COMES FROM
+    ---------------------------------
+    From the `C = 6ND` of module 01 (total cost = 6 x parameters x tokens) plus the constraint
+    that you want `D = k*N`, with k the tokens per parameter:
 
         C = 6 * N * (k*N) = 6k * N²
 
         N = sqrt( C / (6k) )
         D = k * N
 
-    O sea: si duplicas el presupuesto, el modelo optimo NO se duplica, crece un 41%
-    (sqrt(2)). Y los datos tambien un 41%. Ambos a la vez.
+    That is: if you double the budget, the optimal model does NOT double, it grows by 41%
+    (sqrt(2)). And the data by 41% too. Both at the same time.
 
-    EL PROBLEMA QUE RESUELVE
-    ------------------------
-    Tienes un presupuesto fijo de FLOPs —una GPU y dos semanas, digamos—. Puedes gastarlo en un
-    modelo grande con pocos datos o en uno pequenyo con muchos datos. ¿Cual acaba con menos
-    perdida?
+    THE PROBLEM IT SOLVES
+    ---------------------
+    You have a fixed budget of FLOPs -one GPU and two weeks, say-. You can spend it on a large
+    model with little data or on a small one with a lot of data. Which one ends up with the
+    lower loss?
 
-    LA RESPUESTA (Hoffmann et al. 2022, "Chinchilla")
-    -------------------------------------------------
-    Los dos deben crecer PROPORCIONALMENTE: unos 20 tokens por parametro.
+    THE ANSWER (Hoffmann et al. 2022, "Chinchilla")
+    -----------------------------------------------
+    Both have to grow PROPORTIONALLY: about 20 tokens per parameter.
 
-    Fue un resultado importante porque contradecia la practica del momento. GPT-3 tenia 175.000
-    millones de parametros y se entreno con 300.000 millones de tokens: 1,7 tokens por
-    parametro, DOCE VECES por debajo del optimo. Chinchilla entreno un modelo cuatro veces mas
-    pequenyo con cuatro veces mas datos, con el mismo computo, y gano en casi todas las
-    evaluaciones.
+    It was an important result because it contradicted the practice of the time. GPT-3 had 175
+    billion parameters and was trained on 300 billion tokens: 1.7 tokens per parameter, TWELVE
+    TIMES below the optimum. Chinchilla trained a model four times smaller with four times
+    more data, with the same compute, and won on almost every evaluation.
 
-    COMPRUÉBALO CON EL PROPIO CHINCHILLA
-    ------------------------------------
-    Su presupuesto real fue 5.76e23 FLOPs. Con k=20:
+    CHECK IT WITH CHINCHILLA ITSELF
+    -------------------------------
+    Its real budget was 5.76e23 FLOPs. With k=20:
 
-        N = sqrt(5.76e23 / 120) = 6.9e10 = 69.000 millones
+        N = sqrt(5.76e23 / 120) = 6.9e10 = 69 billion
 
-    El modelo real tenia 70.000 millones. La formula lo clava. Verla funcionar sobre un caso
-    historico da bastante mas confianza que leerla.
+    The real model had 70 billion. The formula nails it. Seeing it work on a historical case
+    gives a lot more confidence than reading it.
 
-    Y AHORA MIRA NUESTRO MODELO
-    ---------------------------
-    Nuestro modelo tiene 7,62M de parametros no-embedding, asi que el optimo Chinchilla
-    serian unos 152M de tokens. Vamos a entrenarlo con 500M: 65 tokens por parametro, mas
-    de tres veces por encima del "optimo". Es deliberado, no es un error.
+    AND NOW LOOK AT OUR MODEL
+    -------------------------
+    Our model has 7.62M non-embedding parameters, so the Chinchilla optimum would be about
+    152M tokens. We are going to train it with 500M: 65 tokens per parameter, more than three
+    times above the "optimum". It is deliberate, it is not a mistake.
 
-    Chinchilla optimiza la perdida por FLOP DE ENTRENAMIENTO. Si el modelo se va a usar mucho
-    despues, compensa entrenar de mas un modelo pequenyo: cada inferencia sale mas barata para
-    siempre. Es exactamente lo que hace Llama, y por eso Llama-7B se entreno con 1 billon de
-    tokens (143 por parametro) en vez de con 140.000 millones.
+    Chinchilla optimizes loss per TRAINING FLOP. If the model is going to be used a lot
+    afterwards, it pays off to over-train a small model: every inference is cheaper forever.
+    That is exactly what Llama does, and it is why Llama-7B was trained on 1 trillion tokens
+    (143 per parameter) instead of on 140 billion.
 
     Args:
-        compute_budget: FLOPs disponibles. Tiene que ser positivo.
-        tokens_per_param: la constante de Chinchilla. 20 por defecto.
+        compute_budget: available FLOPs. Has to be positive.
+        tokens_per_param: the Chinchilla constant. 20 by default.
 
     Returns:
-        `{"params", "tokens", "tokens_per_param", "compute"}`, todos floats.
+        `{"params", "tokens", "tokens_per_param", "compute"}`, all floats.
 
     Raises:
-        ValueError: si el presupuesto no es positivo.
+        ValueError: if the budget is not positive.
     """
-    raise NotImplementedError("TODO: modulo 12, ejercicio 3 - chinchilla_optimal_allocation")
+    raise NotImplementedError("TODO: module 12, exercise 3 - chinchilla_optimal_allocation")
