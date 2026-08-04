@@ -1,21 +1,21 @@
-"""Demo del modulo 01: mide tu hardware y estima cuanto va a durar la tirada final.
+"""Demo for module 01: measure your hardware and estimate how long the final run will take.
 
     llmfs demo 01
 
-Hace tres cosas:
-  1. Barre tamanyos de matriz y dtypes midiendo TFLOPS reales -> grafica.
-  2. Calcula los FLOPs/token del modelo de 9M y del juguete.
-  3. Con esos dos numeros, estima el tiempo de entrenamiento a varias MFU.
+It does three things:
+  1. Sweeps matrix sizes and dtypes measuring real TFLOPS -> plot.
+  2. Computes the FLOPs/token of the 9M model and of the toy.
+  3. With those two numbers, estimates the training time at several MFUs.
 
-El punto pedagogico: ver con tus ojos que el pico de la ficha tecnica no se alcanza casi
-nunca, y que las matrices pequenyas dejan la GPU muerta de risa.
+The pedagogical point: seeing with your own eyes that the spec-sheet peak is almost never
+reached, and that small matrices leave the GPU twiddling its thumbs.
 """
 
 from __future__ import annotations
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import torch
@@ -36,8 +36,8 @@ estimate_tokens_per_second = resolve("01_environment", "estimate_tokens_per_seco
 SIZES = [128, 256, 512, 1024, 2048, 4096]
 
 
-def barrido_de_tamanyos(cfg) -> dict[str, list[float]]:
-    """Mide TFLOPS para varios tamanyos y dtypes."""
+def size_sweep(cfg) -> dict[str, list[float]]:
+    """Measures TFLOPS for several sizes and dtypes."""
     dtypes: list[tuple[str, torch.dtype]] = [("fp32", torch.float32)]
     if cfg.kind == "cuda":
         dtypes.append(("fp16", torch.float16))
@@ -46,64 +46,64 @@ def barrido_de_tamanyos(cfg) -> dict[str, list[float]]:
     elif cfg.kind == "mps":
         dtypes.append(("fp16", torch.float16))
 
-    resultados: dict[str, list[float]] = {}
-    for nombre, dtype in dtypes:
-        serie: list[float] = []
+    results: dict[str, list[float]] = {}
+    for name, dtype in dtypes:
+        series: list[float] = []
         for size in SIZES:
             try:
-                serie.append(measure_matmul_tflops(cfg=cfg, size=size, dtype=dtype))
-            except RuntimeError as exc:  # OOM en la 2060 con 4096 en fp32, por ejemplo
-                console.print(f"[dim]{nombre} {size}x{size}: {exc.__class__.__name__}[/dim]")
-                serie.append(float("nan"))
-        resultados[nombre] = serie
+                series.append(measure_matmul_tflops(cfg=cfg, size=size, dtype=dtype))
+            except RuntimeError as exc:  # OOM on the 2060 with 4096 in fp32, for example
+                console.print(f"[dim]{name} {size}x{size}: {exc.__class__.__name__}[/dim]")
+                series.append(float("nan"))
+        results[name] = series
         console.print(
-            f"  {nombre}: " + "  ".join(f"{s}={v:.1f}" for s, v in zip(SIZES, serie) if v == v)
+            f"  {name}: " + "  ".join(f"{s}={v:.1f}" for s, v in zip(SIZES, series) if v == v)
         )
-    return resultados
+    return results
 
 
-def grafica(resultados: dict[str, list[float]], cfg) -> str:
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+def plot(results: dict[str, list[float]], cfg) -> str:
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    for nombre, serie in resultados.items():
-        izq.plot(SIZES, serie, marker="o", label=nombre)
-    izq.set_xscale("log", base=2)
-    izq.set_xlabel("lado de la matriz")
-    izq.set_ylabel("TFLOPS efectivos")
-    izq.set_title(f"Rendimiento de matmul - {cfg.name}")
-    izq.grid(alpha=0.3)
-    izq.legend()
+    for name, series in results.items():
+        left.plot(SIZES, series, marker="o", label=name)
+    left.set_xscale("log", base=2)
+    left.set_xlabel("matrix side")
+    left.set_ylabel("effective TFLOPS")
+    left.set_title(f"Matmul throughput - {cfg.name}")
+    left.grid(alpha=0.3)
+    left.legend()
 
-    # Eficiencia relativa al mejor resultado: donde se pierde el hardware.
-    mejor = max(v for serie in resultados.values() for v in serie if v == v)
-    for nombre, serie in resultados.items():
-        der.plot(SIZES, [100 * v / mejor for v in serie], marker="o", label=nombre)
-    der.axhline(100, color="gray", ls="--", lw=1)
-    der.set_xscale("log", base=2)
-    der.set_xlabel("lado de la matriz")
-    der.set_ylabel("% del mejor resultado")
-    der.set_title("Las matrices pequenyas desaprovechan la GPU")
-    der.grid(alpha=0.3)
-    der.legend()
+    # Efficiency relative to the best result: where the hardware is lost.
+    best = max(v for series in results.values() for v in series if v == v)
+    for name, series in results.items():
+        right.plot(SIZES, [100 * v / best for v in series], marker="o", label=name)
+    right.axhline(100, color="gray", ls="--", lw=1)
+    right.set_xscale("log", base=2)
+    right.set_xlabel("matrix side")
+    right.set_ylabel("% of the best result")
+    right.set_title("Small matrices waste the GPU")
+    right.grid(alpha=0.3)
+    right.legend()
 
     fig.tight_layout()
-    destino = figures_dir() / "01_hardware.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "01_hardware.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    return str(destino)
+    return str(target)
 
 
-def estimaciones(cfg, pico: float) -> None:
-    tabla = Table(title="Cuanto tardaria cada config", header_style="bold")
-    tabla.add_column("config")
-    tabla.add_column("FLOPs/token", justify="right")
-    tabla.add_column("tokens", justify="right")
+def estimates(cfg, peak: float) -> None:
+    table = Table(title="How long each config would take", header_style="bold")
+    table.add_column("config")
+    table.add_column("FLOPs/token", justify="right")
+    table.add_column("tokens", justify="right")
     for mfu in (0.10, 0.20, 0.40):
-        tabla.add_column(f"MFU {mfu:.0%}", justify="right")
+        table.add_column(f"MFU {mfu:.0%}", justify="right")
 
-    for nombre in ("tiny_char", "tinystories_9m"):
-        cfg_run = RunConfig.from_yaml(configs_dir() / f"{nombre}.yaml")
-        m = cfg_run.model
+    for name in ("tiny_char", "tinystories_9m"):
+        run_cfg = RunConfig.from_yaml(configs_dir() / f"{name}.yaml")
+        m = run_cfg.model
         fpt = transformer_flops_per_token(
             n_layers=m.n_layers,
             d_model=m.d_model,
@@ -112,43 +112,43 @@ def estimaciones(cfg, pico: float) -> None:
             vocab_size=m.vocab_size,
             n_ffn_matrices=3 if m.activation == "swiglu" else 2,
         )
-        fila = [nombre, f"{fpt / 1e6:.1f}M", f"{cfg_run.train.max_tokens / 1e6:.0f}M"]
+        row = [name, f"{fpt / 1e6:.1f}M", f"{run_cfg.train.max_tokens / 1e6:.0f}M"]
         for mfu in (0.10, 0.20, 0.40):
-            tps = estimate_tokens_per_second(pico, fpt, mfu=mfu)
-            horas = cfg_run.train.max_tokens / tps / 3600
-            fila.append(f"{horas:.2f} h" if horas >= 0.05 else f"{horas * 60:.1f} min")
-        tabla.add_row(*fila)
+            tps = estimate_tokens_per_second(peak, fpt, mfu=mfu)
+            hours = run_cfg.train.max_tokens / tps / 3600
+            row.append(f"{hours:.2f} h" if hours >= 0.05 else f"{hours * 60:.1f} min")
+        table.add_row(*row)
 
-    console.print(tabla)
+    console.print(table)
     console.print(
-        "\n[dim]Recuerda: un modelo de 9M rara vez pasa de MFU 0,2. Las matrices de\n"
-        "320x320 son demasiado pequenyas para saturar los tensor cores. La columna del\n"
-        "40% es lo que verias con un modelo de varios miles de millones.[/dim]"
+        "\n[dim]Remember: a 9M model rarely goes above MFU 0.2. 320x320 matrices are too\n"
+        "small to saturate the tensor cores. The 40% column is what you would see with a\n"
+        "model of several billion parameters.[/dim]"
     )
 
 
 def main() -> None:
     cfg = get_device()
-    console.rule("[bold]hardware detectado[/bold]")
+    console.rule("[bold]detected hardware[/bold]")
     console.print(cfg.summary())
 
-    console.rule("[bold]midiendo matmul[/bold]")
-    console.print("[dim](calentando y cronometrando, unos segundos)[/dim]")
-    resultados = barrido_de_tamanyos(cfg)
+    console.rule("[bold]measuring matmul[/bold]")
+    console.print("[dim](warming up and timing, a few seconds)[/dim]")
+    results = size_sweep(cfg)
 
-    pico = max(v for serie in resultados.values() for v in serie if v == v)
-    console.print(f"\n[bold]Pico medido: {pico:.1f} TFLOPS[/bold]")
+    peak = max(v for series in results.values() for v in series if v == v)
+    console.print(f"\n[bold]Measured peak: {peak:.1f} TFLOPS[/bold]")
     if cfg.kind == "cuda" and "2060" in cfg.name:
         console.print(
-            "[dim]La ficha tecnica de la RTX 2060 dice 51,6 TFLOPS fp16. La diferencia\n"
-            "con lo que acabas de medir es la vida real.[/dim]"
+            "[dim]The RTX 2060's spec sheet says 51.6 TFLOPS fp16. The difference with\n"
+            "what you just measured is real life.[/dim]"
         )
 
-    destino = grafica(resultados, cfg)
-    console.print(f"[green]figura guardada en {destino}[/green]")
+    target = plot(results, cfg)
+    console.print(f"[green]figure saved to {target}[/green]")
 
-    console.rule("[bold]estimacion de tiempos[/bold]")
-    estimaciones(cfg, pico)
+    console.rule("[bold]time estimates[/bold]")
+    estimates(cfg, peak)
 
 
 if __name__ == "__main__":

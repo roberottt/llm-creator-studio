@@ -149,3 +149,40 @@ def run_prompt_battery(
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def perplexity_from_loss(loss: float) -> float:
+    if not math.isfinite(loss):
+        return float("inf")
+    return math.exp(loss)
+
+
+def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
+    if n_bytes <= 0:
+        raise ValueError("n_bytes has to be positive")
+    return total_loss_nats / math.log(2) / n_bytes
+
+
+def run_prompt_battery(
+    generate_fn: Callable[[str], str],
+    prompts: Sequence[tuple[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    prompts = prompts or PROMPTS_TINYSTORIES
+    return [
+        {"prompt": prompt, "tests": label, "completion": generate_fn(prompt)}
+        for prompt, label in prompts
+    ]
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

@@ -1,43 +1,43 @@
-"""Modulo 00 - Que es un LLM, en realidad.
+"""Module 00 - What an LLM actually is.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-1. Lee `THEORY.md`. Son 10 minutos y sin eso estos ejercicios no tienen sentido.
-2. Implementa las funciones de abajo, en orden. Cada una usa la anterior.
-3. `llmfs check 00` para ver si van bien.
-4. ¿Atascado? `llmfs hint 00 -e 1` (tres niveles, cada vez mas explicito).
-5. ¿Sigues atascado? `SOLUTION.md` tiene el codigo completo. Copialo, mira como funciona,
-   y despues vuelve y escribelo tu. No es hacer trampa.
+1. Read `THEORY.md`. It is 10 minutes and without it these exercises make no sense.
+2. Implement the functions below, in order. Each one uses the previous.
+3. `llmfs check 00` to see how they are doing.
+4. Stuck? `llmfs hint 00 -e 1` (three levels, each more explicit).
+5. Still stuck? `SOLUTION.md` has the complete code. Copy it, see how it works, and then
+   come back and write it yourself. That is not cheating.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Un generador de texto que funciona. Sin torch, sin matrices, sin derivadas: diccionarios y
-una division.
+A text generator that works. No torch, no matrices, no derivatives: dictionaries and one
+division.
 
-Las tres funciones encajan asi:
+The three functions fit together like this:
 
-    build_count_table   (ya hecha)   texto -> tabla de conteos
+    build_count_table   (already done)  text -> count table
             |
             v
-    next_token_probs    (ejercicio 1) conteos -> probabilidades
+    next_token_probs    (exercise 1)    counts -> probabilities
             |
             v
-    sample_next_token   (ejercicio 2) probabilidades -> UN caracter
+    sample_next_token   (exercise 2)    probabilities -> ONE character
             |
             v
-    generate_naive      (ejercicio 3) todo lo anterior, en bucle -> texto
+    generate_naive      (exercise 3)    all of the above, in a loop -> text
 
-El ejercicio 3 es el interesante: ese bucle es EXACTAMENTE el mismo que ejecuta ChatGPT.
+Exercise 3 is the interesting one: that loop is EXACTLY the same one ChatGPT runs.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **token**: la unidad de texto que maneja el modelo. Aqui, un caracter.
-- **contexto**: los caracteres anteriores que el modelo mira para decidir el siguiente.
-- **distribucion de probabilidad**: una lista de numeros no negativos que suman 1.
-- **muestrear**: elegir uno al azar respetando esas probabilidades.
+- **token**: the unit of text the model handles. Here, a character.
+- **context**: the preceding characters the model looks at to decide the next one.
+- **probability distribution**: a list of non-negative numbers that sum to 1.
+- **sample**: pick one at random, respecting those probabilities.
 """
 
 from __future__ import annotations
@@ -45,137 +45,138 @@ from __future__ import annotations
 import random
 from typing import Mapping
 
-# La tabla de conteos ya esta hecha: no es lo que se aprende aqui. Recorre un texto y
-# apunta que caracter siguio a cada caracter. Ejemplo con "banana":
+# The count table is already written: it is not what you learn here. It walks a text and
+# notes which character followed each character. Example with "banana":
 #     build_count_table("banana") -> {'b': {'a': 1}, 'a': {'n': 2}, 'n': {'a': 2}}
 from llmfs.reference import build_count_table
 
 
 def next_token_probs(counts: Mapping[str, int]) -> dict[str, float]:
-    """Convierte una tabla de conteos en probabilidades.
+    """Turns a count table into probabilities.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines.
 
-        1. Suma todos los conteos:
+        1. Add up every count:
 
                total = sum(counts.values())
 
-        2. Si el total es 0, lanza `ValueError`. (Ver mas abajo por que.)
+        2. If the total is 0, raise `ValueError`. (See below for why.)
 
-        3. Devuelve un diccionario con cada conteo dividido entre el total:
+        3. Return a dictionary with each count divided by the total:
 
-               return {token: conteo / total for token, conteo in counts.items()}
+               return {token: count / total for token, count in counts.items()}
 
-    EJEMPLO PARA COMPROBAR
-    ----------------------
-        entrada:  {"b": 3, "c": 1}
-        total  :  3 + 1 = 4
-        salida :  {"b": 0.75, "c": 0.25}
+    EXAMPLE TO CHECK AGAINST
+    ------------------------
+        input :  {"b": 3, "c": 1}
+        total :  3 + 1 = 4
+        output:  {"b": 0.75, "c": 0.25}
 
-    QUÉ ESTÁS HACIENDO Y POR QUÉ
-    ----------------------------
-    Tienes apuntado cuantas veces siguio cada caracter a un contexto: 40, 25, 20, 15. Esos
-    numeros no significan nada por si solos, porque dependen de lo largo que fuera el texto.
+    WHAT YOU ARE DOING AND WHY
+    --------------------------
+    You have recorded how many times each character followed a context: 40, 25, 20, 15.
+    Those numbers mean nothing on their own, because they depend on how long the text was.
 
-    Lo que necesitas es la PROPORCION, y esas proporciones tienen que sumar 1 porque algo
-    tuvo que venir siempre.
+    What you need is the PROPORTION, and those proportions have to sum to 1 because
+    something always had to come next.
 
-    A esto se le llama NORMALIZAR y lo vas a ver mil veces en el curso. La funcion `softmax`
-    del modulo 06 hace exactamente esto, solo que exponenciando antes para que funcione con
-    numeros negativos.
+    This is called NORMALIZING and you are going to see it a thousand times in the course.
+    The `softmax` function in module 06 does exactly this, only exponentiating first so it
+    works with negative numbers.
 
-    DOS DETALLES QUE IMPORTAN
-    -------------------------
-    **El ValueError.** Si la tabla viene vacia, `sum()` da 0 y la division revienta con
-    `ZeroDivisionError`. El problema no es que reviente: es DONDE. Sin la comprobacion, el
-    error salta dentro de una comprension de diccionario, tres niveles por debajo de la causa
-    real, y el mensaje no menciona en ningun sitio que el problema es una tabla vacia.
+    TWO DETAILS THAT MATTER
+    -----------------------
+    **The ValueError.** If the table comes in empty, `sum()` gives 0 and the division blows
+    up with `ZeroDivisionError`. The problem is not that it blows up: it is WHERE. Without
+    the check, the error fires inside a dict comprehension, three levels below the real
+    cause, and the message never mentions that the problem is an empty table.
 
-    **El orden de las claves.** Devuelvelas en el MISMO orden en que llegaron. Si recorres
-    `counts.items()` para construir el resultado, el orden se conserva solo (en python 3.7+
-    los diccionarios lo mantienen). No las ordenes alfabeticamente: el ejercicio 2 recorre
-    este diccionario y el orden cambia que caracter sale.
+    **The key order.** Return them in the SAME order they arrived in. If you walk
+    `counts.items()` to build the result, the order is preserved for free (in python 3.7+
+    dictionaries keep it). Do not sort them alphabetically: exercise 2 walks this dictionary
+    and the order changes which character comes out.
 
     Args:
-        counts: `{caracter: veces_que_aparecio}`, con conteos enteros >= 0.
+        counts: `{character: times_it_appeared}`, with integer counts >= 0.
 
     Returns:
-        `{caracter: probabilidad}`, con las mismas claves y en el mismo orden.
+        `{character: probability}`, with the same keys and in the same order.
 
     Raises:
-        ValueError: si el total es 0.
+        ValueError: if the total is 0.
     """
-    raise NotImplementedError("TODO: modulo 00, ejercicio 1 - next_token_probs")
+    raise NotImplementedError("TODO: module 00, exercise 1 - next_token_probs")
 
 
 def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = None) -> str:
-    """Elige un caracter al azar, respetando sus probabilidades.
+    """Picks a character at random, respecting its probability.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un bucle con un acumulador. Cinco pasos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A loop with a running total. Five steps.
 
-        1. Si `rng` es None, crea uno: `rng = rng or random.Random()`
+        1. If `rng` is None, create one: `rng = rng or random.Random()`
 
-        2. Saca un numero aleatorio entre 0 y 1:
+        2. Draw a random number between 0 and 1:
 
                r = rng.random()
 
-        3. Prepara un acumulador a 0.0 y una variable para recordar el ultimo token visto.
+        3. Set up a running total at 0.0 and a variable to remember the last token seen.
 
-        4. Recorre `probs.items()`. En cada vuelta:
-             - suma la probabilidad al acumulador
-             - guarda este token como "el ultimo visto"
-             - si `r < acumulado`, DEVUELVE este token
+        4. Walk `probs.items()`. On each pass:
+             - add the probability to the running total
+             - store this token as "the last one seen"
+             - if `r < running`, RETURN this token
 
-        5. Si el bucle termina sin devolver nada, devuelve el ultimo token visto.
-           (Ver mas abajo por que hace falta.)
+        5. If the loop ends without returning anything, return the last token seen.
+           (See below for why that is needed.)
 
-    EL MÉTODO, DIBUJADO
-    -------------------
-    Imagina la recta del 0 al 1 partida en trozos, uno por caracter, de tamanyo proporcional
-    a su probabilidad:
+    THE METHOD, DRAWN OUT
+    ---------------------
+    Picture the line from 0 to 1 split into slices, one per character, of size proportional
+    to its probability:
 
         |----'n'----|--'r'--|--' '--|-'s'-|
         0          0.40    0.65    0.85   1.0
 
-    Sacas un numero al azar y miras en que trozo cae. Con r = 0.61:
+    You draw a random number and see which slice it lands in. With r = 0.61:
 
-        'n' -> acumulado 0.40 ;  0.61 < 0.40 ? NO, sigo
-        'r' -> acumulado 0.65 ;  0.61 < 0.65 ? SI, devuelvo 'r'
+        'n' -> running 0.40 ;  0.61 < 0.40 ? NO, keep going
+        'r' -> running 0.65 ;  0.61 < 0.65 ? YES, return 'r'
 
-    POR QUÉ NO COGER SIEMPRE EL MÁS PROBABLE
-    ----------------------------------------
-    Porque el texto sale repetitivo y con bucles. Lo veras medido en el modulo 14: coger
-    siempre el mas probable produce cosas como "the cat sat on the mat. the cat sat on the
-    mat."
+    WHY NOT ALWAYS TAKE THE MOST LIKELY ONE
+    ---------------------------------------
+    Because the text comes out repetitive and loops. You will see it measured in module 14:
+    always taking the most likely one produces things like "the cat sat on the mat. the cat
+    sat on the mat."
 
-    TRES DETALLES QUE IMPORTAN
-    --------------------------
-    **Usa `<` y no `<=`.** Con `{a: 0.5, b: 0.5}` y `r = 0.5` exacto: con `<`, tras 'a' el
-    acumulado es 0.5 y `0.5 < 0.5` es falso, asi que sigue y devuelve 'b'. Eso es lo
-    correcto: 'a' ocupa el intervalo [0, 0.5) y 'b' ocupa [0.5, 1). Como `rng.random()`
-    devuelve un numero en [0, 1) —el 1 nunca sale, el 0 si— ese reparto da exactamente 50/50.
+    THREE DETAILS THAT MATTER
+    -------------------------
+    **Use `<` and not `<=`.** With `{a: 0.5, b: 0.5}` and `r = 0.5` exactly: with `<`, after
+    'a' the running total is 0.5 and `0.5 < 0.5` is false, so it carries on and returns 'b'.
+    That is correct: 'a' occupies the interval [0, 0.5) and 'b' occupies [0.5, 1). Since
+    `rng.random()` returns a number in [0, 1) — 1 never comes out, 0 does — that split gives
+    exactly 50/50.
 
-    **El paso 5 no es paranoia.** Los floats no suman exacto: prueba `sum([0.1] * 10)` en un
-    interprete y da 0.9999999999999999. Si `rng.random()` devuelve 0.99999999999999995, el
-    bucle termina sin devolver nada y la funcion devuelve `None`, lo que rompe el ejercicio 3
-    con un error incomprensible varios pasos despues.
+    **Step 5 is not paranoia.** Floats do not add up exactly: try `sum([0.1] * 10)` in an
+    interpreter and you get 0.9999999999999999. If `rng.random()` returns
+    0.99999999999999995, the loop ends without returning anything and the function returns
+    `None`, which breaks exercise 3 with an incomprehensible error several steps later.
 
-    **Recorre `probs` en su orden natural**, sin ordenar. La referencia hace lo mismo, y asi
-    con la misma semilla ambos generan exactamente el mismo texto y el test los puede comparar.
+    **Walk `probs` in its natural order**, without sorting. The reference does the same, so
+    with the same seed both generate exactly the same text and the test can compare them.
 
     Args:
-        probs: `{caracter: probabilidad}`, tal como lo devuelve el ejercicio 1.
-        rng: generador aleatorio. Usa `rng.random()`, que da un float en [0, 1). Si es `None`,
-            crea uno con `random.Random()`.
+        probs: `{character: probability}`, as returned by exercise 1.
+        rng: random generator. Use `rng.random()`, which gives a float in [0, 1). If it is
+            `None`, create one with `random.Random()`.
 
     Returns:
-        Uno de los caracteres de `probs`.
+        One of the characters in `probs`.
     """
-    raise NotImplementedError("TODO: modulo 00, ejercicio 2 - sample_next_token")
+    raise NotImplementedError("TODO: module 00, exercise 2 - sample_next_token")
 
 
 def generate_naive(
@@ -184,73 +185,73 @@ def generate_naive(
     length: int = 200,
     rng: random.Random | None = None,
 ) -> str:
-    """Genera texto encadenando predicciones. Aqui aparece el modelo de lenguaje.
+    """Generates text by chaining predictions. This is where the language model appears.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un bucle que usa las dos funciones anteriores.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A loop that uses the two previous functions.
 
-        1. Si `rng` es None, crea uno.
+        1. If `rng` is None, create one.
 
-        2. Guarda el tamanyo del contexto y arranca la salida:
+        2. Store the context size and start the output:
 
                context_size = len(start)
-               salida = list(start)
+               out = list(start)
 
-        3. Repite `max(0, length - len(start))` veces:
+        3. Repeat `max(0, length - len(start))` times:
 
-             a. Coge los ultimos `context_size` caracteres de lo que llevas:
+             a. Take the last `context_size` characters of what you have so far:
 
-                    contexto = "".join(salida[-context_size:])
+                    context = "".join(out[-context_size:])
 
-             b. Buscalo en la tabla:
+             b. Look it up in the table:
 
-                    counts = table.get(contexto)
+                    counts = table.get(context)
 
-             c. Si no hay nada (`if not counts`), sal del bucle con `break`.
+             c. If there is nothing (`if not counts`), leave the loop with `break`.
 
-             d. Si lo hay, convierte a probabilidades, muestrea, y anyade:
+             d. If there is, convert to probabilities, sample, and append:
 
-                    salida.append(sample_next_token(next_token_probs(counts), rng))
+                    out.append(sample_next_token(next_token_probs(counts), rng))
 
-        4. Devuelve `"".join(salida)`.
+        4. Return `"".join(out)`.
 
-    QUÉ ESTÁS CONSTRUYENDO
-    ----------------------
-    Este bucle se llama generacion AUTORREGRESIVA («auto» = a si mismo, «regresivo» = se
-    realimenta): cada caracter que sacas se convierte en parte de la entrada del paso
-    siguiente.
+    WHAT YOU ARE BUILDING
+    ---------------------
+    This loop is called AUTOREGRESSIVE generation ("auto" = itself, "regressive" = it feeds
+    back into itself): each character you draw becomes part of the input to the next step.
 
-    Y es EXACTAMENTE el mismo bucle que vas a implementar en el modulo 14 con tu GPT de 9
-    millones de parametros. Lo unico que cambiara es de donde salen las probabilidades: aqui
-    de una tabla de conteos, alli de una red neuronal.
+    And it is EXACTLY the same loop you are going to implement in module 14 with your 9
+    million parameter GPT. The only thing that will change is where the probabilities come
+    from: here from a count table, there from a neural network.
 
-    POR QUÉ EL `break` DEL PASO 3c
-    ------------------------------
-    La tabla solo conoce los contextos que aparecieron en el texto de entrenamiento. Si
-    generas uno que nunca se vio, no hay nada que consultar: un modelo por conteo se queda
-    literalmente mudo.
+    WHY THE `break` IN STEP 3c
+    --------------------------
+    The table only knows the contexts that appeared in the training text. If you generate
+    one that was never seen, there is nothing to look up: a counting model goes literally
+    mute.
 
-    Una red neuronal NUNCA tiene ese problema, porque no consulta una tabla: calcula. Le des
-    lo que le des, produce una distribucion. Puede ser mala, pero existe. Esa es una de las
-    razones profundas por las que se usan redes.
+    A neural network NEVER has that problem, because it does not look anything up: it
+    computes. Whatever you give it, it produces a distribution. It may be a bad one, but it
+    exists. That is one of the deep reasons networks are used.
 
-    DOS DETALLES QUE IMPORTAN
-    -------------------------
-    **El `length` cuenta el total devuelto, INCLUYENDO `start`.** Si `start` tiene 2
-    caracteres y piden 5, generas 3, no 5. Por eso el bucle itera `length - len(start)` veces.
+    TWO DETAILS THAT MATTER
+    -----------------------
+    **`length` counts the total returned, INCLUDING `start`.** If `start` has 2 characters
+    and 5 are asked for, you generate 3, not 5. That is why the loop iterates
+    `length - len(start)` times.
 
-    **Acumula en una lista y une al final** con `"".join()`. Hacer `salida = salida + c` con
-    cadenas crea una cadena nueva en cada vuelta. Aqui da igual, pero es una costumbre que en
-    el modulo 14 sale cara.
+    **Accumulate into a list and join at the end** with `"".join()`. Doing `out = out + c`
+    with strings creates a new string on every pass. Here it does not matter, but it is a
+    habit that gets expensive in module 14.
 
     Args:
-        table: `{contexto: {siguiente: veces}}`, de `build_count_table`.
-        start: el texto inicial. Su longitud define el tamanyo del contexto.
-        length: la longitud TOTAL del texto a devolver, contando `start`.
-        rng: generador aleatorio, para que el test pueda reproducir el resultado.
+        table: `{context: {next: times}}`, from `build_count_table`.
+        start: the initial text. Its length defines the context size.
+        length: the TOTAL length of the text to return, counting `start`.
+        rng: random generator, so the test can reproduce the result.
 
     Returns:
-        El texto generado, como una unica cadena.
+        The generated text, as a single string.
     """
-    raise NotImplementedError("TODO: modulo 00, ejercicio 3 - generate_naive")
+    raise NotImplementedError("TODO: module 00, exercise 3 - generate_naive")

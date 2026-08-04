@@ -177,3 +177,60 @@ def chinchilla_optimal_allocation(
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
+    d, ff, v = cfg.d_model, cfg.d_ff, cfg.vocab_size
+    n_ffn = 3 if cfg.activation == "swiglu" else 2
+
+    params_matmul = cfg.n_layers * (4 * d * d + n_ffn * d * ff) + d * v
+
+    matmul = 2 * params_matmul
+    attention = 4 * cfg.n_layers * cfg.context_length * d
+
+    factor = 3 if include_backward else 1
+    return {
+        "matmul": matmul * factor,
+        "attention": attention * factor,
+        "total": (matmul + attention) * factor,
+        "params_matmul": params_matmul,
+    }
+
+
+def compute_mfu(
+    tokens_per_second: float, flops_per_token: int, peak_tflops: float
+) -> float:
+    if peak_tflops <= 0:
+        raise ValueError("peak_tflops has to be positive")
+    return tokens_per_second * flops_per_token / (peak_tflops * 1e12)
+
+
+def chinchilla_optimal_allocation(
+    compute_budget: float, tokens_per_param: float = 20.0
+) -> dict[str, float]:
+    if compute_budget <= 0:
+        raise ValueError("the compute budget has to be positive")
+
+    params = (compute_budget / (6 * tokens_per_param)) ** 0.5
+    tokens = tokens_per_param * params
+
+    return {
+        "params": params,
+        "tokens": tokens,
+        "tokens_per_param": tokens_per_param,
+        "compute": compute_budget,
+    }
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

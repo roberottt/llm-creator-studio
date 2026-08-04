@@ -1,4 +1,4 @@
-"""Tests del modulo 00. Ejecutalos con `llmfs check 00`."""
+"""Tests for module 00. Run them with `llmfs check 00`."""
 
 from __future__ import annotations
 
@@ -9,197 +9,197 @@ import pytest
 import llmfs.reference as ref
 from llmfs.testing import assert_scalar_close, load_exercises
 
-ej = load_exercises(__file__)
+ex = load_exercises(__file__)
 
-TEXTO = "banana bandana cabana " * 30
-
-
-# ------------------------------------------------- ejercicio 1: next_token_probs
+TEXT = "banana bandana cabana " * 30
 
 
-def test_las_probabilidades_suman_uno():
-    probs = ej.next_token_probs({"a": 40, "b": 25, "c": 20, "d": 15})
-    assert_scalar_close(sum(probs.values()), 1.0, what="la suma de las probabilidades")
+# ------------------------------------------------- exercise 1: next_token_probs
 
 
-def test_el_ejemplo_del_enunciado():
-    probs = ej.next_token_probs({"b": 3, "c": 1})
+def test_the_probabilities_sum_to_one():
+    probs = ex.next_token_probs({"a": 40, "b": 25, "c": 20, "d": 15})
+    assert_scalar_close(sum(probs.values()), 1.0, what="the sum of the probabilities")
+
+
+def test_the_example_from_the_statement():
+    probs = ex.next_token_probs({"b": 3, "c": 1})
     assert_scalar_close(probs["b"], 0.75, what="P(b)")
     assert_scalar_close(probs["c"], 0.25, what="P(c)")
 
 
-def test_conserva_las_claves_y_su_orden():
-    """El orden importa: el muestreo recorre el diccionario y depende de el."""
+def test_it_preserves_the_keys_and_their_order():
+    """The order matters: sampling walks the dictionary and depends on it."""
     counts = {"z": 1, "a": 2, "m": 3}
-    assert list(ej.next_token_probs(counts).keys()) == ["z", "a", "m"]
+    assert list(ex.next_token_probs(counts).keys()) == ["z", "a", "m"]
 
 
-def test_un_unico_caracter_tiene_probabilidad_uno():
-    assert_scalar_close(ej.next_token_probs({"x": 7})["x"], 1.0, what="P(x) cuando es el unico")
+def test_a_single_character_has_probability_one():
+    assert_scalar_close(ex.next_token_probs({"x": 7})["x"], 1.0, what="P(x) when it is the only one")
 
 
-def test_coincide_con_la_referencia():
+def test_probs_match_the_reference():
     counts = {"n": 40, "r": 25, " ": 20, "s": 15}
-    mio, suyo = ej.next_token_probs(counts), ref.next_token_probs(counts)
-    assert mio == suyo
+    mine, theirs = ex.next_token_probs(counts), ref.next_token_probs(counts)
+    assert mine == theirs
 
 
-def test_una_tabla_vacia_es_un_error_explicito():
+def test_an_empty_table_is_an_explicit_error():
     with pytest.raises(ValueError):
-        ej.next_token_probs({})
+        ex.next_token_probs({})
 
 
-def test_conteos_todos_a_cero_tambien_son_un_error():
+def test_all_zero_counts_are_also_an_error():
     with pytest.raises(ValueError):
-        ej.next_token_probs({"a": 0, "b": 0})
+        ex.next_token_probs({"a": 0, "b": 0})
 
 
-# ------------------------------------------------ ejercicio 2: sample_next_token
+# ------------------------------------------------ exercise 2: sample_next_token
 
 
-def test_siempre_devuelve_una_clave_de_la_distribucion():
+def test_it_always_returns_a_key_of_the_distribution():
     probs = {"a": 0.5, "b": 0.3, "c": 0.2}
     rng = random.Random(0)
     for _ in range(200):
-        assert ej.sample_next_token(probs, rng) in probs
+        assert ex.sample_next_token(probs, rng) in probs
 
 
-def test_con_probabilidad_uno_sale_siempre_el_mismo():
+def test_with_probability_one_the_same_one_always_comes_out():
     rng = random.Random(0)
     for _ in range(50):
-        assert ej.sample_next_token({"unico": 1.0}, rng) == "unico"
+        assert ex.sample_next_token({"only": 1.0}, rng) == "only"
 
 
-def test_las_frecuencias_se_parecen_a_las_probabilidades():
-    """Muestrear 20.000 veces de {a:0.7, b:0.3} debe dar ~70% de 'a'."""
+def test_the_frequencies_resemble_the_probabilities():
+    """Sampling 20,000 times from {a:0.7, b:0.3} should give ~70% 'a'."""
     probs = {"a": 0.7, "b": 0.3}
     rng = random.Random(1234)
-    muestras = [ej.sample_next_token(probs, rng) for _ in range(20_000)]
-    frecuencia_a = muestras.count("a") / len(muestras)
-    assert abs(frecuencia_a - 0.7) < 0.02, (
-        f"'a' ha salido el {frecuencia_a:.1%} de las veces y deberia rondar el 70%. "
-        "Revisa el acumulador de la ruleta."
+    samples = [ex.sample_next_token(probs, rng) for _ in range(20_000)]
+    frequency_a = samples.count("a") / len(samples)
+    assert abs(frequency_a - 0.7) < 0.02, (
+        f"'a' came out {frequency_a:.1%} of the time and should be around 70%. "
+        "Check the roulette's running total."
     )
 
 
-def test_respeta_el_orden_del_diccionario():
-    """Un r pequenyo tiene que caer en el PRIMER trozo de la ruleta, sea cual sea."""
+def test_it_respects_the_dictionary_order():
+    """A small r has to land in the FIRST slice of the wheel, whatever it is."""
 
-    class RngFalso:
+    class FakeRng:
         def random(self) -> float:
             return 0.01
 
-    assert ej.sample_next_token({"primero": 0.5, "segundo": 0.5}, RngFalso()) == "primero"
+    assert ex.sample_next_token({"first": 0.5, "second": 0.5}, FakeRng()) == "first"
 
 
-def test_un_r_casi_uno_cae_en_el_ultimo():
-    class RngFalso:
+def test_an_r_close_to_one_lands_on_the_last():
+    class FakeRng:
         def random(self) -> float:
             return 0.999999999
 
-    assert ej.sample_next_token({"a": 0.5, "b": 0.5}, RngFalso()) == "b"
+    assert ex.sample_next_token({"a": 0.5, "b": 0.5}, FakeRng()) == "b"
 
 
-def test_nunca_devuelve_none_aunque_las_probabilidades_no_sumen_exacto():
-    """Error de redondeo tipico: 0.1 * 10 no da 1.0 en coma flotante."""
+def test_it_never_returns_none_even_if_the_probabilities_do_not_sum_exactly():
+    """The classic rounding error: 0.1 * 10 does not give 1.0 in floating point."""
 
-    class RngFalso:
+    class FakeRng:
         def random(self) -> float:
             return 0.9999999999
 
     probs = {chr(97 + i): 0.1 for i in range(10)}
-    assert ej.sample_next_token(probs, RngFalso()) is not None
+    assert ex.sample_next_token(probs, FakeRng()) is not None
 
 
-def test_la_misma_semilla_da_la_misma_secuencia_que_la_referencia():
+def test_the_same_seed_gives_the_same_sequence_as_the_reference():
     probs = {"n": 0.4, "r": 0.25, " ": 0.2, "s": 0.15}
-    mio = [ej.sample_next_token(probs, random.Random(7)) for _ in range(1)]
-    suyo = [ref.sample_next_token(probs, random.Random(7)) for _ in range(1)]
-    assert mio == suyo
+    mine = [ex.sample_next_token(probs, random.Random(7)) for _ in range(1)]
+    theirs = [ref.sample_next_token(probs, random.Random(7)) for _ in range(1)]
+    assert mine == theirs
 
-    rng_mio, rng_suyo = random.Random(99), random.Random(99)
-    assert [ej.sample_next_token(probs, rng_mio) for _ in range(50)] == [
-        ref.sample_next_token(probs, rng_suyo) for _ in range(50)
+    rng_mine, rng_theirs = random.Random(99), random.Random(99)
+    assert [ex.sample_next_token(probs, rng_mine) for _ in range(50)] == [
+        ref.sample_next_token(probs, rng_theirs) for _ in range(50)
     ]
 
 
-# --------------------------------------------------- ejercicio 3: generate_naive
+# --------------------------------------------------- exercise 3: generate_naive
 
 
-def test_devuelve_la_longitud_pedida():
-    tabla = ref.build_count_table(TEXTO)
-    salida = ej.generate_naive(tabla, "b", length=50, rng=random.Random(0))
-    assert len(salida) == 50
+def test_it_returns_the_requested_length():
+    table = ref.build_count_table(TEXT)
+    out = ex.generate_naive(table, "b", length=50, rng=random.Random(0))
+    assert len(out) == 50
 
 
-def test_empieza_por_el_contexto_dado():
-    tabla = ref.build_count_table(TEXTO, context_size=2)
-    salida = ej.generate_naive(tabla, "ba", length=30, rng=random.Random(0))
-    assert salida.startswith("ba")
+def test_it_starts_with_the_given_context():
+    table = ref.build_count_table(TEXT, context_size=2)
+    out = ex.generate_naive(table, "ba", length=30, rng=random.Random(0))
+    assert out.startswith("ba")
 
 
-def test_la_longitud_incluye_el_start():
-    """start='ba' y length=5 devuelve 5 caracteres, no 7."""
-    tabla = ref.build_count_table(TEXTO, context_size=2)
-    assert len(ej.generate_naive(tabla, "ba", length=5, rng=random.Random(0))) == 5
+def test_the_length_includes_start():
+    """start='ba' and length=5 returns 5 characters, not 7."""
+    table = ref.build_count_table(TEXT, context_size=2)
+    assert len(ex.generate_naive(table, "ba", length=5, rng=random.Random(0))) == 5
 
 
-def test_la_longitud_de_start_tiene_que_cuadrar_con_la_de_la_tabla():
-    """Trampa clasica: tabla de contexto 1 y start de 2 caracteres.
+def test_the_length_of_start_has_to_match_the_tables():
+    """The classic trap: a context-1 table and a 2-character start.
 
-    La tabla tiene claves de un caracter ('a', 'b'...), asi que buscar 'ba' no encuentra
-    nada y la generacion para en el primer paso. No es un bug: es el comportamiento
-    documentado ante un contexto desconocido. Pero conviene haberlo visto una vez.
+    The table has single-character keys ('a', 'b'...), so looking up 'ba' finds nothing and
+    generation stops on the first step. It is not a bug: it is the documented behaviour for
+    an unknown context. But it is worth having seen it once.
     """
-    tabla_de_1 = ref.build_count_table(TEXTO, context_size=1)
-    assert ej.generate_naive(tabla_de_1, "ba", length=50, rng=random.Random(0)) == "ba"
+    table_of_1 = ref.build_count_table(TEXT, context_size=1)
+    assert ex.generate_naive(table_of_1, "ba", length=50, rng=random.Random(0)) == "ba"
 
 
-def test_solo_genera_caracteres_que_existen_en_el_texto():
-    tabla = ref.build_count_table(TEXTO)
-    salida = ej.generate_naive(tabla, "b", length=300, rng=random.Random(3))
-    assert set(salida) <= set(TEXTO)
+def test_it_only_generates_characters_that_exist_in_the_text():
+    table = ref.build_count_table(TEXT)
+    out = ex.generate_naive(table, "b", length=300, rng=random.Random(3))
+    assert set(out) <= set(TEXT)
 
 
-def test_para_si_el_contexto_es_desconocido():
-    """Con una tabla que solo conoce 'a'->'b', tras la 'b' no hay a donde ir."""
-    tabla = {"a": {"b": 1}}
-    salida = ej.generate_naive(tabla, "a", length=100, rng=random.Random(0))
-    assert salida == "ab", f"deberia parar al llegar a un contexto desconocido, dio {salida!r}"
+def test_it_stops_if_the_context_is_unknown():
+    """With a table that only knows 'a'->'b', after the 'b' there is nowhere to go."""
+    table = {"a": {"b": 1}}
+    out = ex.generate_naive(table, "a", length=100, rng=random.Random(0))
+    assert out == "ab", f"it should stop on reaching an unknown context, it gave {out!r}"
 
 
-def test_el_texto_generado_es_identico_al_de_la_referencia():
-    """Mismo texto, misma semilla, mismo resultado exacto."""
-    tabla = ref.build_count_table(TEXTO, context_size=2)
-    mio = ej.generate_naive(tabla, "ba", length=200, rng=random.Random(42))
-    suyo = ref.generate_naive(tabla, "ba", length=200, rng=random.Random(42))
-    assert mio == suyo
+def test_the_generated_text_is_identical_to_the_references():
+    """Same text, same seed, exactly the same result."""
+    table = ref.build_count_table(TEXT, context_size=2)
+    mine = ex.generate_naive(table, "ba", length=200, rng=random.Random(42))
+    theirs = ref.generate_naive(table, "ba", length=200, rng=random.Random(42))
+    assert mine == theirs
 
 
-def test_funciona_con_contextos_de_mas_de_un_caracter():
-    tabla = ref.build_count_table(TEXTO, context_size=3)
-    salida = ej.generate_naive(tabla, "ban", length=60, rng=random.Random(5))
-    assert len(salida) == 60 and salida.startswith("ban")
+def test_it_works_with_contexts_longer_than_one_character():
+    table = ref.build_count_table(TEXT, context_size=3)
+    out = ex.generate_naive(table, "ban", length=60, rng=random.Random(5))
+    assert len(out) == 60 and out.startswith("ban")
 
 
-def test_con_contexto_mas_largo_el_texto_se_parece_mas_al_original():
-    """El punto pedagogico del modulo: mas contexto, mejor imitacion.
+def test_with_a_longer_context_the_text_resembles_the_original_more():
+    """The module's pedagogical point: more context, better imitation.
 
-    Se mide como fraccion de PALABRAS generadas que existen en el corpus. Contar
-    trigramas no valdria: con contexto >= 2 saldria 100% por construccion, porque cada
-    trigrama generado es contexto + siguiente, y eso ya estaba en la tabla.
+    It is measured as the fraction of generated WORDS that exist in the corpus. Counting
+    trigrams would not do: with context >= 2 it would come out 100% by construction, because
+    every generated trigram is context + next, and that was already in the table.
     """
-    palabras_reales = set(TEXTO.split())
+    real_words = set(TEXT.split())
 
-    def realismo(context_size: int) -> float:
-        tabla = ref.build_count_table(TEXTO, context_size=context_size)
-        inicio = TEXTO[:context_size]
-        salida = ej.generate_naive(tabla, inicio, length=600, rng=random.Random(11))
-        generadas = salida.split()
-        return sum(w in palabras_reales for w in generadas) / max(1, len(generadas))
+    def realism(context_size: int) -> float:
+        table = ref.build_count_table(TEXT, context_size=context_size)
+        start = TEXT[:context_size]
+        out = ex.generate_naive(table, start, length=600, rng=random.Random(11))
+        generated = out.split()
+        return sum(w in real_words for w in generated) / max(1, len(generated))
 
-    con_poco, con_mucho = realismo(1), realismo(4)
-    assert con_mucho > con_poco, (
-        f"con contexto de 4 el {con_mucho:.0%} de las palabras son reales y con contexto "
-        f"de 1 el {con_poco:.0%}. Mirar mas atras tiene que ayudar."
+    with_little, with_lots = realism(1), realism(4)
+    assert with_lots > with_little, (
+        f"with a context of 4, {with_lots:.0%} of the words are real and with a context "
+        f"of 1 it is {with_little:.0%}. Looking further back has to help."
     )

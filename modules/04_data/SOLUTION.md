@@ -222,3 +222,77 @@ def get_batch(
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
+    if vocab_size > MAX_UINT16:
+        raise ValueError(
+            f"vocab_size={vocab_size} does not fit in uint16. Use uint32 (and twice the disk)."
+        )
+
+    array = np.asarray(ids, dtype=np.int64)
+    if array.size and (array.min() < 0 or array.max() >= vocab_size):
+        raise ValueError(
+            f"ids outside the vocabulary [0, {vocab_size}): "
+            f"min={array.min()}, max={array.max()}"
+        )
+    return array.astype(np.uint16)
+
+
+def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
+    if not 0.0 < val_fraction < 1.0:
+        raise ValueError(f"val_fraction must be in (0, 1), not {val_fraction}")
+
+    n_val = max(1, int(len(tokens) * val_fraction))
+    if n_val >= len(tokens):
+        raise ValueError("val_fraction leaves the training set empty")
+    return tokens[:-n_val], tokens[-n_val:]
+
+
+def get_batch(
+    data: np.ndarray,
+    batch_size: int,
+    context_length: int,
+    device: torch.device | str | None = None,
+    rng: np.random.Generator | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    rng = rng or np.random.default_rng()
+    max_start = len(data) - context_length - 1
+    if max_start < 1:
+        raise ValueError(
+            f"The corpus ({len(data)} tokens) is shorter than the context "
+            f"({context_length} + 1)."
+        )
+
+    starts = rng.integers(0, max_start, size=batch_size)
+    # astype(int64) also materializes the memmap: without the copy, torch would be left
+    # pointing at disk-mapped memory and every access would be a read.
+    x_np = np.stack([data[i : i + context_length] for i in starts]).astype(np.int64)
+    y_np = np.stack([data[i + 1 : i + 1 + context_length] for i in starts]).astype(np.int64)
+
+    x = torch.from_numpy(x_np)
+    y = torch.from_numpy(y_np)
+
+    if device is not None:
+        device = torch.device(device)
+        if device.type == "cuda":
+            x = x.pin_memory().to(device, non_blocking=True)
+            y = y.pin_memory().to(device, non_blocking=True)
+        else:
+            x, y = x.to(device), y.to(device)
+
+    return x, y
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

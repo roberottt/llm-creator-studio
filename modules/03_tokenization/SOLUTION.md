@@ -275,3 +275,98 @@ def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def _encode_chunk(ids: list[int], merges: Merges) -> list[int]:
+    while len(ids) >= 2:
+        stats = get_stats(ids)
+        # The pair whose merge was learned first (lowest id). `inf` for those that do not exist.
+        pair = min(stats, key=lambda p: merges.get(p, float("inf")))
+        if pair not in merges:
+            break
+        ids = merge(ids, pair, merges[pair])
+    return ids
+
+
+def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
+    counts = {} if counts is None else counts
+    for pair in zip(ids, ids[1:]):
+        counts[pair] = counts.get(pair, 0) + 1
+    return counts
+
+
+def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
+    out: list[int] = []
+    i = 0
+    n = len(ids)
+    while i < n:
+        if i < n - 1 and ids[i] == pair[0] and ids[i + 1] == pair[1]:
+            out.append(new_id)
+            i += 2
+        else:
+            out.append(ids[i])
+            i += 1
+    return out
+
+
+def train_bpe(
+    text: str,
+    vocab_size: int,
+    pattern: str | None = None,
+    verbose: bool = False,
+) -> tuple[Merges, Vocab]:
+    if vocab_size < 256:
+        raise ValueError(f"vocab_size ({vocab_size}) cannot go below 256: those are the bytes.")
+
+    chunks = [text] if pattern is None else regex.findall(pattern, text)
+    ids: list[list[int]] = [list(chunk.encode("utf-8")) for chunk in chunks if chunk]
+
+    merges: Merges = {}
+    vocab: Vocab = {i: bytes([i]) for i in range(256)}
+
+    for i in range(vocab_size - 256):
+        stats: dict[Pair, int] = {}
+        for chunk_ids in ids:
+            get_stats(chunk_ids, stats)
+        if not stats:
+            break  # there are no pairs left to merge
+
+        pair = max(stats, key=lambda p: (stats[p], p))
+        new_id = 256 + i
+
+        ids = [merge(chunk_ids, pair, new_id) for chunk_ids in ids]
+        merges[pair] = new_id
+        vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]
+
+        if verbose:
+            print(f"merge {i + 1}/{vocab_size - 256}: {pair} -> {new_id} "
+                  f"({vocab[new_id]!r}) x{stats[pair]}")
+
+    return merges, vocab
+
+
+def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
+    chunks = [text] if pattern is None else regex.findall(pattern, text)
+    out: list[int] = []
+    for chunk in chunks:
+        out.extend(_encode_chunk(list(chunk.encode("utf-8")), merges))
+    return out
+
+
+def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
+    raw = b"".join(vocab[i] for i in ids)
+    return raw.decode("utf-8", errors="replace")
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

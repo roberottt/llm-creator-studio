@@ -1,177 +1,179 @@
-# 00 — Qué es un LLM, en realidad
+# 00 — What an LLM actually is
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Empieza aquí aunque tengas prisa.** Es el único módulo sin PyTorch, sin matrices y sin
-derivadas, y es el que hace que todo lo demás tenga sentido.
+**Start here even if you are in a hurry.** It is the only module with no PyTorch, no
+matrices and no derivatives, and it is the one that makes everything else make sense.
 
-La razón: el resto del curso construye piezas cada vez más sofisticadas para hacer **una
-sola cosa**. Si no tienes clarísimo cuál es esa cosa, los 17 módulos siguientes son
-ingeniería sin propósito.
+The reason: the rest of the course builds increasingly sophisticated pieces to do **one
+single thing**. If you are not crystal clear on what that thing is, the following 17
+modules are engineering without a purpose.
 
-En una hora vas a escribir un generador de texto que funciona de verdad, con diccionarios y
-una división. Y vas a ver que el bucle que lo mueve es *literalmente* el mismo que ejecuta
-ChatGPT.
+In an hour you are going to write a text generator that genuinely works, using dictionaries
+and one division. And you are going to see that the loop driving it is *literally* the same
+one ChatGPT runs.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Qué es exactamente un modelo de lenguaje (spoiler: mucho menos místico de lo que parece)
-- Por qué se dice que "solo predice el siguiente token", y qué significa eso de verdad
-- Cómo se elige ese token, y por qué no se coge siempre el más probable
-- **Por qué hacen falta redes neuronales**, viendo con números por qué la alternativa
-  obvia se estrella contra un muro
+- What a language model is, exactly (spoiler: far less mystical than it looks)
+- Why people say it "only predicts the next token", and what that really means
+- How that token gets chosen, and why you do not always take the most likely one
+- **Why neural networks are needed**, seeing with actual numbers why the obvious
+  alternative smashes into a wall
 
-### Cuánto cuesta
+### What it costs
 
-Una hora. Es el módulo más corto y el que más rentabilidad da.
+One hour. It is the shortest module and the one with the best return.
 
 ---
 
-## La idea, en una frase
+## The idea, in one sentence
 
-**Un modelo de lenguaje es una función que, dado un texto, te dice qué probabilidad tiene
-cada posible continuación.**
+**A language model is a function that, given some text, tells you the probability of each
+possible continuation.**
 
-Nada más. No "entiende", no "razona", no "sabe". Recibe un trozo de texto y devuelve una
-lista de probabilidades, una por cada palabra o carácter que podría venir a continuación.
+That is all. It does not "understand", does not "reason", does not "know". It receives a
+piece of text and returns a list of probabilities, one for each word or character that could
+come next.
 
-Si le das *"El cielo es de color "*, un buen modelo devolverá algo así:
+If you give it *"The sky is coloured "*, a good model will return something like:
 
 ```
-azul      0.72
-gris      0.11
-negro     0.04
-rosa      0.02
-patata    0.0000003
+blue      0.72
+grey      0.11
+black     0.04
+pink      0.02
+potato    0.0000003
 ...
 ```
 
-Y ya está. Eso es el modelo entero. Lo que ves cuando hablas con ChatGPT es este paso
-repetido: elige una palabra según esas probabilidades, la pega al final del texto, y
-vuelve a preguntar. Una y otra vez, palabra a palabra.
+And that is it. That is the whole model. What you see when you talk to ChatGPT is this step
+repeated: pick a word according to those probabilities, glue it onto the end of the text,
+and ask again. Over and over, word by word.
 
-A ese bucle se le llama **generación autorregresiva** («auto» = a sí mismo, «regresivo» =
-se realimenta). Es importante que veas la consecuencia: el modelo no planifica la frase
-entera. Escribe un token, lo lee como si se lo hubiera dado otro, y decide el siguiente.
+That loop is called **autoregressive generation** ("auto" = itself, "regressive" = it feeds
+back into itself). It is important that you see the consequence: the model does not plan the
+whole sentence. It writes a token, reads it as if someone else had handed it over, and
+decides the next one.
 
-## Vamos a construir uno ahora mismo
+## Let us build one right now
 
-Un modelo tiene que sacar esas probabilidades de algún sitio. La forma más tonta que
-existe, y que funciona: **contar**.
+A model has to get those probabilities from somewhere. The dumbest way there is, and one
+that works: **counting**.
 
-Coge un texto y apunta, para cada carácter, cuáles le siguieron y cuántas veces. Con el
-texto `"banana"`:
-
-```
-tras 'b'  ->  'a' 1 vez
-tras 'a'  ->  'n' 2 veces
-tras 'n'  ->  'a' 2 veces
-```
-
-Ahora conviértelo en probabilidades dividiendo entre el total:
+Take some text and note down, for each character, which ones followed it and how many times.
+With the text `"banana"`:
 
 ```
-tras 'a'  ->  'n' con probabilidad 2/2 = 1.0
+after 'b'  ->  'a' 1 time
+after 'a'  ->  'n' 2 times
+after 'n'  ->  'a' 2 times
 ```
 
-Con un texto de verdad, la tabla de la `'a'` sería más interesante:
+Now turn that into probabilities by dividing by the total:
 
 ```
-tras 'a'  ->  'n' 40 veces,  'r' 25,  ' ' 20,  's' 15
+after 'a'  ->  'n' with probability 2/2 = 1.0
+```
+
+With real text, the table for `'a'` would be more interesting:
+
+```
+after 'a'  ->  'n' 40 times,  'r' 25,  ' ' 20,  's' 15
 total = 100
         ->  'n' 0.40,  'r' 0.25,  ' ' 0.20,  's' 0.15
 ```
 
-Eso es una **distribución de probabilidad**: una lista de números no negativos que suman 1.
-Todo el curso va de producir distribuciones sobre el siguiente token. Cambiará radicalmente
-*cómo* las producimos; qué son, no.
+That is a **probability distribution**: a list of non-negative numbers that sum to 1. The
+whole course is about producing distributions over the next token. *How* we produce them
+will change radically; what they are will not.
 
-### Elegir uno
+### Picking one
 
-Tienes `{'n': 0.40, 'r': 0.25, ' ': 0.20, 's': 0.15}`. ¿Cuál eliges?
+You have `{'n': 0.40, 'r': 0.25, ' ': 0.20, 's': 0.15}`. Which do you pick?
 
-Si coges siempre el más probable (`'n'`), el modelo es determinista y aburridísimo: con la
-misma entrada escribe siempre exactamente lo mismo, y tiende a meterse en bucles. Por eso
-se **muestrea**: se tira un dado trucado en el que `'n'` sale el 40% de las veces.
+If you always take the most likely one (`'n'`), the model is deterministic and desperately
+boring: with the same input it always writes exactly the same thing, and it tends to get
+stuck in loops. That is why you **sample**: you roll a loaded die on which `'n'` comes up
+40% of the time.
 
-El método es el de la ruleta. Saca un número aleatorio entre 0 y 1 y ve acumulando:
+The method is the roulette wheel. Draw a random number between 0 and 1 and accumulate:
 
 ```
 r = 0.61
 
-'n'  acumulado = 0.40    0.61 > 0.40, sigo
-'r'  acumulado = 0.65    0.61 < 0.65, ¡me paso aquí!  ->  sale 'r'
+'n'  running total = 0.40    0.61 > 0.40, keep going
+'r'  running total = 0.65    0.61 < 0.65, this is where I go past!  ->  'r' comes out
 ```
 
-Cada token ocupa un trozo de la recta [0,1] proporcional a su probabilidad, y el número
-aleatorio cae en uno de ellos. En el módulo 14 verás cómo se manipula esta ruleta
-(temperatura, top-k, top-p) para que el texto salga más creativo o más conservador.
+Each token occupies a slice of the line [0,1] proportional to its probability, and the
+random number lands in one of them. In module 14 you will see how this wheel gets
+manipulated (temperature, top-k, top-p) to make the text more creative or more conservative.
 
-## Por qué esto no basta
+## Why this is not enough
 
-Tu modelo del ejercicio 3 generará algo parecido a esto entrenado sobre Shakespeare:
+Your model from exercise 3 will generate something like this once trained on Shakespeare:
 
 ```
 QUEO: hend f th s the wive an t ourourthe
 ```
 
-Reconoce que existen las vocales y los espacios. No sabe nada más. El problema es que
-**solo mira un carácter hacia atrás**. Para decidir qué viene después de la `'e'` de
-*"el gat"*, mirar solo la `'t'` es desesperante.
+It recognizes that vowels and spaces exist. It knows nothing else. The problem is that it
+**only looks one character back**. To decide what comes after the `'a'` in *"the ca"*,
+looking only at the `'a'` is hopeless.
 
-La reacción obvia es mirar más atrás: contar trigramas, o ventanas de 10 caracteres. Y
-funciona un poco mejor, hasta que te estrellas contra un muro. Con un vocabulario de 4096
-tokens y una ventana de 10, la tabla tendría $4096^{10} \approx 10^{36}$ entradas. No hay
-disco en el planeta, y además casi todas estarían vacías: la mayoría de las combinaciones
-de 10 tokens no aparecen jamás, ni siquiera en todo internet.
+The obvious reaction is to look further back: count trigrams, or windows of 10 characters.
+And it works a bit better, until you smash into a wall. With a 4096-token vocabulary and a
+window of 10, the table would have $4096^{10} \approx 10^{36}$ entries. There is no disk on
+the planet, and besides, almost all of them would be empty: most combinations of 10 tokens
+never appear at all, not even across the whole internet.
 
-Este es **el problema central del modelado del lenguaje**, y tiene nombre: la maldición de
-la dimensionalidad. Contar no escala.
+This is **the central problem of language modelling**, and it has a name: the curse of
+dimensionality. Counting does not scale.
 
-## Lo que hace una red neuronal
+## What a neural network does
 
-La solución no es contar mejor, es **generalizar**. Si el modelo ha visto *"el gato negro
-duerme"*, debería poder decir algo sensato sobre *"el perro negro duerme"* aunque no lo
-haya visto nunca.
+The solution is not to count better, it is to **generalize**. If the model has seen *"the
+black cat sleeps"*, it should be able to say something sensible about *"the black dog
+sleeps"* even though it has never seen it.
 
-Contar no puede: para una tabla, `"gato"` y `"perro"` son dos claves distintas sin ninguna
-relación, tan distintas entre sí como `"gato"` y `"paraguas"`.
+Counting cannot: to a table, `"cat"` and `"dog"` are two unrelated keys, as different from
+each other as `"cat"` and `"umbrella"`.
 
-Una red neuronal representa cada token como un **vector de números** aprendido de los datos
-(un *embedding*). Si `"gato"` y `"perro"` acaban con vectores parecidos —porque aparecen en
-contextos parecidos— entonces lo aprendido sobre uno se transfiere automáticamente al otro.
-Ahí está toda la gracia. El modelo comprime miles de millones de conteos imposibles en unos
-pocos millones de números que capturan *parecidos*.
+A neural network represents each token as a **vector of numbers** learned from the data (an
+*embedding*). If `"cat"` and `"dog"` end up with similar vectors — because they appear in
+similar contexts — then what is learned about one transfers automatically to the other. That
+is the whole point. The model compresses billions of impossible counts into a few million
+numbers that capture *similarity*.
 
-Y una vez tienes vectores, necesitas una forma de que cada palabra decida a cuáles de las
-anteriores hacer caso. Eso es la **atención**, y es el módulo 06.
+And once you have vectors, you need a way for each word to decide which of the previous ones
+to pay attention to. That is **attention**, and it is module 06.
 
-## Los tres números que vas a ver todo el rato
+## The three numbers you will see constantly
 
-**Token**: la unidad de texto que maneja el modelo. Aquí serán caracteres; a partir del
-módulo 03 serán trozos de palabra. Nuestro modelo final tendrá 4096 tokens distintos.
+**Token**: the unit of text the model handles. Here they will be characters; from module 03
+onwards they will be word fragments. Our final model will have 4096 distinct tokens.
 
-**Parámetros**: los números que la red aprende. El nuestro tendrá 8.933.440. GPT-4 tiene
-del orden de un millón de veces más.
+**Parameters**: the numbers the network learns. Ours will have 8,933,440. GPT-4 has on the
+order of a million times more.
 
-**Pérdida** (*loss*): cómo de mal lo está haciendo. Concretamente, `-ln(probabilidad que
-el modelo le dio al token correcto)`. Si le dio 1.0 al token que de verdad venía, la
-pérdida es 0. Si le dio 0.01, la pérdida es 4.6. Entrenar es minimizar este número, y en
-el módulo 05 verás por qué esta fórmula concreta y no otra.
+**Loss**: how badly it is doing. Concretely, `-ln(probability the model gave to the correct
+token)`. If it gave 1.0 to the token that actually came next, the loss is 0. If it gave
+0.01, the loss is 4.6. Training is minimizing this number, and in module 05 you will see why
+this particular formula and not another.
 
-## Dónde está el debate
+## Where the debate is
 
-Que un LLM «solo predice el siguiente token» es cierto y a la vez engañoso. La pregunta
-abierta —de verdad abierta, no retórica— es qué estructura interna necesita construir un
-sistema para predecir bien. Hay evidencia de que modelos entrenados solo con predicción de
-texto acaban desarrollando representaciones internas de cosas que nadie les enseñó
-explícitamente. Hay quien lo lee como comprensión emergente y quien lo lee como estadística
-sofisticada. Nadie tiene la respuesta, y desconfía de quien te diga lo contrario en
-cualquiera de las dos direcciones.
+That an LLM "only predicts the next token" is both true and misleading. The open question —
+genuinely open, not rhetorical — is what internal structure a system has to build in order
+to predict well. There is evidence that models trained only on text prediction end up
+developing internal representations of things nobody taught them explicitly. Some read that
+as emergent understanding and some read it as sophisticated statistics. Nobody has the
+answer, and be suspicious of anyone who tells you otherwise in either direction.
 
 ---
 
-**Para ampliar:** Shannon 1948,
+**Further reading:** Shannon 1948,
 [A Mathematical Theory of Communication](https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf)
-— el artículo que inventó esto, y donde ya aparecen los modelos por conteo que vas a
-programar hoy. Si un término no te suena, está en [GLOSSARY.md](../../GLOSSARY.md).
+— the paper that invented this, and where the counting models you are going to program today
+already appear. If a term is unfamiliar, it is in [GLOSSARY.md](../../GLOSSARY.md).

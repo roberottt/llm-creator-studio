@@ -1,142 +1,142 @@
-"""Genera la seccion 'El codigo completo' de cada SOLUTION.md a partir de la referencia."""
+"""Generates the 'The complete code' section of each SOLUTION.md from the reference."""
 import ast, inspect, pathlib, textwrap
 import llmfs.reference as R
 from llmfs.curriculum import all_modules
 
-CABECERA = """
+HEADER = """
 
 ---
 
-## El código completo
+## The complete code
 
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
 
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
 
 ```python
 """
 
-PIE = """```
+FOOTER = """```
 
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.
 """
 
-# Funciones auxiliares que el codigo de la solucion necesita y que NO son ejercicios.
-# Sin ellas, copiar y pegar no compilaria.
-AUXILIARES = {
+# Helper functions the solution code needs that are NOT exercises.
+# Without them, copy-pasting would not compile.
+HELPERS = {
     "01_environment": ["matmul_flops"],
     "03_tokenization": ["_encode_chunk"],
     "09_position": ["rotate_half"],
 }
 
-# Alias de tipo que solo existen en llmfs/reference: se sustituyen por el tipo literal.
-SUSTITUCIONES = {
+# Type aliases that only exist in llmfs/reference: replaced by the literal type.
+SUBSTITUTIONS = {
     "CountTable": "dict[str, dict[str, int]]",
 }
 
-# Imports extra que hay que anyadir arriba del bloque para que compile tal cual.
+# Extra imports that have to be added above the block so it compiles as-is.
 IMPORTS = {
     "06_attention": "from typing import Any",
     "10_the_full_gpt": "from llmfs.reference import make_ffn, make_norm, sinusoidal_embeddings",
 }
 
 
-def limpia(fuente: str) -> str:
-    """Quita el docstring de la funcion/clase para que el codigo se lea de un vistazo."""
-    fuente = textwrap.dedent(fuente)
+def strip_docstrings(source: str) -> str:
+    """Removes the function/class docstring so the code reads at a glance."""
+    source = textwrap.dedent(source)
     try:
-        arbol = ast.parse(fuente)
+        tree = ast.parse(source)
     except SyntaxError:
-        return fuente
-    nodo = arbol.body[0]
-    if not isinstance(nodo, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-        return fuente
+        return source
+    node = tree.body[0]
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return source
 
-    lineas = fuente.split("\n")
-    a_borrar = set()
+    lines = source.split("\n")
+    to_delete = set()
 
-    def marca_docstring(n):
-        cuerpo = getattr(n, "body", [])
+    def mark_docstring(n):
+        body = getattr(n, "body", [])
         if (
-            cuerpo
-            and isinstance(cuerpo[0], ast.Expr)
-            and isinstance(cuerpo[0].value, ast.Constant)
-            and isinstance(cuerpo[0].value.value, str)
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
         ):
-            for i in range(cuerpo[0].lineno - 1, cuerpo[0].end_lineno):
-                a_borrar.add(i)
+            for i in range(body[0].lineno - 1, body[0].end_lineno):
+                to_delete.add(i)
 
-    marca_docstring(nodo)
-    if isinstance(nodo, ast.ClassDef):
-        for hijo in nodo.body:
-            if isinstance(hijo, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                marca_docstring(hijo)
+    mark_docstring(node)
+    if isinstance(node, ast.ClassDef):
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                mark_docstring(child)
 
-    salida = [l for i, l in enumerate(lineas) if i not in a_borrar]
-    # Colapsar lineas en blanco duplicadas que deja el borrado
-    resultado, previa_vacia = [], False
-    for l in salida:
-        vacia = not l.strip()
-        if vacia and previa_vacia:
+    kept = [l for i, l in enumerate(lines) if i not in to_delete]
+    # Collapse the duplicate blank lines the removal leaves behind
+    result, previous_blank = [], False
+    for l in kept:
+        blank = not l.strip()
+        if blank and previous_blank:
             continue
-        resultado.append(l)
-        previa_vacia = vacia
-    return "\n".join(resultado).rstrip() + "\n"
+        result.append(l)
+        previous_blank = blank
+    return "\n".join(result).rstrip() + "\n"
 
 
-hechos, fallos = 0, []
+done, failures = 0, []
 for m in all_modules():
     if not m.solution_file.exists():
         continue
-    partes = []
-    for aux in AUXILIARES.get(m.id, []):
-        impl_aux = getattr(R, aux, None)
-        if impl_aux is None:
-            # Puede ser privada: buscarla en el modulo donde vive el primer ejercicio
+    parts = []
+    for helper in HELPERS.get(m.id, []):
+        helper_impl = getattr(R, helper, None)
+        if helper_impl is None:
+            # It may be private: look for it in the module where the first exercise lives
             import importlib
-            for nombre_mod in ("tokenizer", "position", "hardware"):
-                mod = importlib.import_module(f"llmfs.reference.{nombre_mod}")
-                if hasattr(mod, aux):
-                    impl_aux = getattr(mod, aux)
+            for module_name in ("tokenizer", "position", "hardware"):
+                mod = importlib.import_module(f"llmfs.reference.{module_name}")
+                if hasattr(mod, helper):
+                    helper_impl = getattr(mod, helper)
                     break
-        if impl_aux is not None:
-            partes.append(limpia(inspect.getsource(impl_aux)))
+        if helper_impl is not None:
+            parts.append(strip_docstrings(inspect.getsource(helper_impl)))
 
     for ex in m.exercises:
         impl = getattr(R, ex.name, None)
         if impl is None:
-            fallos.append(f"{m.id}.{ex.name}: no esta en reference")
+            failures.append(f"{m.id}.{ex.name}: not in reference")
             continue
         try:
-            fuente = inspect.getsource(impl)
+            source = inspect.getsource(impl)
         except (OSError, TypeError) as exc:
-            fallos.append(f"{m.id}.{ex.name}: {exc}")
+            failures.append(f"{m.id}.{ex.name}: {exc}")
             continue
-        partes.append(limpia(fuente))
+        parts.append(strip_docstrings(source))
 
-    if not partes:
-        fallos.append(f"{m.id}: sin codigo")
+    if not parts:
+        failures.append(f"{m.id}: no code")
         continue
 
-    codigo = "\n\n".join(partes).rstrip()
-    for viejo, nuevo in SUSTITUCIONES.items():
-        codigo = codigo.replace(f": {viejo}", f": {nuevo}")
+    code = "\n\n".join(parts).rstrip()
+    for old, new in SUBSTITUTIONS.items():
+        code = code.replace(f": {old}", f": {new}")
     if m.id in IMPORTS:
-        codigo = IMPORTS[m.id] + "\n\n" + codigo
+        code = IMPORTS[m.id] + "\n\n" + code
 
-    texto = m.solution_file.read_text(encoding="utf-8")
-    # Quitar una seccion previa si la hubiera (idempotente)
-    if "## El código completo" in texto:
-        texto = texto[: texto.index("\n---\n\n## El código completo")]
+    text = m.solution_file.read_text(encoding="utf-8")
+    # Remove any previous section (idempotent)
+    if "## The complete code" in text:
+        text = text[: text.index("\n---\n\n## The complete code")]
     m.solution_file.write_text(
-        texto.rstrip() + CABECERA + codigo + "\n" + PIE,
+        text.rstrip() + HEADER + code + "\n" + FOOTER,
         encoding="utf-8",
     )
-    hechos += 1
+    done += 1
 
-print(f"{hechos} soluciones con codigo completo")
-for f in fallos:
-    print(f"  AVISO {f}")
+print(f"{done} solutions with complete code")
+for f in failures:
+    print(f"  WARNING {f}")

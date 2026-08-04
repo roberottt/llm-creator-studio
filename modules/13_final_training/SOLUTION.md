@@ -180,3 +180,54 @@ def format_eta(seconds: float) -> str:
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def overfit_single_batch(
+    model: torch.nn.Module,
+    x: torch.Tensor,
+    y: torch.Tensor,
+    steps: int = 200,
+    lr: float = 1e-3,
+    optimizer_factory: Callable[..., Any] | None = None,
+) -> list[float]:
+    factory = optimizer_factory or (lambda params: torch.optim.AdamW(params, lr=lr))
+    opt = factory(model.parameters())
+
+    model.train()
+    history: list[float] = []
+    for _ in range(steps):
+        _, loss = model(x, y)
+        opt.zero_grad(set_to_none=True)
+        loss.backward()
+        opt.step()
+        history.append(float(loss.detach()))
+
+    return history
+
+
+def format_eta(seconds: float) -> str:
+    if not math.isfinite(seconds) or seconds < 0:
+        return "?"
+
+    secs = int(seconds)
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m {secs % 60}s"
+    if secs < 86400:
+        return f"{secs // 3600}h {(secs % 3600) // 60}m"
+    return f"{secs // 86400}d {(secs % 86400) // 3600}h"
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

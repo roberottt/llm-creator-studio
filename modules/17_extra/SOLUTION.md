@@ -168,3 +168,52 @@ def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def quantize_int8_symmetric(
+    weight: torch.Tensor, per_channel: bool = True
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if per_channel and weight.dim() >= 2:
+        max_abs = weight.abs().amax(dim=-1, keepdim=True)
+    else:
+        max_abs = weight.abs().amax()
+
+    # clamp_min avoids dividing by zero if a row is all zeros.
+    scale = (max_abs / 127.0).clamp_min(1e-12)
+    quantized = torch.round(weight / scale).clamp(-127, 127).to(torch.int8)
+    return quantized, scale
+
+
+def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
+    return quantized.to(torch.float32) * scale
+
+
+def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict[str, float]:
+    q, scale = quantize_int8_symmetric(original, per_channel=per_channel)
+    recovered = dequantize_int8(q, scale)
+
+    error = (original - recovered).abs()
+    original_norm = float(original.norm())
+
+    return {
+        "relative_error": float(error.norm()) / max(original_norm, 1e-12),
+        "max_error": float(error.max()),
+        "mean_error": float(error.mean()),
+        "compression": original.element_size() / q.element_size(),
+        "original_bytes": original.numel() * original.element_size(),
+        "quantized_bytes": q.numel() * q.element_size() + scale.numel() * scale.element_size(),
+    }
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

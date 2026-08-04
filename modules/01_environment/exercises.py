@@ -1,34 +1,34 @@
-"""Modulo 01 - Entorno y hardware.
+"""Module 01 - Environment and hardware.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa -> `llmfs check 01` -> si te atascas, `llmfs hint 01 -e N`
--> y si sigues atascado, `SOLUTION.md` tiene el codigo completo para copiar.
+Read `THEORY.md` -> implement -> `llmfs check 01` -> if you get stuck, `llmfs hint 01 -e N`
+-> and if you are still stuck, `SOLUTION.md` has the complete code to copy.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-Una calculadora de cuanto va a tardar tu entrenamiento. Tres funciones:
+A calculator for how long your training run will take. Three functions:
 
-    measure_matmul_tflops        cuantas operaciones por segundo da tu GPU DE VERDAD
-    transformer_flops_per_token  cuantas operaciones cuesta procesar un token
-    estimate_tokens_per_second   dividiendo lo uno entre lo otro, la velocidad
+    measure_matmul_tflops        how many operations per second your GPU REALLY delivers
+    transformer_flops_per_token  how many operations it costs to process a token
+    estimate_tokens_per_second   dividing one by the other, the speed
 
-Con eso puedes contestar "¿esto tarda dos horas o dos semanas?" antes de escribir el modelo.
+With that you can answer "is this two hours or two weeks?" before writing the model.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **FLOP**: una operacion con numeros decimales (una suma o una multiplicacion). La unidad
-  con la que se mide cuanto cuesta entrenar algo.
-- **TFLOPS**: billones de FLOPs por segundo. Lo que da tu GPU.
-- **MFU** (Model FLOPs Utilization): que fraccion del pico teorico aprovechas de verdad.
-  Nadie llega a 1; con un modelo pequenyo, 0,1-0,2 ya es bueno.
-- **forward / backward**: pasar los datos por la red, y calcular como ajustar los pesos.
-  El backward cuesta aproximadamente el doble que el forward.
+- **FLOP**: one operation on decimal numbers (an addition or a multiplication). The unit
+  used to measure what training something costs.
+- **TFLOPS**: trillions of FLOPs per second. What your GPU delivers.
+- **MFU** (Model FLOPs Utilization): what fraction of the theoretical peak you really get.
+  Nobody reaches 1; with a small model, 0.1-0.2 is already good.
+- **forward / backward**: pushing the data through the network, and computing how to adjust
+  the weights. The backward pass costs roughly twice the forward.
 
-    llmfs demo 01     mide tu GPU y estima el tiempo de la tirada final
+    llmfs demo 01     measures your GPU and estimates the time of the final run
 """
 
 from __future__ import annotations
@@ -47,74 +47,75 @@ def measure_matmul_tflops(
     warmup: int = 3,
     iters: int = 10,
 ) -> float:
-    """Mide cuantas operaciones por segundo hace tu GPU DE VERDAD.
+    """Measures how many operations per second your GPU REALLY does.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Siete pasos. Ninguno tiene truco por separado; el orden es lo que importa.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Seven steps. None of them is tricky on its own; the order is what matters.
 
-        1. Si `cfg` es None, cogelo con `get_device()`.
-           Si `dtype` es None, usa `cfg.amp_dtype`, y si eso tambien es None,
+        1. If `cfg` is None, get it with `get_device()`.
+           If `dtype` is None, use `cfg.amp_dtype`, and if that is None too,
            `torch.float32`.
 
-        2. Crea las dos matrices que vas a multiplicar:
+        2. Create the two matrices you are going to multiply:
 
                a = torch.randn(size, size, device=cfg.device, dtype=dtype)
                b = torch.randn(size, size, device=cfg.device, dtype=dtype)
 
-        3. CALIENTA: repite `warmup` veces la operacion `a @ b`. NO cronometres esto.
-           (Da igual que no guardes el resultado: PyTorch no elimina codigo muerto.)
+        3. WARM UP: repeat the operation `a @ b` `warmup` times. Do NOT time this.
+           (It does not matter that you discard the result: PyTorch does not eliminate
+           dead code.)
 
-        4. cfg.synchronize()          <- espera a que la GPU termine de verdad
+        4. cfg.synchronize()          <- wait for the GPU to actually finish
 
-        5. Arranca el cronometro y repite `iters` veces la multiplicacion:
+        5. Start the clock and repeat the multiplication `iters` times:
 
                t0 = time.perf_counter()
                for _ in range(iters):
                    a @ b
 
-        6. Sincroniza OTRA VEZ, y solo entonces para el cronometro:
+        6. Synchronize AGAIN, and only then stop the clock:
 
                cfg.synchronize()
-               segundos = time.perf_counter() - t0
+               seconds = time.perf_counter() - t0
 
-        7. Devuelve los TFLOPS:
+        7. Return the TFLOPS:
 
-               return (2 * size**3 * iters) / segundos / 1e12
+               return (2 * size**3 * iters) / seconds / 1e12
 
-    POR QUÉ ESA FORMULA
-    -------------------
-    Multiplicar dos matrices de lado `size` produce `size**2` numeros, y cada uno sale de un
-    producto escalar de longitud `size`: `size` multiplicaciones y `size-1` sumas, que por
-    convencion se cuentan como `2 * size`. Total: `2 * size**3` operaciones.
+    WHY THAT FORMULA
+    ----------------
+    Multiplying two matrices of side `size` produces `size**2` numbers, and each one comes
+    from a dot product of length `size`: `size` multiplications and `size-1` additions,
+    which by convention are counted as `2 * size`. Total: `2 * size**3` operations.
 
-    Dividiendo entre los segundos salen FLOPS, y entre `1e12` salen TeraFLOPS.
+    Dividing by the seconds gives FLOPS, and by `1e12` gives TeraFLOPS.
 
-    CUIDADO CON LOS PASOS 3, 4 Y 6
+    WATCH OUT FOR STEPS 3, 4 AND 6
     ------------------------------
-    Son los que hacen que el numero signifique algo, y los tres son faciles de saltarse.
+    They are what make the number mean anything, and all three are easy to skip.
 
-    **Sin calentar (paso 3)**, la primera multiplicacion de un tamanyo dado es entre 10 y 100
-    veces mas lenta: la GPU esta eligiendo que kernel usar y reservando memoria. Con
-    `iters=10` y sin calentamiento, esa primera llamada domina la media.
+    **Without warming up (step 3)**, the first multiplication at a given size is between 10
+    and 100 times slower: the GPU is choosing which kernel to use and allocating memory.
+    With `iters=10` and no warmup, that first call dominates the average.
 
-    **Sin sincronizar (pasos 4 y 6)**, `a @ b` en GPU no espera a nada: encola el trabajo y
-    devuelve el control. Estarias midiendo lo que tarda la CPU en encolar una orden (unos 20
-    microsegundos) y te saldrian miles de TFLOPS. Hay un test que acota el resultado justo
-    para cazar esto.
+    **Without synchronizing (steps 4 and 6)**, `a @ b` on a GPU waits for nothing: it queues
+    the work and returns control. You would be measuring how long the CPU takes to enqueue
+    an order (about 20 microseconds) and you would get thousands of TFLOPS. There is a test
+    that bounds the result specifically to catch this.
 
     Args:
-        cfg: el dispositivo. Si es `None`, se coge con `get_device()`.
-        size: el lado de las matrices.
-        dtype: el tipo de los tensores. Si es `None`, mira `cfg.amp_dtype`, y si tampoco hay,
-            usa `torch.float32`.
-        warmup: cuantas iteraciones de calentamiento (no se cronometran).
-        iters: cuantas iteraciones cronometradas.
+        cfg: the device. If it is `None`, it is fetched with `get_device()`.
+        size: the side of the matrices.
+        dtype: the tensors' type. If it is `None`, look at `cfg.amp_dtype`, and if there is
+            none either, use `torch.float32`.
+        warmup: how many warmup iterations (they are not timed).
+        iters: how many timed iterations.
 
     Returns:
-        Los TFLOPS efectivos, como float positivo.
+        The effective TFLOPS, as a positive float.
     """
-    raise NotImplementedError("TODO: modulo 01, ejercicio 1 - measure_matmul_tflops")
+    raise NotImplementedError("TODO: module 01, exercise 1 - measure_matmul_tflops")
 
 
 def transformer_flops_per_token(
@@ -126,107 +127,107 @@ def transformer_flops_per_token(
     n_ffn_matrices: int = 3,
     include_backward: bool = True,
 ) -> int:
-    """Calcula cuantas operaciones cuesta procesar UN token.
+    """Computes how many operations it costs to process ONE token.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas de aritmetica. Sin bucles ni condiciones raras.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines of arithmetic. No loops and no odd conditions.
 
-        1. Cuenta los parametros que participan en multiplicaciones de matrices:
+        1. Count the parameters that take part in matrix multiplications:
 
                params = n_layers * (4 * d_model**2 + n_ffn_matrices * d_model * d_ff)
                params += d_model * vocab_size
 
-        2. El coste del forward:
+        2. The forward cost:
 
                forward = 2 * params + 4 * n_layers * context_length * d_model
 
-        3. Devuelve, multiplicando por 3 si hay backward:
+        3. Return, multiplying by 3 if there is a backward pass:
 
                return int(3 * forward if include_backward else forward)
 
-    DE DÓNDE SALE CADA TÉRMINO
+    WHERE EACH TERM COMES FROM
     --------------------------
-    - `4 * d_model**2` son las cuatro proyecciones de la atencion (Wq, Wk, Wv, Wo), cada una
-      una matriz `d_model x d_model` sin sesgo.
-    - `n_ffn_matrices * d_model * d_ff` es el FFN: 3 matrices con SwiGLU (gate, up, down), 2
-      con un FFN clasico.
-    - `d_model * vocab_size` es la proyeccion final a logits.
-    - El `2 *` sale de que cada parametro participa en una multiplicacion y una suma.
-    - `4 * n_layers * context_length * d_model` es la atencion en si (`Q @ K^T` y
-      `softmax @ V`). Ese termino NO viene de parametros: crece con el CONTEXTO, no con el
-      tamanyo del modelo.
-    - El `3 *` es porque el backward cuesta el doble que el forward: hace dos
-      multiplicaciones por cada una del forward, una para el gradiente respecto a la entrada
-      y otra respecto a los pesos.
+    - `4 * d_model**2` are attention's four projections (Wq, Wk, Wv, Wo), each a
+      `d_model x d_model` matrix with no bias.
+    - `n_ffn_matrices * d_model * d_ff` is the FFN: 3 matrices with SwiGLU (gate, up, down),
+      2 with a classic FFN.
+    - `d_model * vocab_size` is the final projection to logits.
+    - The `2 *` comes from each parameter taking part in one multiplication and one addition.
+    - `4 * n_layers * context_length * d_model` is attention itself (`Q @ K^T` and
+      `softmax @ V`). That term does NOT come from parameters: it grows with the CONTEXT,
+      not with the model size.
+    - The `3 *` is because the backward pass costs twice the forward: it does two
+      multiplications for each one in the forward, one for the gradient with respect to the
+      input and one with respect to the weights.
 
-    DOS COSAS QUE SE OLVIDAN
-    ------------------------
-    1. La proyeccion final cuenta AUNQUE uses weight tying. Atar los pesos ahorra memoria, no
-       calculo: el matmul se hace igual.
-    2. NO dividas por dos aunque la mascara causal solo calcule medio triangulo. Es la
-       convencion de nanoGPT y de los papers; si divides, tu MFU no sera comparable con la de
-       nadie.
+    TWO THINGS THAT GET FORGOTTEN
+    -----------------------------
+    1. The final projection counts EVEN if you use weight tying. Tying the weights saves
+       memory, not computation: the matmul happens all the same.
+    2. Do NOT divide by two even though the causal mask only computes half the triangle. It
+       is the nanoGPT and paper convention; if you divide, your MFU will not be comparable
+       with anyone's.
 
-    COMPRUÉBALO
-    -----------
-    Con la config del modelo final (6 capas, d_model 320, d_ff 896, contexto 512, vocab 4096)
-    tiene que dar exactamente **65.372.160**.
+    CHECK IT
+    --------
+    With the final model's config (6 layers, d_model 320, d_ff 896, context 512, vocab 4096)
+    it has to give exactly **65,372,160**.
 
     Args:
-        n_layers: numero de capas.
-        d_model: dimension del modelo.
-        d_ff: dimension interna del FFN.
-        context_length: longitud de la ventana de contexto.
-        vocab_size: tamanyo del vocabulario.
-        n_ffn_matrices: 3 para SwiGLU, 2 para un FFN clasico.
-        include_backward: si `True`, multiplica el total por 3.
+        n_layers: number of layers.
+        d_model: the model dimension.
+        d_ff: the FFN's inner dimension.
+        context_length: length of the context window.
+        vocab_size: vocabulary size.
+        n_ffn_matrices: 3 for SwiGLU, 2 for a classic FFN.
+        include_backward: if `True`, multiply the total by 3.
 
     Returns:
-        Los FLOPs por token, como entero.
+        The FLOPs per token, as an integer.
     """
-    raise NotImplementedError("TODO: modulo 01, ejercicio 2 - transformer_flops_per_token")
+    raise NotImplementedError("TODO: module 01, exercise 2 - transformer_flops_per_token")
 
 
 def estimate_tokens_per_second(tflops: float, flops_per_token: int, mfu: float = 0.4) -> float:
-    """Estima cuantos tokens por segundo vas a procesar.
+    """Estimates how many tokens per second you are going to process.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Dos lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Two lines.
 
-        1. Si `flops_per_token` no es positivo, lanza `ValueError`.
+        1. If `flops_per_token` is not positive, raise `ValueError`.
 
-        2. Devuelve:
+        2. Return:
 
                return tflops * 1e12 * mfu / flops_per_token
 
-    El `1e12` convierte TeraFLOPS en FLOPS.
+    The `1e12` converts TeraFLOPS into FLOPS.
 
-    POR QUÉ EL `mfu`
-    ----------------
-    Nunca aprovechas el 100% de la potencia de una GPU. La MFU (Model FLOPs Utilization) es
-    la fraccion que consigues de verdad, y hay que multiplicar por ella o la estimacion sale
-    absurdamente optimista.
+    WHY THE `mfu`
+    -------------
+    You never use 100% of a GPU's power. MFU (Model FLOPs Utilization) is the fraction you
+    really get, and you have to multiply by it or the estimate comes out absurdly
+    optimistic.
 
-    Valores realistas:
-        0,4 - 0,5   modelos de miles de millones, bien optimizados
-        0,1 - 0,2   nuestro modelo de 9M
+    Realistic values:
+        0.4 - 0.5   billion-parameter models, well optimized
+        0.1 - 0.2   our 9M model
 
-    POR QUÉ VALIDAR
-    ---------------
-    Una division por cero aqui produce `inf` en silencio y estimaciones sin sentido, que
-    descubririas mucho mas tarde. Un `ValueError` con un mensaje claro cuesta una linea.
+    WHY VALIDATE
+    ------------
+    A division by zero here silently produces `inf` and meaningless estimates, which you
+    would discover much later. A `ValueError` with a clear message costs one line.
 
     Args:
-        tflops: el pico medido, en TFLOPS (lo que devuelve el ejercicio 1).
-        flops_per_token: lo que devuelve el ejercicio 2.
-        mfu: la fraccion del pico que esperas alcanzar.
+        tflops: the measured peak, in TFLOPS (what exercise 1 returns).
+        flops_per_token: what exercise 2 returns.
+        mfu: the fraction of the peak you expect to reach.
 
     Returns:
-        Tokens por segundo, como float.
+        Tokens per second, as a float.
 
     Raises:
-        ValueError: si `flops_per_token` no es positivo.
+        ValueError: if `flops_per_token` is not positive.
     """
-    raise NotImplementedError("TODO: modulo 01, ejercicio 3 - estimate_tokens_per_second")
+    raise NotImplementedError("TODO: module 01, exercise 3 - estimate_tokens_per_second")

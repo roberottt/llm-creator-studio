@@ -182,3 +182,56 @@ def prenorm_residual(
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def layer_norm(
+    x: torch.Tensor,
+    weight: torch.Tensor | None = None,
+    bias: torch.Tensor | None = None,
+    eps: float = 1e-5,
+) -> torch.Tensor:
+    mean = x.mean(dim=-1, keepdim=True)
+    var = x.var(dim=-1, keepdim=True, unbiased=False)
+    normalized = (x - mean) / torch.sqrt(var + eps)
+
+    if weight is not None:
+        normalized = normalized * weight
+    if bias is not None:
+        normalized = normalized + bias
+    return normalized
+
+
+class RMSNorm(nn.Module):
+
+    def __init__(self, dim: int, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x: torch.Tensor) -> torch.Tensor:
+        return x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self._norm(x.float()).type_as(x) * self.weight
+
+
+def prenorm_residual(
+    x: torch.Tensor,
+    fn: Callable[[torch.Tensor], torch.Tensor],
+    norm: Callable[[torch.Tensor], torch.Tensor],
+) -> torch.Tensor:
+    return x + fn(norm(x))
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

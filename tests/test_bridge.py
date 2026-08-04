@@ -1,7 +1,7 @@
-"""La red de seguridad tiene que funcionar de verdad.
+"""The safety net has to actually work.
 
-Si estos tests fallan, el curso pierde su promesa central: que nunca te quedas bloqueado
-porque un ejercicio anterior este a medias.
+If these tests fail, the course loses its central promise: that you never get stuck because
+an earlier exercise is half done.
 """
 
 from __future__ import annotations
@@ -13,173 +13,173 @@ import llmfs.reference as reference_mod
 from llmfs import bridge
 from llmfs.curriculum import Exercise, Module
 
-# Se reutiliza la identidad del modulo 05 (numero y slug reales) pero apuntando a un
-# directorio temporal. Asi tambien se ejercita la resolucion por ruta, que necesita que
-# el id exista en el curriculo.
-NUMBER, SLUG = 6, "atencion"
+# Module 06's identity (its real number and slug) is reused, but pointing at a temporary
+# directory. That also exercises resolution by path, which needs the id to exist in the
+# curriculum.
+NUMBER, SLUG = 6, "attention"
 MODULE_ID = f"{NUMBER:02d}_{SLUG}"
 
 
 @pytest.fixture(autouse=True)
-def limpia_cache():
+def clear_cache():
     bridge.clear_cache()
     yield
     bridge.clear_cache()
 
 
 @pytest.fixture
-def modulo(tmp_path, monkeypatch):
-    """Un modulo sintetico en tmp_path, con `suma` como unico ejercicio."""
+def module(tmp_path, monkeypatch):
+    """A synthetic module in tmp_path, with `add` as its only exercise."""
     monkeypatch.setattr(curriculum_mod, "modules_dir", lambda: tmp_path)
     (tmp_path / MODULE_ID).mkdir()
 
-    # La pieza de referencia: siempre correcta, siempre disponible.
-    monkeypatch.setattr(reference_mod, "suma", lambda a, b: a + b, raising=False)
+    # The reference piece: always correct, always available.
+    monkeypatch.setattr(reference_mod, "add", lambda a, b: a + b, raising=False)
 
     return Module(
         number=NUMBER,
         slug=SLUG,
-        title="Modulo de prueba",
+        title="Test module",
         part="test",
-        summary="solo para los tests del bridge",
+        summary="only for the bridge tests",
         est_minutes=1,
-        exercises=(Exercise("suma", "sumar dos numeros"),),
+        exercises=(Exercise("add", "add two numbers"),),
     )
 
 
-def escribe_ejercicios(modulo: Module, codigo: str) -> None:
-    modulo.exercises_file.write_text(codigo, encoding="utf-8")
+def write_exercises(module: Module, code: str) -> None:
+    module.exercises_file.write_text(code, encoding="utf-8")
     bridge.clear_cache()
 
 
-# ---------------------------------------------------------------------------- casos
+# ---------------------------------------------------------------------------- cases
 
 
-def test_usa_tu_implementacion_cuando_funciona(modulo):
-    escribe_ejercicios(modulo, "def suma(a, b):\n    return a + b\n")
+def test_uses_your_implementation_when_it_works(module):
+    write_exercises(module, "def add(a, b):\n    return a + b\n")
 
-    assert bridge.resolve(modulo, "suma")(2, 3) == 5
-    assert bridge.resolution(modulo, "suma").source == "exercise"
+    assert bridge.resolve(module, "add")(2, 3) == 5
+    assert bridge.resolution(module, "add").source == "exercise"
 
 
-def test_cae_a_referencia_si_el_ejercicio_lanza_not_implemented(modulo):
-    escribe_ejercicios(
-        modulo,
-        "def suma(a, b):\n    raise NotImplementedError('TODO: modulo 99')\n",
+def test_falls_back_to_reference_if_the_exercise_raises_not_implemented(module):
+    write_exercises(
+        module,
+        "def add(a, b):\n    raise NotImplementedError('TODO: module 99')\n",
     )
 
-    res = bridge.resolution(modulo, "suma")
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
     assert "NotImplementedError" in res.reason
-    # y aun asi el codigo de produccion sigue funcionando
-    assert bridge.resolve(modulo, "suma")(2, 3) == 5
+    # and the production code still works anyway
+    assert bridge.resolve(module, "add")(2, 3) == 5
 
 
-def test_cae_a_referencia_si_ejercicios_py_no_existe(modulo):
-    res = bridge.resolution(modulo, "suma")
+def test_falls_back_to_reference_if_exercises_py_does_not_exist(module):
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
-    assert bridge.resolve(modulo, "suma")(1, 1) == 2
+    assert bridge.resolve(module, "add")(1, 1) == 2
 
 
-def test_cae_a_referencia_si_ejercicios_py_no_compila(modulo, capsys):
-    escribe_ejercicios(modulo, "def suma(a, b)\n    return a + b\n")  # falta el ':'
+def test_falls_back_to_reference_if_exercises_py_does_not_compile(module, capsys):
+    write_exercises(module, "def add(a, b)\n    return a + b\n")  # missing ':'
 
-    res = bridge.resolution(modulo, "suma")
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
-    assert bridge.resolve(modulo, "suma")(4, 5) == 9
+    assert bridge.resolve(module, "add")(4, 5) == 9
 
-    # Un fichero que no compila es algo que el usuario TIENE que ver.
-    salida = capsys.readouterr()
-    assert "no se ha podido importar" in salida.err
+    # A file that does not compile is something the user MUST see.
+    out = capsys.readouterr()
+    assert "could not be imported" in out.err
 
 
-def test_cae_a_referencia_si_falta_el_simbolo(modulo):
-    escribe_ejercicios(modulo, "def otra_cosa():\n    return 1\n")
+def test_falls_back_to_reference_if_the_symbol_is_missing(module):
+    write_exercises(module, "def something_else():\n    return 1\n")
 
-    res = bridge.resolution(modulo, "suma")
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
-    assert "no esta definido" in res.reason
+    assert "is not defined" in res.reason
 
 
-def test_el_probe_descarta_implementaciones_que_devuelven_basura(modulo, monkeypatch):
-    """Un ejercicio puede estar 'escrito' y aun asi no ser usable."""
+def test_the_probe_rejects_implementations_that_return_garbage(module, monkeypatch):
+    """An exercise can be 'written' and still not be usable."""
     from llmfs.probes import PROBES
 
-    def comprueba(impl):
+    def check(impl):
         if impl(2, 3) != 5:
-            raise ValueError("2 + 3 deberia dar 5")
+            raise ValueError("2 + 3 should give 5")
 
-    monkeypatch.setitem(PROBES, "suma", comprueba)
-    escribe_ejercicios(modulo, "def suma(a, b):\n    return None\n")
+    monkeypatch.setitem(PROBES, "add", check)
+    write_exercises(module, "def add(a, b):\n    return None\n")
 
-    res = bridge.resolution(modulo, "suma")
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
     assert "ValueError" in res.reason
 
 
-def test_force_reference_ignora_tu_codigo_aunque_sea_correcto(modulo, monkeypatch):
-    escribe_ejercicios(modulo, "def suma(a, b):\n    return a + b\n")
+def test_force_reference_ignores_your_code_even_when_it_is_correct(module, monkeypatch):
+    write_exercises(module, "def add(a, b):\n    return a + b\n")
     monkeypatch.setenv("LLMFS_FORCE_REFERENCE", "1")
     bridge.clear_cache()
 
-    res = bridge.resolution(modulo, "suma")
+    res = bridge.resolution(module, "add")
     assert res.source == "reference"
     assert "LLMFS_FORCE_REFERENCE" in res.reason
 
 
-def test_avisa_por_stderr_una_sola_vez_al_usar_referencia(modulo, capsys):
+def test_warns_on_stderr_exactly_once_when_using_the_reference(module, capsys):
     for _ in range(3):
-        bridge.resolve(modulo, "suma")
+        bridge.resolve(module, "add")
 
     err = capsys.readouterr().err
-    assert err.count("usando la REFERENCIA para `suma`") == 1, (
-        "el aviso debe salir, pero no debe inundar la consola"
+    assert err.count("using the REFERENCE for `add`") == 1, (
+        "the warning must show up, but it must not flood the console"
     )
 
 
-def test_si_falta_la_pieza_de_referencia_el_error_es_explicito(modulo, monkeypatch):
-    monkeypatch.delattr(reference_mod, "suma")
-    with pytest.raises(AttributeError, match="BUG del curso"):
-        bridge.resolve(modulo, "suma")
+def test_if_the_reference_piece_is_missing_the_error_is_explicit(module, monkeypatch):
+    monkeypatch.delattr(reference_mod, "add")
+    with pytest.raises(AttributeError, match="COURSE BUG"):
+        bridge.resolve(module, "add")
 
 
-def test_exercises_acepta_la_ruta_de_un_test(modulo):
-    """Los `test_NN.py` se identifican con `exercises(__file__)`."""
-    escribe_ejercicios(modulo, "MARCA = 42\n")
-    cargado = bridge.exercises(str(modulo.path / f"test_{NUMBER:02d}.py"))
-    assert cargado is not None and cargado.MARCA == 42
+def test_exercises_accepts_a_test_file_path(module):
+    """The `test_NN.py` files identify themselves with `exercises(__file__)`."""
+    write_exercises(module, "MARKER = 42\n")
+    loaded = bridge.exercises(str(module.path / f"test_{NUMBER:02d}.py"))
+    assert loaded is not None and loaded.MARKER == 42
 
 
-def test_una_clase_con_forward_sin_implementar_no_es_usable(modulo):
-    """El caso real: una `nn.Module` con el `__init__` hecho y el `forward` a medias."""
-    escribe_ejercicios(
-        modulo,
-        "class suma:\n"
+def test_a_class_with_an_unimplemented_forward_is_not_usable(module):
+    """The real case: an `nn.Module` with `__init__` done and `forward` half finished."""
+    write_exercises(
+        module,
+        "class add:\n"
         "    def __init__(self, n):\n"
         "        self.n = n\n"
         "    def forward(self, x):\n"
         "        raise NotImplementedError('TODO')\n",
     )
-    assert bridge.resolution(modulo, "suma").source == "reference"
+    assert bridge.resolution(module, "add").source == "reference"
 
 
-def test_un_cuerpo_con_solo_pass_tambien_cuenta_como_plantilla(modulo):
-    escribe_ejercicios(modulo, "def suma(a, b):\n    pass\n")
-    assert bridge.resolution(modulo, "suma").source == "reference"
+def test_a_body_with_only_pass_also_counts_as_a_template(module):
+    write_exercises(module, "def add(a, b):\n    pass\n")
+    assert bridge.resolution(module, "add").source == "reference"
 
 
-def test_un_docstring_largo_no_confunde_al_detector(modulo):
-    escribe_ejercicios(
-        modulo,
-        'def suma(a, b):\n'
-        '    """Suma dos numeros.\n\n'
-        '    Args:\n        a: primero\n        b: segundo\n\n'
+def test_a_long_docstring_does_not_confuse_the_detector(module):
+    write_exercises(
+        module,
+        'def add(a, b):\n'
+        '    """Add two numbers.\n\n'
+        '    Args:\n        a: the first\n        b: the second\n\n'
         '    Returns:\n        a + b\n    """\n'
         '    return a + b\n',
     )
-    assert bridge.resolution(modulo, "suma").source == "exercise"
+    assert bridge.resolution(module, "add").source == "exercise"
 
 
-def test_module_resolutions_cubre_todos_los_ejercicios(modulo):
-    resoluciones = bridge.module_resolutions(modulo)
-    assert [r.name for r in resoluciones] == ["suma"]
+def test_module_resolutions_covers_every_exercise(module):
+    resolutions = bridge.module_resolutions(module)
+    assert [r.name for r in resolutions] == ["add"]

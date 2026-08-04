@@ -326,3 +326,140 @@ def generate_with_cache(
 
 Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
 aparezcan arriba del bloque.
+
+---
+
+## The complete code
+
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
+
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
+
+```python
+def apply_repetition_penalty(
+    logits: torch.Tensor, generated: torch.Tensor, penalty: float = 1.1
+) -> torch.Tensor:
+    if penalty == 1.0:
+        return logits
+
+    out = logits.clone()
+    for row in range(logits.shape[0]):
+        seen = torch.unique(generated[row])
+        values = out[row, seen]
+        out[row, seen] = torch.where(values > 0, values / penalty, values * penalty)
+    return out
+
+
+def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
+    if k <= 0 or k >= logits.shape[-1]:
+        return logits
+
+    threshold = torch.topk(logits, k, dim=-1).values[..., -1:]
+    return logits.masked_fill(logits < threshold, float("-inf"))
+
+
+def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
+    if p >= 1.0:
+        return logits
+
+    sorted_logits, indices = torch.sort(logits, descending=True, dim=-1)
+    cumulative = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+
+    drop = cumulative - F.softmax(sorted_logits, dim=-1) > p
+    drop[..., 0] = False  # the most likely one is always kept
+
+    to_drop = drop.scatter(-1, indices, drop)
+    return logits.masked_fill(to_drop, float("-inf"))
+
+
+class KVCache:
+
+    def __init__(self, n_layers: int) -> None:
+        self.n_layers = n_layers
+        self.keys: list[torch.Tensor | None] = [None] * n_layers
+        self.values: list[torch.Tensor | None] = [None] * n_layers
+
+    def update(
+        self, layer: int, k: torch.Tensor, v: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.keys[layer] is None:
+            self.keys[layer] = k
+            self.values[layer] = v
+        else:
+            # dim=-2 is the time dimension with the shape (B, heads, T, head_dim)
+            self.keys[layer] = torch.cat([self.keys[layer], k], dim=-2)
+            self.values[layer] = torch.cat([self.values[layer], v], dim=-2)
+        return self.keys[layer], self.values[layer]
+
+    @property
+    def seq_len(self) -> int:
+        return 0 if self.keys[0] is None else self.keys[0].shape[-2]
+
+    def reset(self) -> None:
+        self.keys = [None] * self.n_layers
+        self.values = [None] * self.n_layers
+
+    def memory_bytes(self) -> int:
+        return sum(
+            t.numel() * t.element_size()
+            for t in [*self.keys, *self.values]
+            if t is not None
+        )
+
+
+@torch.no_grad()
+def generate_with_cache(
+    model: Any,
+    idx: torch.Tensor,
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_k: int | None = None,
+    top_p: float | None = None,
+    repetition_penalty: float = 1.0,
+    eos_token: int | None = None,
+) -> torch.Tensor:
+    model.eval()
+    cache = KVCache(model.cfg.n_layers)
+    max_context = model.cfg.context_length
+
+    if idx.shape[1] >= max_context:
+        raise ValueError(
+            f"the prompt already has {idx.shape[1]} tokens and the model's context is "
+            f"{max_context}: there is no room left to generate"
+        )
+
+    logits, _ = model(idx, use_cache=True, cache=cache)
+
+    for _ in range(max_new_tokens):
+        if idx.shape[1] >= max_context:
+            break
+        next_logits = logits[:, -1, :].float()
+
+        if repetition_penalty != 1.0:
+            next_logits = apply_repetition_penalty(next_logits, idx, repetition_penalty)
+        if temperature != 1.0:
+            next_logits = next_logits / max(temperature, 1e-8)
+        if top_k is not None:
+            next_logits = top_k_filter(next_logits, top_k)
+        if top_p is not None:
+            next_logits = top_p_filter(next_logits, top_p)
+
+        if temperature == 0.0:
+            new_token = next_logits.argmax(dim=-1, keepdim=True)
+        else:
+            new_token = torch.multinomial(F.softmax(next_logits, dim=-1), num_samples=1)
+
+        idx = torch.cat([idx, new_token], dim=1)
+        if eos_token is not None and bool((new_token == eos_token).all()):
+            break
+
+        # Only the new token: the cache holds the rest.
+        logits, _ = model(new_token, use_cache=True, cache=cache)
+
+    return idx
+```
+
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

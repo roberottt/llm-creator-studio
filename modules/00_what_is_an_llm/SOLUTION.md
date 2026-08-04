@@ -1,151 +1,154 @@
-# 00 — Solución comentada
+# 00 — Annotated solution
 
-## Ejercicio 1 — `next_token_probs`
+## Exercise 1 — `next_token_probs`
 
-Una línea de trabajo real: sumar y dividir.
+One line of real work: add up and divide.
 
 ```
-total = suma de todos los conteos
-devolver {token: conteo/total para cada par}
+total = sum of every count
+return {token: count/total for each pair}
 ```
 
-**Por qué se comprueba que el total no sea cero.** Si la tabla viene vacía, `sum()` da 0 y
-la división revienta con `ZeroDivisionError`. El problema no es que reviente: es *dónde*
-revienta. Sin la comprobación, el error salta dentro de una comprensión de diccionario,
-tres niveles por debajo de donde está la causa real, y el mensaje no menciona en ningún
-sitio que el problema es una tabla vacía. Lanzar un `ValueError` con un mensaje claro
-convierte media hora de depuración en cinco segundos. Esto no es manía de estilo: es la
-diferencia entre un error que te ayuda y uno que te estorba.
+**Why we check that the total is not zero.** If the table comes in empty, `sum()` gives 0
+and the division blows up with `ZeroDivisionError`. The problem is not that it blows up: it
+is *where* it blows up. Without the check, the error fires inside a dict comprehension,
+three levels below where the real cause is, and the message never mentions that the problem
+is an empty table. Raising a `ValueError` with a clear message turns half an hour of
+debugging into five seconds. This is not a style quirk: it is the difference between an
+error that helps you and one that gets in your way.
 
-**Por qué importa el orden del diccionario.** En Python 3.7+ los diccionarios conservan el
-orden de inserción. Si construyes el resultado recorriendo `counts.items()`, el orden se
-mantiene. Si lo ordenases alfabéticamente, tu ruleta del ejercicio 2 repartiría los trozos
-de la recta [0,1] de otra forma, y con la misma semilla saldría un texto distinto al de la
-referencia. El test `test_conserva_las_claves_y_su_orden` está ahí exactamente por eso.
+**Why the dictionary order matters.** In Python 3.7+ dictionaries preserve insertion order.
+If you build the result by walking `counts.items()`, the order is kept. If you sorted it
+alphabetically, your roulette wheel in exercise 2 would divide up the line [0,1] differently,
+and with the same seed you would get different text from the reference. The test
+`test_it_preserves_the_keys_and_their_order` is there for exactly that reason.
 
-**Conexión con lo que viene.** Esto es normalizar. En el módulo 06 verás `softmax`, que
-hace lo mismo pero exponenciando primero:
+**Connection to what is coming.** This is normalizing. In module 06 you will see `softmax`,
+which does the same thing but exponentiates first:
 
 $$\text{softmax}(x)_i = \frac{e^{x_i}}{\sum_j e^{x_j}}$$
 
-¿Por qué exponenciar? Porque una red neuronal escupe números cualquiera, positivos y
-negativos, y no puedes normalizar `[-2.1, 0.5, 3.0]` dividiendo entre su suma: saldrían
-probabilidades negativas. La exponencial convierte cualquier número real en uno positivo
-sin cambiar el orden. Aquí no hace falta porque los conteos ya son positivos.
+Why exponentiate? Because a neural network spits out arbitrary numbers, positive and
+negative, and you cannot normalize `[-2.1, 0.5, 3.0]` by dividing by their sum: you would
+get negative probabilities. The exponential turns any real number into a positive one
+without changing the order. Here it is not needed because the counts are already positive.
 
-## Ejercicio 2 — `sample_next_token`
-
-```
-r = rng.random()          # un float en [0, 1)
-acumulado = 0
-para cada (token, p) en probs:
-    acumulado += p
-    si r < acumulado:
-        devolver token
-devolver el último token vista
-```
-
-**El error más común es usar `<=` en lugar de `<`, o al revés.** Piénsalo con
-`{'a': 0.5, 'b': 0.5}` y `r = 0.5` exacto. Con `r < acumulado`: tras `'a'` el acumulado es
-0.5, y `0.5 < 0.5` es falso, así que sigue y devuelve `'b'`. Es lo correcto: `'a'` ocupa
-el intervalo $[0, 0.5)$ y `'b'` el $[0.5, 1)$. Como `rng.random()` devuelve un número en
-$[0, 1)$ —el 1 nunca sale, el 0 sí— este reparto es el que da exactamente 50/50.
-
-**El `return` final no es paranoia.** Los floats no suman exacto. Prueba
-`sum([0.1] * 10)` en un intérprete: da `0.9999999999999999`, no `1.0`. Si
-`rng.random()` devuelve `0.99999999999999995`, el bucle termina sin haber devuelto nada y
-la función devuelve `None`. Eso rompe el ejercicio 3 con un error incomprensible varios
-pasos después. El test `test_nunca_devuelve_none_aunque_las_probabilidades_no_sumen_exacto`
-reproduce el caso exacto.
-
-**Alternativa que también vale.** `random.choices(list(probs), weights=list(probs.values()))`
-hace lo mismo en una línea. Se pide a mano porque el objetivo es que entiendas el mecanismo:
-en el módulo 14 vas a manipular esta ruleta directamente (recortarla con top-k, estirarla
-o comprimirla con la temperatura) y para eso hay que saber qué hay dentro.
-
-## Ejercicio 3 — `generate_naive`
+## Exercise 2 — `sample_next_token`
 
 ```
-salida = lista con los caracteres de start
-repetir (length - len(start)) veces:
-    contexto = últimos len(start) caracteres de salida
-    counts   = table.get(contexto)
-    si counts es None o está vacío: parar
-    salida.append(sample_next_token(next_token_probs(counts), rng))
-devolver "".join(salida)
+r = rng.random()          # a float in [0, 1)
+running = 0
+for each (token, p) in probs:
+    running += p
+    if r < running:
+        return token
+return the last token seen
 ```
 
-**Lo importante de este ejercicio no es el código, es lo que representa.** Este bucle es,
-literalmente, el mismo que ejecuta ChatGPT. La única diferencia con el módulo 14 es de
-dónde salen las probabilidades: aquí de `table.get(contexto)`, allí de un forward de la
-red. La estructura —mirar contexto, obtener distribución, muestrear, añadir, repetir— es
-idéntica.
+**The most common mistake is using `<=` instead of `<`, or the other way round.** Think it
+through with `{'a': 0.5, 'b': 0.5}` and `r = 0.5` exactly. With `r < running`: after `'a'`
+the running total is 0.5, and `0.5 < 0.5` is false, so it carries on and returns `'b'`. That
+is correct: `'a'` occupies the interval $[0, 0.5)$ and `'b'` occupies $[0.5, 1)$. Since
+`rng.random()` returns a number in $[0, 1)$ — 1 never comes out, 0 does — this split is the
+one that gives exactly 50/50.
 
-**El `break` es el punto pedagógico.** Cuando llegas a un contexto que no estaba en el
-texto de entrenamiento, un modelo por conteo se queda literalmente mudo: no tiene ninguna
-fila que consultar. Una red neuronal *nunca* tiene este problema, porque no consulta una
-tabla: calcula. Le des lo que le des, produce una distribución. Puede ser mala, pero
-existe. Esa es una de las razones profundas por las que se usan redes.
+**The final `return` is not paranoia.** Floats do not add up exactly. Try `sum([0.1] * 10)`
+in an interpreter: it gives `0.9999999999999999`, not `1.0`. If `rng.random()` returns
+`0.99999999999999995`, the loop ends without having returned anything and the function
+returns `None`. That breaks exercise 3 with an incomprehensible error several steps later.
+The test `test_it_never_returns_none_even_if_the_probabilities_do_not_sum_exactly`
+reproduces exactly that case.
 
-**Trabajar con lista y unir al final.** Ir haciendo `salida = salida + caracter` con
-cadenas crea una cadena nueva en cada vuelta. Para 200 caracteres da igual; para los
-500 millones de tokens del módulo 13 no. La costumbre de acumular en lista y hacer
-`"".join()` al final es gratis y siempre correcta.
+**An alternative that also works.**
+`random.choices(list(probs), weights=list(probs.values()))` does the same thing in one line.
+You are asked to do it by hand because the goal is for you to understand the mechanism: in
+module 14 you are going to manipulate this wheel directly (trimming it with top-k,
+stretching or compressing it with temperature) and for that you have to know what is inside.
 
-**El detalle del `length`.** Cuenta el total devuelto, incluyendo `start`. Si `start` tiene
-2 caracteres y pides 5, generas 3. Por eso el bucle itera `length - len(start)` veces y no
-`length`. El test lo comprueba porque es un off-by-one que se cuela solo.
+## Exercise 3 — `generate_naive`
 
-## Lo que deberías ver al ejecutar la demo
+```
+out = list of the characters of start
+repeat (length - len(start)) times:
+    context = last len(start) characters of out
+    counts  = table.get(context)
+    if counts is None or empty: stop
+    out.append(sample_next_token(next_token_probs(counts), rng))
+return "".join(out)
+```
 
-Sobre Shakespeare, el porcentaje de palabras generadas que existen de verdad:
+**The important part of this exercise is not the code, it is what it represents.** This loop
+is, literally, the same one ChatGPT runs. The only difference from module 14 is where the
+probabilities come from: here from `table.get(context)`, there from a forward pass of the
+network. The structure — look at the context, get a distribution, sample, append, repeat —
+is identical.
 
-| contexto | palabras reales | pinta |
+**The `break` is the pedagogical point.** When you reach a context that was not in the
+training text, a counting model goes literally mute: it has no row to look up. A neural
+network *never* has this problem, because it does not look anything up: it computes.
+Whatever you give it, it produces a distribution. It may be a bad one, but it exists. That is
+one of the deep reasons networks are used.
+
+**Working with a list and joining at the end.** Doing `out = out + character` with strings
+creates a new string on every pass. For 200 characters it does not matter; for module 13's
+500 million tokens it does. The habit of accumulating into a list and calling `"".join()` at
+the end is free and always correct.
+
+**The detail about `length`.** It counts the total returned, including `start`. If `start`
+has 2 characters and you ask for 5, you generate 3. That is why the loop iterates
+`length - len(start)` times and not `length`. The test checks it because it is an off-by-one
+that slips in on its own.
+
+## What you should see when you run the demo
+
+On Shakespeare, the percentage of generated words that really exist:
+
+| context | real words | what it looks like |
 |---|---|---|
-| 1 carácter | ~14% | `Wieisiopthote hashe hon ghou` |
-| 2 caracteres | ~45% | `Fin tis fall mounto degiver he of` |
-| 3 caracteres | ~62% | `First perange is ther, rumous the had to` |
-| 4 caracteres | ~91% | `First Camiliar, And hear'd his now him in his way` |
-| 6 caracteres | ~98% | `The senator: No more spices of my colour half way` |
+| 1 character | ~14% | `Wieisiopthote hashe hon ghou` |
+| 2 characters | ~45% | `Fin tis fall mounto degiver he of` |
+| 3 characters | ~62% | `First perange is ther, rumous the had to` |
+| 4 characters | ~91% | `First Camiliar, And hear'd his now him in his way` |
+| 6 characters | ~98% | `The senator: No more spices of my colour half way` |
 
-Con 6 caracteres de contexto el texto ya parece Shakespeare de lejos. **Y sin embargo esto
-no es el camino.** Mira la segunda tabla de la demo: con contexto de 6, el corpus cubre el
-0,00038% de las combinaciones posibles. El modelo funciona por memorización pura, y lo que
-está haciendo con 283.313 contextos es prácticamente copiar trozos literales.
+With 6 characters of context the text already looks like Shakespeare from a distance. **And
+yet this is not the way.** Look at the demo's second table: with a context of 6, the corpus
+covers 0.00038% of the possible combinations. The model works by pure memorization, and what
+it is doing with 283,313 contexts is essentially copying literal fragments.
 
-Ahí está el argumento del curso entero. Contar da resultados decentes deprisa y se estrella
-contra un muro exponencial. Aprender representaciones cuesta más, pero escala.
+That is the argument of the whole course. Counting gives decent results fast and smashes
+into an exponential wall. Learning representations costs more, but it scales.
 
 ---
 
-## El código completo
+## The complete code
 
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
+If you got stuck, here is the whole implementation. **Copy it, paste it and run the
+tests**: seeing them pass with code you understand beats staying blocked.
 
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
+And then go back to the exercise and write it yourself. Reading a solution you have already
+wrestled with works very well; reading it cold does not work at all.
 
 ```python
 def next_token_probs(counts: Mapping[str, int]) -> dict[str, float]:
     total = sum(counts.values())
     if total == 0:
-        raise ValueError("no se puede normalizar una tabla de conteos vacia")
+        raise ValueError("cannot normalize an empty count table")
     return {token: count / total for token, count in counts.items()}
 
 
 def sample_next_token(probs: Mapping[str, float], rng: random.Random | None = None) -> str:
     rng = rng or random.Random()
     r = rng.random()
-    acumulado = 0.0
-    ultimo = ""
+    running = 0.0
+    last = ""
     for token, p in probs.items():
-        acumulado += p
-        ultimo = token
-        if r < acumulado:
+        running += p
+        last = token
+        if r < running:
             return token
-    # Solo se llega aqui por error de redondeo en coma flotante (acumulado = 0.9999...).
-    return ultimo
+    # We only get here from floating-point rounding error (running = 0.9999...).
+    return last
 
 
 def generate_naive(
@@ -156,17 +159,17 @@ def generate_naive(
 ) -> str:
     rng = rng or random.Random()
     context_size = len(start)
-    salida = list(start)
+    out = list(start)
 
     for _ in range(max(0, length - len(start))):
-        contexto = "".join(salida[-context_size:])
-        counts = table.get(contexto)
+        context = "".join(out[-context_size:])
+        counts = table.get(context)
         if not counts:
-            break  # contexto desconocido: el modelo no sabe seguir
-        salida.append(sample_next_token(next_token_probs(counts), rng))
+            break  # unknown context: the model does not know how to continue
+        out.append(sample_next_token(next_token_probs(counts), rng))
 
-    return "".join(salida)
+    return "".join(out)
 ```
 
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
+The imports you need are already in the module's `exercises.py`, except for any that appear
+at the top of the block.

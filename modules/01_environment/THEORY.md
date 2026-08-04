@@ -1,180 +1,179 @@
-# 01 — Entorno y hardware
+# 01 — Environment and hardware
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Este módulo evita que pierdas una semana.**
+**This module saves you a week.**
 
-Vas a entrenar un modelo en tu ordenador. Antes de escribir una línea de red neuronal
-conviene saber si eso va a tardar dos horas o dos semanas, porque la respuesta cambia todas
-las decisiones que vienen después: cuántas capas, qué contexto, qué tamaño de batch.
+You are going to train a model on your own machine. Before writing a single line of neural
+network it is worth knowing whether that will take two hours or two weeks, because the
+answer changes every decision that comes afterwards: how many layers, what context, what
+batch size.
 
-Y hay una segunda razón, menos obvia. Casi todo el mundo que entrena modelos copia números
-de un tutorial sin saber de dónde salen. Al terminar este módulo sabrás **calcular** cuánto
-cuesta un modelo antes de construirlo, que es lo que separa diseñar de copiar.
+And there is a second, less obvious reason. Almost everyone who trains models copies numbers
+from a tutorial without knowing where they come from. By the end of this module you will be
+able to **compute** what a model costs before building it, which is what separates designing
+from copying.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Cuántas operaciones cuesta procesar un token, y **de dónde sale la fórmula**
-- Cuántos TFLOPS da tu GPU **de verdad**, no lo que dice la ficha técnica
-- Por qué tu RTX 2060 está obligada a usar `float16` y qué problema trae eso
-- Estimar cuánto va a durar un entrenamiento antes de lanzarlo
+- How many operations it costs to process a token, and **where the formula comes from**
+- How many TFLOPS your GPU **really** delivers, not what the spec sheet says
+- Why your RTX 2060 is forced to use `float16` and what problem that brings
+- How to estimate how long a training run will take before launching it
 
-### Cuánto cuesta
+### What it costs
 
-45 minutos. Tres funciones cortas, y la demo mide tu hardware de verdad.
+45 minutes. Three short functions, and the demo measures your hardware for real.
 
 ---
 
-## La pregunta: ¿cómo se mide "cuánto cuesta"?
+## The question: how do you measure "how much does it cost"?
 
-Un ordenador no tarda lo mismo en dos tareas distintas, así que necesitamos una unidad
-común. Se usa el **FLOP**: una operación con números decimales (una suma o una
-multiplicación). Entrenar un modelo son un montón de FLOPs, y una GPU puede hacer unos
-cuantos billones por segundo.
+A computer does not take the same time on two different tasks, so we need a common unit. The
+one used is the **FLOP**: one operation on decimal numbers (an addition or a
+multiplication). Training a model is a lot of FLOPs, and a GPU can do a few trillion per
+second.
 
-Dos números, y una división:
-
-```
-tiempo = FLOPs totales que hay que hacer / FLOPs por segundo que da mi GPU
-```
-
-Todo este módulo va de estimar bien esos dos números.
-
-## De dónde salen los FLOPs de una red
-
-Casi todo lo que hace una red neuronal es **multiplicar matrices**. Vamos a contar
-exactamente cuánto cuesta una.
-
-Multiplica una matriz de 2×3 por otra de 3×2. El resultado es 2×2, o sea 4 números. Cada
-uno de esos 4 números sale de emparejar 3 valores con otros 3, multiplicarlos y sumarlos:
-3 multiplicaciones y 2 sumas, que redondeamos a 6 operaciones (2 por cada pareja). Total:
+Two numbers, and one division:
 
 ```
-4 números de salida × 6 operaciones = 24 FLOPs
+time = total FLOPs to be done / FLOPs per second my GPU delivers
 ```
 
-En general, multiplicar una matriz $m \times k$ por una $k \times n$ cuesta $2mnk$ FLOPs.
+This whole module is about estimating those two numbers well.
 
-Ahora el paso que lo convierte en una regla útil. Una capa de la red guarda sus pesos en
-una matriz. Si esa matriz tiene $P$ números dentro, procesar **un token** a través de ella
-cuesta $2P$ FLOPs. Se entiende bien: cada peso se usa una vez, en una multiplicación y una
-suma.
+## Where a network's FLOPs come from
 
-Con eso ya puedes estimar el forward de cualquier red: cuenta sus parámetros y multiplica
-por dos.
+Almost everything a neural network does is **multiply matrices**. Let us count exactly what
+one costs.
 
-### Y el backward
+Multiply a 2×3 matrix by a 3×2 one. The result is 2×2, that is, 4 numbers. Each of those 4
+numbers comes from pairing 3 values with 3 others, multiplying them and adding them up: 3
+multiplications and 2 additions, which we round to 6 operations (2 per pair). Total:
 
-Entrenar no es solo pasar los datos hacia delante. Hay que calcular cómo ajustar cada
-peso, y eso es el *backward* (módulo 02). Cuesta aproximadamente el **doble** que el
-forward, porque hace dos multiplicaciones por cada una que hizo el forward: una para saber
-cómo cambiar la entrada de la capa y otra para saber cómo cambiar sus pesos.
+```
+4 output numbers × 6 operations = 24 FLOPs
+```
 
-Sumando forward + backward sale el número que verás citado en todas partes:
+In general, multiplying an $m \times k$ matrix by a $k \times n$ one costs $2mnk$ FLOPs.
+
+Now the step that turns this into a useful rule. A layer of the network stores its weights in
+a matrix. If that matrix has $P$ numbers inside, processing **one token** through it costs
+$2P$ FLOPs. It makes sense: each weight is used once, in one multiplication and one addition.
+
+With that you can already estimate the forward pass of any network: count its parameters and
+multiply by two.
+
+### And the backward pass
+
+Training is not just pushing the data forwards. You have to compute how to adjust each
+weight, and that is the *backward* pass (module 02). It costs roughly **twice** the forward,
+because it does two multiplications for every one the forward did: one to know how to change
+the layer's input and one to know how to change its weights.
+
+Adding forward + backward gives the number you will see cited everywhere:
 
 $$C_{\text{token}} \approx 6N$$
 
-donde $N$ son los parámetros del modelo. Seis FLOPs por parámetro y por token. Ya está.
+where $N$ are the model's parameters. Six FLOPs per parameter per token. That is all.
 
-### La atención se cuenta aparte
+### Attention is counted separately
 
-Hay una parte del Transformer que no encaja en la regla, porque no viene de multiplicar
-por pesos sino de multiplicar tokens **entre sí**. Es la atención (módulo 06), y su coste
-depende de cuántos tokens haya en la ventana:
+There is one part of the Transformer that does not fit the rule, because it does not come
+from multiplying by weights but from multiplying tokens **against each other**. It is
+attention (module 06), and its cost depends on how many tokens are in the window:
 
-$$C_{\text{token}} \approx 6N + 12 \cdot n_{\text{capas}} \cdot T \cdot d_{\text{model}}$$
+$$C_{\text{token}} \approx 6N + 12 \cdot n_{\text{layers}} \cdot T \cdot d_{\text{model}}$$
 
-Con nuestros números ($T=512$, 6 capas, $d_{\text{model}}=320$) el total sale **65,4
-millones de FLOPs por token**, de los cuales la atención es un 18%. Con una ventana de
-4096 tokens sería el 64%. Por eso los modelos con contexto muy largo son caros: ese
-término crece mientras el otro se queda quieto.
+With our numbers ($T=512$, 6 layers, $d_{\text{model}}=320$) the total comes to **65.4
+million FLOPs per token**, of which attention is 18%. With a 4096-token window it would be
+64%. That is why models with very long contexts are expensive: that term grows while the
+other one stays put.
 
-### Lo que este cálculo ignora
+### What this calculation ignores
 
-No cuenta las normalizaciones, las activaciones ni el softmax. No es que sean gratis: es
-que su coste no está en calcular, sino en **mover datos entre la memoria y el procesador**.
-En un modelo pequeño como el nuestro eso puede ser una parte importante del tiempo real, y
-esa diferencia entre "los FLOPs que cuento" y "los segundos que tardo" es justo lo que
-mide la MFU.
+It does not count normalizations, activations or the softmax. It is not that they are free:
+it is that their cost is not in computing, but in **moving data between memory and the
+processor**. In a small model like ours that can be a significant part of the real time, and
+that gap between "the FLOPs I count" and "the seconds I take" is exactly what MFU measures.
 
-## MFU: cuánto de tu GPU estás usando de verdad
+## MFU: how much of your GPU you are really using
 
-$$\text{MFU} = \frac{\text{tokens/s} \times C_{\text{token}}}{\text{FLOPS pico del hardware}}$$
+$$\text{MFU} = \frac{\text{tokens/s} \times C_{\text{token}}}{\text{hardware peak FLOPS}}$$
 
-Si tu GPU puede hacer 50 billones de FLOPs por segundo y tú solo le estás sacando 10, tu
-MFU es 0,2. **Nadie llega a 1.** Un modelo grande bien optimizado anda por 0,4-0,5. El
-nuestro, de 9 millones de parámetros, se quedará en 0,1-0,2, y no es culpa tuya.
+If your GPU can do 50 trillion FLOPs per second and you are only getting 10 out of it, your
+MFU is 0.2. **Nobody reaches 1.** A large, well-optimized model sits around 0.4-0.5. Ours,
+at 9 million parameters, will stay at 0.1-0.2, and that is not your fault.
 
-La razón es de tamaño. Una GPU tiene miles de unidades de cálculo. Para tenerlas todas
-ocupadas necesita matrices grandes. Las nuestras son de 320×320, que es diminuto: la GPU
-pasa más tiempo recibiendo instrucciones y esperando a la memoria que multiplicando. En la
-demo verás la curva: matrices de 128 dan menos de 2 TFLOPS y matrices de 2048 dan diez
-veces más, en la misma GPU y con el mismo tipo de dato.
+The reason is size. A GPU has thousands of compute units. To keep them all busy it needs
+large matrices. Ours are 320×320, which is tiny: the GPU spends more time receiving
+instructions and waiting for memory than multiplying. In the demo you will see the curve:
+128-sized matrices give less than 2 TFLOPS and 2048-sized ones give ten times more, on the
+same GPU and with the same data type.
 
-El "pico" tampoco es un número honesto. La ficha de la RTX 2060 dice 51,6 TFLOPS, pero eso
-es en el caso ideal. Por eso el ejercicio 1 te hace **medirlo** en lugar de leerlo: el
-único número que sirve es el de tu máquina.
+The "peak" is not an honest number either. The RTX 2060's spec sheet says 51.6 TFLOPS, but
+that is the ideal case. That is why exercise 1 makes you **measure** it instead of reading
+it: the only number that counts is the one from your machine.
 
-## Precisión: por qué 16 bits y no 32
+## Precision: why 16 bits and not 32
 
-Los números decimales se guardan repartiendo bits entre el *exponente* (cuán grande o
-pequeño puede ser el número) y la *mantisa* (cuántas cifras significativas tiene):
+Decimal numbers are stored by splitting bits between the *exponent* (how large or small the
+number can be) and the *mantissa* (how many significant digits it has):
 
-| formato | exponente | mantisa | rango |
+| format | exponent | mantissa | range |
 |---|---|---|---|
 | fp32 | 8 bits | 23 bits | $10^{\pm 38}$ |
-| fp16 | 5 bits | 10 bits | $6\times10^{-5}$ a $65504$ |
+| fp16 | 5 bits | 10 bits | $6\times10^{-5}$ to $65504$ |
 | bf16 | 8 bits | 7 bits | $10^{\pm 38}$ |
 
-Usar 16 bits en vez de 32 ocupa la mitad de memoria y va aproximadamente el doble de
-rápido. La pega está en el rango.
+Using 16 bits instead of 32 takes half the memory and runs roughly twice as fast. The catch
+is the range.
 
-**fp16 tiene un rango minúsculo.** Durante el entrenamiento, los gradientes de las capas
-profundas son números muy pequeños, del orden de $10^{-7}$. En fp16 eso es cero: el número
-no se puede representar y se pierde. El resultado es que esas capas dejan de aprender, en
-silencio y sin ningún mensaje de error.
+**fp16 has a tiny range.** During training, the gradients of the deep layers are very small
+numbers, on the order of $10^{-7}$. In fp16 that is zero: the number cannot be represented
+and it is lost. The result is that those layers stop learning, silently and with no error
+message.
 
-La solución tiene nombre y es más simple de lo que parece: **`GradScaler`**. Antes de
-calcular los gradientes, multiplica la pérdida por un número grande (unos 65.000). Como el
-gradiente es una derivada, todos los gradientes quedan multiplicados por ese mismo número
-y suben al rango representable. Justo antes de actualizar los pesos, se divide otra vez. Si
-algún valor se pasa por arriba y sale infinito, se descarta ese paso y se baja el factor.
+The fix has a name and it is simpler than it looks: **`GradScaler`**. Before computing the
+gradients, it multiplies the loss by a large number (around 65,000). Since the gradient is a
+derivative, every gradient ends up multiplied by that same number and rises into the
+representable range. Right before updating the weights, it divides again. If some value goes
+over the top and comes out infinite, that step is discarded and the factor is lowered.
 
-**bf16 no necesita nada de esto**, porque conserva los 8 bits de exponente de fp32 (a costa
-de precisión, que en deep learning importa mucho menos que el rango).
+**bf16 needs none of this**, because it keeps fp32's 8 exponent bits (at the cost of
+precision, which in deep learning matters far less than range).
 
-### Tu hardware concreto
+### Your particular hardware
 
-**La RTX 2060 es Turing (`sm_75`) y no tiene bf16.** Estás obligado a fp16 + GradScaler.
-Además hay tres trampas que `llmfs/device.py` ya esquiva por ti:
+**The RTX 2060 is Turing (`sm_75`) and has no bf16.** You are forced into fp16 +
+GradScaler. There are also three traps that `llmfs/device.py` already dodges for you:
 
-- `torch.cuda.is_bf16_supported()` **devuelve `True` en tu GPU**, contando una emulación
-  por software que es correcta y lentísima. Por eso el código mira directamente la
-  *compute capability*: bf16 de verdad empieza en `sm_80`.
-- **FlashAttention-2 tampoco funciona** por debajo de `sm_80`. No pasa nada:
-  `F.scaled_dot_product_attention` detecta la GPU y usa otro algoritmo (*memory-efficient*)
-  que sí va y que también evita el consumo de memoria del método ingenuo.
-- **`torch.compile` está desactivado por defecto**, porque en Turing falla a compilar con
-  bastante frecuencia y cuando compila no siempre gana.
+- `torch.cuda.is_bf16_supported()` **returns `True` on your GPU**, counting a software
+  emulation that is correct and extremely slow. That is why the code looks directly at the
+  *compute capability*: real bf16 starts at `sm_80`.
+- **FlashAttention-2 does not work either** below `sm_80`. That is fine:
+  `F.scaled_dot_product_attention` detects the GPU and uses another algorithm
+  (*memory-efficient*) that does work and also avoids the naive method's memory cost.
+- **`torch.compile` is off by default**, because on Turing it fails to compile fairly often
+  and when it does compile it does not always win.
 
-En el MacBook (MPS) el valor por defecto es fp32. La memoria es unificada, así que no hay
-un trasiego por PCIe que amortizar y fp16 gana menos que en una GPU discreta.
+On the MacBook (MPS) the default is fp32. The memory is unified, so there is no PCIe traffic
+to amortize and fp16 wins less than it does on a discrete GPU.
 
-## Dónde está el debate
+## Where the debate is
 
-La regla del $6N$ se cita como si fuera física, y no lo es: es un modelo del coste, con
-supuestos discutibles. Asume que el backward cuesta exactamente el doble que el forward,
-lo cual depende de qué activaciones guardes y cuáles recalcules (con *gradient
-checkpointing* el factor sube a 4). Ignora todo lo que es memory-bound. Y hay una decisión
-arbitraria en la atención: como la máscara causal solo necesita medio triángulo, se podría
-dividir por dos, pero la convención (nanoGPT, los papers) es no hacerlo. Nosotros
-seguimos la convención para que tu MFU sea comparable con la de todo el mundo, no porque
-sea más correcta.
+The $6N$ rule gets cited as if it were physics, and it is not: it is a cost model, with
+debatable assumptions. It assumes the backward pass costs exactly twice the forward, which
+depends on which activations you store and which you recompute (with *gradient
+checkpointing* the factor rises to 4). It ignores everything that is memory-bound. And there
+is an arbitrary decision in attention: since the causal mask only needs half the triangle,
+you could divide by two, but the convention (nanoGPT, the papers) is not to. We follow the
+convention so your MFU is comparable with everyone else's, not because it is more correct.
 
 ---
 
-**Para ampliar:** Kaplan et al. 2020,
-[Scaling Laws for Neural Language Models](https://arxiv.org/abs/2001.08361) (apéndice B) ·
+**Further reading:** Kaplan et al. 2020,
+[Scaling Laws for Neural Language Models](https://arxiv.org/abs/2001.08361) (appendix B) ·
 Micikevicius et al. 2018, [Mixed Precision Training](https://arxiv.org/abs/1710.03740) ·
-Chowdhery et al. 2022, [PaLM](https://arxiv.org/abs/2204.02311) (definición de MFU).
-Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+Chowdhery et al. 2022, [PaLM](https://arxiv.org/abs/2204.02311) (definition of MFU).
+Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

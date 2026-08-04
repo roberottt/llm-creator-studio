@@ -1,7 +1,7 @@
-"""El curriculo tiene que ser internamente consistente.
+"""The curriculum has to be internally consistent.
 
-Estos tests no validan tu aprendizaje: validan que el repo no esta roto. Si alguno falla
-es un bug del curso, no un ejercicio pendiente.
+These tests do not validate your learning: they validate that the repo is not broken. If
+one of them fails it is a bug in the course, not a pending exercise.
 """
 
 from __future__ import annotations
@@ -11,69 +11,69 @@ import pytest
 from llmfs.curriculum import CURRICULUM, all_modules, get_module, parts, total_exercises
 
 
-def test_hay_18_modulos_numerados_del_0_al_17():
+def test_there_are_18_modules_numbered_0_to_17():
     numbers = [m.number for m in CURRICULUM]
-    assert numbers == list(range(18)), f"numeracion con huecos o desordenada: {numbers}"
+    assert numbers == list(range(18)), f"numbering has gaps or is out of order: {numbers}"
 
 
-def test_los_ids_son_unicos():
+def test_the_ids_are_unique():
     ids = [m.id for m in CURRICULUM]
     assert len(ids) == len(set(ids))
 
 
-def test_los_nombres_de_ejercicio_son_unicos_en_todo_el_curso():
-    """`llmfs.reference` reexporta todos los simbolos por nombre plano.
+def test_exercise_names_are_unique_across_the_whole_course():
+    """`llmfs.reference` re-exports every symbol under a flat name.
 
-    Si dos modulos definieran un ejercicio con el mismo nombre, el bridge resolveria
-    ambos a la misma pieza de referencia sin avisar. Mejor que reviente aqui.
+    If two modules defined an exercise with the same name, the bridge would resolve both to
+    the same reference piece without warning. Better that it blows up here.
     """
     seen: dict[str, str] = {}
     for module in CURRICULUM:
         for ex in module.exercises:
             assert ex.name not in seen, (
-                f"`{ex.name}` esta en {module.id} y tambien en {seen[ex.name]}"
+                f"`{ex.name}` is in {module.id} and also in {seen[ex.name]}"
             )
             seen[ex.name] = module.id
 
 
-def test_cada_modulo_tiene_titulo_resumen_y_estimacion():
+def test_every_module_has_title_summary_and_estimate():
     for module in CURRICULUM:
         assert module.title.strip()
         assert module.summary.strip()
-        assert module.est_minutes > 0, f"{module.id} sin estimacion de tiempo"
+        assert module.est_minutes > 0, f"{module.id} has no time estimate"
 
 
-def test_todos_los_modulos_tienen_ejercicios():
+def test_every_module_has_exercises():
     for module in CURRICULUM:
-        assert module.exercises, f"{module.id} no define ningun ejercicio"
+        assert module.exercises, f"{module.id} defines no exercises"
 
 
-def test_el_total_de_ejercicios_cuadra():
+def test_the_exercise_total_adds_up():
     assert total_exercises() == sum(len(m.exercises) for m in all_modules())
 
 
-@pytest.mark.parametrize("ref", [6, "6", "06", "06_attention", "aten"])
-def test_get_module_acepta_varias_formas(ref):
+@pytest.mark.parametrize("ref", [6, "6", "06", "06_attention", "atten"])
+def test_get_module_accepts_several_forms(ref):
     assert get_module(ref).id == "06_attention"
 
 
-def test_get_module_falla_con_mensaje_util():
+def test_get_module_fails_with_a_useful_message():
     with pytest.raises(KeyError) as exc:
-        get_module("no_existe")
-    assert "06_attention" in str(exc.value), "el error deberia listar los modulos validos"
+        get_module("does_not_exist")
+    assert "06_attention" in str(exc.value), "the error should list the valid modules"
 
 
-def test_las_partes_estan_en_orden():
+def test_the_parts_are_in_order():
     assert list(parts()) == [
-        "0 - Antes de empezar",
-        "I - Fundamentos",
-        "II - Arquitectura",
-        "III - Entrenamiento",
-        "IV - Uso y evaluacion",
+        "0 - Before you start",
+        "I - Foundations",
+        "II - Architecture",
+        "III - Training",
+        "IV - Use and evaluation",
     ]
 
 
-def test_los_indices_de_ejercicio_son_1_indexados():
+def test_exercise_indices_are_1_indexed():
     module = get_module("06_attention")
     assert module.exercise(1) is module.exercises[0]
     assert module.exercise("causal_mask").name == "causal_mask"

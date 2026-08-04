@@ -1,13 +1,13 @@
-"""Pega el codigo de cada SOLUTION.md sobre su exercises.py y corre los tests.
+"""Pastes each SOLUTION.md's code over its exercises.py and runs the tests.
 
-Es la comprobacion de que la promesa del `## El código completo` se cumple de verdad:
-que un alumno atascado puede copiar ese bloque y ver los tests en verde.
+This is the check that the promise of `## The complete code` actually holds: that a stuck
+student can copy that block and see the tests go green.
 
     uv run python scripts/verify_solutions.py
 
-Tarda un par de minutos porque ejecuta la suite entera 18 veces. Por eso no esta en
-`make test`: alli hay una version estatica (que el codigo compile y no use nombres
-inexistentes) que corre en milisegundos.
+It takes a couple of minutes because it runs the whole suite 18 times. That is why it is not
+in `make test`: there is a static version there (that the code compiles and uses no
+nonexistent names) which runs in milliseconds.
 """
 
 from __future__ import annotations
@@ -22,61 +22,61 @@ from llmfs.curriculum import all_modules
 
 
 def main() -> int:
-    fallos: list[str] = []
+    failures: list[str] = []
 
     for module in all_modules():
-        texto = module.solution_file.read_text(encoding="utf-8")
-        idx = texto.find("## El código completo")
-        bloque = re.search(r"```python\n(.*?)```", texto[idx:], re.DOTALL)
-        if bloque is None:
-            fallos.append(f"{module.id}: sin bloque de codigo")
+        text = module.solution_file.read_text(encoding="utf-8")
+        idx = text.find("## The complete code")
+        block = re.search(r"```python\n(.*?)```", text[idx:], re.DOTALL)
+        if block is None:
+            failures.append(f"{module.id}: no code block")
             continue
-        codigo = bloque.group(1)
+        code = block.group(1)
 
         original = module.exercises_file.read_text(encoding="utf-8")
         backup = module.exercises_file.with_suffix(".py.bak")
         shutil.copy(module.exercises_file, backup)
 
         try:
-            arbol = ast.parse(original)
-            nombres = {
+            tree = ast.parse(original)
+            names = {
                 n.name
-                for n in ast.parse(codigo).body
+                for n in ast.parse(code).body
                 if isinstance(n, (ast.FunctionDef, ast.ClassDef))
             }
-            lineas = original.split("\n")
-            borrar = {
+            lines = original.split("\n")
+            to_delete = {
                 i
-                for n in arbol.body
-                if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in nombres
+                for n in tree.body
+                if isinstance(n, (ast.FunctionDef, ast.ClassDef)) and n.name in names
                 for i in range(n.lineno - 1, n.end_lineno)
             }
             module.exercises_file.write_text(
-                "\n".join(l for i, l in enumerate(lineas) if i not in borrar) + "\n\n" + codigo,
+                "\n".join(l for i, l in enumerate(lines) if i not in to_delete) + "\n\n" + code,
                 encoding="utf-8",
             )
 
-            resultado = subprocess.run(
+            result = subprocess.run(
                 [sys.executable, "-m", "pytest", str(module.test_file),
                  "-q", "-p", "no:warnings", "--no-header"],
                 capture_output=True, text=True, timeout=900,
             )
-            if resultado.returncode == 0:
-                print(f"  OK   {module.id}")
+            if result.returncode == 0:
+                print(f"  OK    {module.id}")
             else:
-                errores = [l for l in resultado.stdout.split("\n") if "FAILED" in l][:3]
-                fallos.append(f"{module.id}\n       " + "\n       ".join(errores))
-                print(f"  MAL  {module.id}")
+                errors = [l for l in result.stdout.split("\n") if "FAILED" in l][:3]
+                failures.append(f"{module.id}\n       " + "\n       ".join(errors))
+                print(f"  FAIL  {module.id}")
         finally:
             shutil.move(backup, module.exercises_file)
 
     print()
-    if fallos:
-        print("=== soluciones que NO se pueden copiar y pegar ===")
-        for f in fallos:
+    if failures:
+        print("=== solutions that CANNOT be copy-pasted ===")
+        for f in failures:
             print(f"  {f}")
         return 1
-    print(f"=== las {len(list(all_modules()))} soluciones se pegan y pasan sus tests ===")
+    print(f"=== all {len(list(all_modules()))} solutions paste in and pass their tests ===")
     return 0
 
 
