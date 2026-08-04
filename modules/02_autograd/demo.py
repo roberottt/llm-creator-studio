@@ -1,19 +1,19 @@
-"""Demo del modulo 02: mira el grafo de computo por dentro.
+"""Demo for module 02: look inside the compute graph.
 
     llmfs demo 02
 
-Tres experimentos:
-  1. Un grafo pequenyo, nodo a nodo, con el gradiente que recibe cada uno. Al lado, lo
-     que dice torch.autograd para la misma expresion.
-  2. El experimento del `+=`: que pasa exactamente si acumulas mal los gradientes.
-  3. Entrenar un MLP con tu motor y dibujar la curva de perdida.
+Three experiments:
+  1. A small graph, node by node, with the gradient each one receives. Next to it, what
+     torch.autograd says for the same expression.
+  2. The `+=` experiment: what exactly happens if you accumulate gradients wrongly.
+  3. Training an MLP with your engine and plotting the loss curve.
 """
 
 from __future__ import annotations
 
 import matplotlib
 
-matplotlib.use("Agg")  # sin ventana: esto tiene que correr por SSH y en CI
+matplotlib.use("Agg")  # no window: this has to run over SSH and in CI
 
 import matplotlib.pyplot as plt
 import torch
@@ -30,141 +30,144 @@ topological_order = resolve("02_autograd", "topological_order")
 train_scalar_mlp = resolve("02_autograd", "train_scalar_mlp")
 
 
-def experimento_1_el_grafo() -> None:
-    console.rule("[bold]1. Un grafo de computo, por dentro[/bold]")
-    console.print("Expresion:  [cyan]L = (a * b + a.tanh()) * 2[/cyan]   con a=2.0, b=-3.0\n")
+def experiment_1_the_graph() -> None:
+    console.rule("[bold]1. A compute graph, from the inside[/bold]")
+    console.print("Expression:  [cyan]L = (a * b + a.tanh()) * 2[/cyan]   with a=2.0, b=-3.0\n")
 
     a, b = Value(2.0), Value(-3.0)
     a.label, b.label = "a", "b"
-    dos = Value(2.0)
-    dos.label = "2 (constante)"
-    producto = a * b
-    activacion = a.tanh()
-    suma = producto + activacion
-    L = suma * dos
+    two = Value(2.0)
+    two.label = "2 (constant)"
+    product = a * b
+    activation = a.tanh()
+    total = product + activation
+    L = total * two
     L.backward()
 
-    # Lo mismo con torch, para tener una segunda opinion.
+    # The same thing with torch, for a second opinion.
     ta = torch.tensor(2.0, dtype=torch.float64, requires_grad=True)
     tb = torch.tensor(-3.0, dtype=torch.float64, requires_grad=True)
     ((ta * tb + ta.tanh()) * 2.0).backward()
 
-    orden = topological_order(L)
-    tabla = Table(header_style="bold")
-    tabla.add_column("#", justify="right", style="dim")
-    tabla.add_column("op")
-    tabla.add_column("valor", justify="right")
-    tabla.add_column("gradiente", justify="right")
-    tabla.add_column("que significa")
+    order = topological_order(L)
+    table = Table(header_style="bold")
+    table.add_column("#", justify="right", style="dim")
+    table.add_column("op")
+    table.add_column("value", justify="right")
+    table.add_column("gradient", justify="right")
+    table.add_column("what it means")
 
-    significados = {
-        "": "hoja: un numero de entrada, no viene de ninguna operacion",
-        "*": "producto",
-        "+": "suma",
-        "tanh": "activacion no lineal",
+    meanings = {
+        "": "leaf: an input number, it comes from no operation",
+        "*": "product",
+        "+": "sum",
+        "tanh": "nonlinear activation",
     }
-    for i, nodo in enumerate(orden):
-        tabla.add_row(
+    for i, node in enumerate(order):
+        table.add_row(
             str(i),
-            nodo._op or (nodo.label or "hoja"),
-            f"{nodo.data:.4f}",
-            f"{nodo.grad:+.4f}",
-            significados.get(nodo._op, ""),
+            node._op or (node.label or "leaf"),
+            f"{node.data:.4f}",
+            f"{node.grad:+.4f}",
+            meanings.get(node._op, ""),
         )
-    console.print(tabla)
+    console.print(table)
 
     console.print(
-        f"\nOrden topologico: {len(orden)} nodos. El backward los recorre AL REVES,\n"
-        f"del ultimo (la salida, gradiente 1) al primero.\n"
+        f"\nTopological order: {len(order)} nodes. The backward pass walks them IN REVERSE,\n"
+        f"from the last one (the output, gradient 1) to the first.\n"
     )
-    console.print("[bold]Comprobacion contra torch.autograd:[/bold]")
-    console.print(f"  dL/da  ->  tuyo {a.grad:+.10f}   torch {ta.grad.item():+.10f}")
-    console.print(f"  dL/db  ->  tuyo {b.grad:+.10f}   torch {tb.grad.item():+.10f}")
-    coincide = abs(a.grad - ta.grad.item()) < 1e-9 and abs(b.grad - tb.grad.item()) < 1e-9
+    console.print("[bold]Check against torch.autograd:[/bold]")
+    console.print(f"  dL/da  ->  yours {a.grad:+.10f}   torch {ta.grad.item():+.10f}")
+    console.print(f"  dL/db  ->  yours {b.grad:+.10f}   torch {tb.grad.item():+.10f}")
+    matches = abs(a.grad - ta.grad.item()) < 1e-9 and abs(b.grad - tb.grad.item()) < 1e-9
     console.print(
-        "[green]  Identicos. Tu motor calcula lo mismo que PyTorch.[/green]"
-        if coincide
-        else "[red]  No coinciden. Revisa las derivadas locales.[/red]"
+        "[green]  Identical. Your engine computes the same thing as PyTorch.[/green]"
+        if matches
+        else "[red]  They do not match. Check the local derivatives.[/red]"
     )
 
 
-def experimento_2_la_acumulacion() -> None:
-    console.rule("[bold]2. Por que el gradiente se ACUMULA[/bold]")
+def experiment_2_accumulation() -> None:
+    console.rule("[bold]2. Why the gradient ACCUMULATES[/bold]")
     console.print(
-        "El caso minimo que distingue `+=` de `=`:  [cyan]y = x + x[/cyan]  con x = 3.\n"
-        "Como y = 2x, la derivada correcta es 2.\n"
+        "The minimal case that separates `+=` from `=`:  [cyan]y = x + x[/cyan]  with x = 3.\n"
+        "Since y = 2x, the correct derivative is 2.\n"
     )
 
     x = Value(3.0)
     (x + x).backward()
-    console.print(f"  con acumulacion (`+=`) :  dy/dx = {x.grad:.1f}   [green](correcto)[/green]")
-    console.print("  con asignacion (`=`)   :  dy/dx = 1.0   [red](mal: la segunda rama pisa a la primera)[/red]")
+    console.print(f"  with accumulation (`+=`) :  dy/dx = {x.grad:.1f}   [green](correct)[/green]")
+    console.print(
+        "  with assignment (`=`)    :  dy/dx = 1.0   "
+        "[red](wrong: the second branch overwrites the first)[/red]"
+    )
 
-    console.print("\nY con un nodo usado 10 veces:")
+    console.print("\nAnd with a node used 10 times:")
     z = Value(1.5)
     total = z
     for _ in range(9):
         total = total + z
     total.backward()
-    console.print(f"  x aparece 10 veces  ->  dL/dx = {z.grad:.1f}   [green](correcto: 10)[/green]")
+    console.print(f"  x appears 10 times  ->  dL/dx = {z.grad:.1f}   [green](correct: 10)[/green]")
 
     console.print(
-        "\n[dim]Esto es exactamente por lo que existe optimizer.zero_grad(). Si no limpias\n"
-        "los gradientes entre pasos, el paso N usa la suma de los gradientes de los pasos\n"
-        "1 a N. No da ningun error: simplemente el modelo no aprende.[/dim]"
+        "\n[dim]This is exactly why optimizer.zero_grad() exists. If you do not clear the\n"
+        "gradients between steps, step N uses the sum of the gradients from steps 1 to N.\n"
+        "It gives no error at all: the model simply does not learn.[/dim]"
     )
 
 
-def experimento_3_entrenar() -> tuple[list[float], list[float]]:
-    console.rule("[bold]3. Entrenar un MLP con tu motor[/bold]")
+def experiment_3_training() -> tuple[list[float], list[float]]:
+    console.rule("[bold]3. Training an MLP with your engine[/bold]")
 
     xs = [[2.0, 3.0, -1.0], [3.0, -1.0, 0.5], [0.5, 1.0, 1.0], [1.0, 1.0, -1.0]]
     ys = [1.0, -1.0, -1.0, 1.0]
 
-    console.print("Cuatro puntos, dos clases (+1 / -1). MLP de 3 -> 8 -> 8 -> 1.\n")
+    console.print("Four points, two classes (+1 / -1). MLP of 3 -> 8 -> 8 -> 1.\n")
 
-    rapido = train_scalar_mlp(xs, ys, hidden=(8, 8), steps=100, lr=0.05, seed=0)
-    lento = train_scalar_mlp(xs, ys, hidden=(8, 8), steps=100, lr=0.005, seed=0)
+    fast = train_scalar_mlp(xs, ys, hidden=(8, 8), steps=100, lr=0.05, seed=0)
+    slow = train_scalar_mlp(xs, ys, hidden=(8, 8), steps=100, lr=0.005, seed=0)
 
-    console.print(f"  lr=0.05  :  perdida {rapido[0]:.4f}  ->  {rapido[-1]:.6f}")
-    console.print(f"  lr=0.005 :  perdida {lento[0]:.4f}  ->  {lento[-1]:.6f}")
+    console.print(f"  lr=0.05  :  loss {fast[0]:.4f}  ->  {fast[-1]:.6f}")
+    console.print(f"  lr=0.005 :  loss {slow[0]:.4f}  ->  {slow[-1]:.6f}")
     console.print(
-        "\n[dim]Mismo modelo, misma inicializacion, solo cambia el learning rate. Diez veces\n"
-        "mas pequenyo y no le da tiempo a converger. Este hiperparametro es el que mas\n"
-        "entrenamientos arruina, y lo veras otra vez en el modulo 11.[/dim]"
+        "\n[dim]Same model, same initialization, only the learning rate changes. Ten times\n"
+        "smaller and it does not have time to converge. This hyperparameter ruins more\n"
+        "training runs than any other, and you will see it again in module 11.[/dim]"
     )
-    return rapido, lento
+    return fast, slow
 
 
 def main() -> None:
-    experimento_1_el_grafo()
-    experimento_2_la_acumulacion()
-    rapido, lento = experimento_3_entrenar()
+    experiment_1_the_graph()
+    experiment_2_accumulation()
+    fast, slow = experiment_3_training()
 
-    fig, (izq, der) = plt.subplots(1, 2, figsize=(12, 4.5))
+    fig, (left, right) = plt.subplots(1, 2, figsize=(12, 4.5))
 
-    izq.plot(rapido, label="lr = 0.05")
-    izq.plot(lento, label="lr = 0.005")
-    izq.set_xlabel("paso")
-    izq.set_ylabel("perdida (MSE)")
-    izq.set_title("Entrenamiento con un motor de autodiff escrito a mano")
-    izq.grid(alpha=0.3)
-    izq.legend()
+    left.plot(fast, label="lr = 0.05")
+    left.plot(slow, label="lr = 0.005")
+    left.set_xlabel("step")
+    left.set_ylabel("loss (MSE)")
+    left.set_title("Training with a hand-written autodiff engine")
+    left.grid(alpha=0.3)
+    left.legend()
 
-    der.plot(rapido, label="lr = 0.05")
-    der.plot(lento, label="lr = 0.005")
-    der.set_yscale("log")
-    der.set_xlabel("paso")
-    der.set_ylabel("perdida (escala log)")
-    der.set_title("La misma curva en log: se ve la convergencia")
-    der.grid(alpha=0.3)
-    der.legend()
+    right.plot(fast, label="lr = 0.05")
+    right.plot(slow, label="lr = 0.005")
+    right.set_yscale("log")
+    right.set_xlabel("step")
+    right.set_ylabel("loss (log scale)")
+    right.set_title("The same curve in log: the convergence shows")
+    right.grid(alpha=0.3)
+    right.legend()
 
     fig.tight_layout()
-    destino = figures_dir() / "02_autograd.png"
-    fig.savefig(destino, dpi=120)
+    target = figures_dir() / "02_autograd.png"
+    fig.savefig(target, dpi=120)
     plt.close(fig)
-    console.print(f"\n[green]figura guardada en {destino}[/green]")
+    console.print(f"\n[green]figure saved to {target}[/green]")
 
 
 if __name__ == "__main__":

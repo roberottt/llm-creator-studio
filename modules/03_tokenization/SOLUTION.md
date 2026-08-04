@@ -1,6 +1,6 @@
-# 03 — Solución comentada
+# 03 — Annotated solution
 
-## Ejercicio 1 — `get_stats`
+## Exercise 1 — `get_stats`
 
 ```python
 counts = {} if counts is None else counts
@@ -9,21 +9,19 @@ for pair in zip(ids, ids[1:]):
 return counts
 ```
 
-`zip(ids, ids[1:])` produce todos los pares de vecinos: `(ids[0],ids[1])`, `(ids[1],ids[2])`…
-Es la forma idiomática y evita el `range(len(ids)-1)` con índices a mano.
+`zip(ids, ids[1:])` produces every pair of neighbours: `(ids[0],ids[1])`, `(ids[1],ids[2])`…
+It is the idiomatic form and it avoids the `range(len(ids)-1)` with hand-managed indices.
 
-**El `counts` mutable como parámetro** es lo que permite a `train_bpe` acumular las
-estadísticas de todos los chunks sin concatenarlos. Y devolverlo, además de mutarlo, hace
-que la función sirva para los dos usos: `stats = get_stats(ids)` y
-`get_stats(chunk, stats)`.
+**The mutable `counts` parameter** is what lets `train_bpe` accumulate statistics over all
+the chunks without concatenating them. And returning it as well as mutating it makes the
+function work for both uses: `stats = get_stats(ids)` and `get_stats(chunk, stats)`.
 
-Si te preocupa que un argumento mutable por defecto sea peligroso: aquí el valor por
-defecto es `None`, no `{}`. Esa distinción importa — un `{}` como valor por defecto se
-crearía **una sola vez** al definir la función y se compartiría entre todas las llamadas,
-que es el clásico bug de Python. Con `None` y la comprobación dentro, cada llamada tiene
-su diccionario.
+If a mutable default argument worries you: here the default value is `None`, not `{}`. That
+distinction matters — a `{}` as a default value would be created **once** when the function
+is defined and shared across every call, which is the classic Python bug. With `None` and
+the check inside, each call gets its own dictionary.
 
-## Ejercicio 2 — `merge`
+## Exercise 2 — `merge`
 
 ```python
 out, i, n = [], 0, len(ids)
@@ -37,19 +35,19 @@ while i < n:
 return out
 ```
 
-**El `while` con índice manual no es opcional.** Un `for` avanza de uno en uno siempre, y
-aquí necesitas saltar dos posiciones cuando hay coincidencia. Esa es exactamente la
-diferencia entre contar pares (que sí solapan) y fusionarlos (que no).
+**The `while` with a manual index is not optional.** A `for` always advances by one, and
+here you need to skip two positions on a match. That is exactly the difference between
+counting pairs (which do overlap) and merging them (which do not).
 
-Compruébalo con `[1,1,1]`:
-- Contar: `(1,1)` sale **2** veces (posiciones 0-1 y 1-2).
-- Fusionar: sale **una** sustitución → `[256, 1]`. Al consumir las posiciones 0 y 1, el
-  `1` que queda en la posición 2 ya no tiene con quién emparejarse.
+Check it with `[1,1,1]`:
+- Counting: `(1,1)` comes up **twice** (positions 0-1 and 1-2).
+- Merging: there is **one** substitution → `[256, 1]`. Having consumed positions 0 and 1,
+  the `1` left at position 2 has nobody to pair with.
 
-**El `i < n - 1`** evita mirar `ids[i+1]` cuando estás en el último elemento. Sin él, un
-`IndexError` en cuanto la lista acabe justo en el primer elemento del par.
+**The `i < n - 1`** stops you looking at `ids[i+1]` when you are on the last element.
+Without it, an `IndexError` as soon as the list ends right on the first element of the pair.
 
-## Ejercicio 3 — `train_bpe`
+## Exercise 3 — `train_bpe`
 
 ```python
 if vocab_size < 256:
@@ -63,7 +61,7 @@ merges, vocab = {}, {i: bytes([i]) for i in range(256)}
 for i in range(vocab_size - 256):
     stats = {}
     for chunk_ids in ids:
-        get_stats(chunk_ids, stats)      # acumula sobre el mismo dict
+        get_stats(chunk_ids, stats)      # accumulates into the same dict
     if not stats:
         break
 
@@ -77,40 +75,39 @@ for i in range(vocab_size - 256):
 return merges, vocab
 ```
 
-**El `break` cuando no quedan pares.** Si pides 4096 merges sobre un texto de 20 caracteres,
-en algún momento cada chunk queda reducido a un único token y no hay pares que contar. Sin
-el `break`, `max()` sobre un diccionario vacío lanza `ValueError`. El test
-`test_para_si_se_queda_sin_pares_que_fusionar` cubre este caso, y no es teórico: pasa en
-cuanto experimentas con textos cortos.
+**The `break` when there are no pairs left.** If you ask for 4096 merges over a 20-character
+text, at some point each chunk is reduced to a single token and there are no pairs to count.
+Without the `break`, `max()` over an empty dictionary raises `ValueError`. The test
+`test_it_stops_if_it_runs_out_of_pairs_to_merge` covers this case, and it is not
+theoretical: it happens as soon as you experiment with short texts.
 
-**El desempate `(stats[p], p)`.** Python compara tuplas elemento a elemento: primero la
-frecuencia y, si empata, el par. Cuál gane da igual para la calidad del tokenizador, pero
-tiene que ser **determinista y el mismo que la referencia**. Si dejaras `max(stats,
-key=stats.get)`, el ganador dependería del orden de inserción del diccionario, que a su vez
-depende del orden en que recorriste los chunks. Funcionaría, pero cualquier cambio
-inofensivo rompería la reproducibilidad.
+**The tie-break `(stats[p], p)`.** Python compares tuples element by element: frequency
+first and, on a tie, the pair. Which one wins makes no difference to the tokenizer's
+quality, but it has to be **deterministic and the same as the reference's**. If you left
+`max(stats, key=stats.get)`, the winner would depend on the dictionary's insertion order,
+which in turn depends on the order you walked the chunks in. It would work, but any harmless
+change would break reproducibility.
 
-**`vocab[new_id] = vocab[a] + vocab[b]`** es concatenación de `bytes`, no de `str`. Por eso
-el vocabulario se construye a la vez que los merges: cada token nuevo se define en términos
-de los dos que lo forman, y de forma recursiva acaba siendo una secuencia de bytes concreta.
+**`vocab[new_id] = vocab[a] + vocab[b]`** is concatenation of `bytes`, not of `str`. That is
+why the vocabulary is built alongside the merges: each new token is defined in terms of the
+two that form it, and recursively it ends up being a concrete byte sequence.
 
-**El filtro `if chunk`** descarta los trozos vacíos que la regex puede producir. Un chunk
-vacío da una lista vacía que no aporta nada pero se recorre en cada uno de los miles de
-merges.
+**The `if chunk` filter** discards the empty pieces the regex can produce. An empty chunk
+gives an empty list that contributes nothing but gets walked on every one of the thousands
+of merges.
 
-### Sobre el rendimiento
+### About performance
 
-Esta implementación es $O(\text{merges} \times \text{longitud del texto})$: en cada merge
-recorre el corpus entero dos veces. Para 4096 merges sobre 2 GB serían días.
+This implementation is $O(\text{merges} \times \text{text length})$: on every merge it walks
+the whole corpus twice. For 4096 merges over 2 GB that would be days.
 
-Es una decisión consciente: el código está escrito para entenderse. Las implementaciones
-serias mantienen índices incrementales de dónde aparece cada par y solo actualizan lo que
-cambia. Por eso el módulo 04 entrena los merges sobre una **muestra** (~150 MB) y luego
-codifica el corpus completo con multiprocessing. Entrenar sobre una muestra apenas cambia
-los merges resultantes: las frecuencias relativas de los pares se estabilizan mucho antes
-de haber visto todo el texto.
+It is a conscious decision: the code is written to be understood. Serious implementations
+keep incremental indices of where each pair appears and only update what changes. That is
+why module 04 trains the merges on a **sample** (~150 MB) and then encodes the full corpus
+with multiprocessing. Training on a sample barely changes the resulting merges: the relative
+frequencies of the pairs stabilize long before you have seen all the text.
 
-## Ejercicio 4 — `bpe_encode`
+## Exercise 4 — `bpe_encode`
 
 ```python
 def _encode_chunk(ids, merges):
@@ -123,51 +120,49 @@ def _encode_chunk(ids, merges):
     return ids
 ```
 
-**El `min` con `float("inf")`** es el corazón del ejercicio. Los ids de merge son
-`256, 257, 258…` en orden de aprendizaje, así que "el id más bajo" equivale a "el que se
-aprendió antes". A los pares que no están en `merges` se les asigna infinito, de modo que
-nunca ganan el mínimo.
+**The `min` with `float("inf")`** is the heart of the exercise. The merge ids are
+`256, 257, 258…` in learning order, so "the lowest id" is equivalent to "the one learned
+first". Pairs that are not in `merges` are assigned infinity, so they never win the minimum.
 
-Si el ganador resulta no estar en `merges`, significa que **ninguno** de los pares
-presentes es fusionable, y hay que parar.
+If the winner turns out not to be in `merges`, that means **none** of the present pairs is
+mergeable, and it is time to stop.
 
-**Por qué el orden importa tanto.** Es la parte que más cuesta ver. El tokenizador no es
-"parte el texto en los trozos más largos posibles": es "reproduce exactamente el proceso de
-entrenamiento". Dos tokenizaciones distintas del mismo texto pueden ser ambas válidas como
-secuencias de ids, pero solo una es la que el modelo vio millones de veces al entrenar. La
-otra le resulta tan extraña como texto en otro idioma.
+**Why the order matters so much.** It is the hardest part to see. The tokenizer is not
+"split the text into the longest possible pieces": it is "reproduce the training process
+exactly". Two different tokenizations of the same text can both be valid as sequences of
+ids, but only one is the one the model saw millions of times during training. The other one
+looks as foreign to it as text in another language.
 
-Hay una consecuencia que sorprende y que el test recoge: con merges `(a,a)→256` y
-`(256,a)→257`, la cadena `"aaaa"` da `[256, 256]` y no `[257, a]`. El primer merge se
-aplica **a toda la secuencia de golpe** y se lleva las cuatro `a` de dos en dos, así que el
-par `(256, a)` nunca llega a formarse. Con tres `a` sí sale `[257]`. No es un bug: es cómo
-funciona BPE, y lo mismo pasa en tiktoken.
+There is a surprising consequence that the test captures: with merges `(a,a)→256` and
+`(256,a)→257`, the string `"aaaa"` gives `[256, 256]` and not `[257, a]`. The first merge is
+applied **to the whole sequence at once** and takes the four `a`s two at a time, so the pair
+`(256, a)` never gets to form. With three `a`s you do get `[257]`. It is not a bug: it is
+how BPE works, and the same happens in tiktoken.
 
-## Ejercicio 5 — `bpe_decode`
+## Exercise 5 — `bpe_decode`
 
 ```python
 raw = b"".join(vocab[i] for i in ids)
 return raw.decode("utf-8", errors="replace")
 ```
 
-Dos líneas, y las dos tienen su motivo.
+Two lines, and both have their reason.
 
-**Juntar antes de decodificar.** UTF-8 codifica los caracteres no-ASCII en varios bytes: la
-`ñ` es `0xC3 0xB1`. A BPE eso le da completamente igual — trabaja con bytes y no sabe nada
-de caracteres — así que puede haber aprendido un token que termina en `0xC3` y otro que
-empieza por `0xB1`. Decodificados por separado, ninguno de los dos es válido; juntos, son
-una `ñ`. El test `test_decodificar_junta_los_bytes_antes_de_decodificar` construye
-exactamente ese caso.
+**Joining before decoding.** UTF-8 encodes non-ASCII characters in several bytes: `ñ` is
+`0xC3 0xB1`. BPE does not care at all — it works with bytes and knows nothing about
+characters — so it may have learned a token ending in `0xC3` and another starting with
+`0xB1`. Decoded separately, neither is valid; together, they are an `ñ`. The test
+`test_decoding_joins_the_bytes_before_decoding` builds exactly that case.
 
-**`errors="replace"`, el bytes fallback.** Un modelo recién inicializado genera ids al azar,
-y muchas de esas secuencias no forman UTF-8 válido. Sin el `errors="replace"`, una
-`UnicodeDecodeError` tumbaría el bucle de generación entero. Con él sale un `�` y la
-generación continúa. Cuando en el módulo 14 veas caracteres raros en las primeras muestras,
-ya sabes qué son.
+**`errors="replace"`, the bytes fallback.** A freshly initialized model generates random
+ids, and many of those sequences do not form valid UTF-8. Without the `errors="replace"`, a
+`UnicodeDecodeError` would take down the whole generation loop. With it you get a `�` and
+generation continues. When you see odd characters in the first samples in module 14, now you
+know what they are.
 
-## Lo que deberías ver en la demo
+## What you should see in the demo
 
-La misma frase, tokenizada con vocabularios crecientes:
+The same sentence, tokenized with growing vocabularies:
 
 ```
 vocab 300  -> 35 tokens:  T | h | e  | k | ing |   | s | ha | ll  | ...
@@ -175,198 +170,8 @@ vocab 1024 -> 20 tokens:  The  | k | ing |  shall  | speak |   | to  | ...
 tiktoken   -> 10 tokens:  The |  king |  shall |  speak |  to |  his | ...
 ```
 
-Y el detalle que más dice: fíjate en que los tokens de tiktoken **empiezan por espacio**
-(`" king"`, `" shall"`). No es casualidad, es el pre-tokenizador: el patrón asigna el
-espacio previo a la palabra que viene, de forma que `"king"` a principio de frase y
-`" king"` en medio son tokens distintos. Es una de las razones por las que los LLM son
-sensibles a si tu prompt termina o no en espacio.
-
----
-
-## El código completo
-
-Si te has atascado, aquí está la implementación entera. **Cópiala, pégala y ejecuta los
-tests**: verlos pasar con código que entiendes es mejor que quedarte bloqueado.
-
-Y después vuelve al ejercicio y escríbela tú. Leer una solución que ya has peleado funciona
-muy bien; leerla en frío, no funciona nada.
-
-```python
-def _encode_chunk(ids: list[int], merges: Merges) -> list[int]:
-    while len(ids) >= 2:
-        stats = get_stats(ids)
-        # El par cuyo merge se aprendio antes (id mas bajo). `inf` para los que no existen.
-        pair = min(stats, key=lambda p: merges.get(p, float("inf")))
-        if pair not in merges:
-            break
-        ids = merge(ids, pair, merges[pair])
-    return ids
-
-
-def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
-    counts = {} if counts is None else counts
-    for pair in zip(ids, ids[1:]):
-        counts[pair] = counts.get(pair, 0) + 1
-    return counts
-
-
-def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
-    out: list[int] = []
-    i = 0
-    n = len(ids)
-    while i < n:
-        if i < n - 1 and ids[i] == pair[0] and ids[i + 1] == pair[1]:
-            out.append(new_id)
-            i += 2
-        else:
-            out.append(ids[i])
-            i += 1
-    return out
-
-
-def train_bpe(
-    text: str,
-    vocab_size: int,
-    pattern: str | None = None,
-    verbose: bool = False,
-) -> tuple[Merges, Vocab]:
-    if vocab_size < 256:
-        raise ValueError(f"vocab_size ({vocab_size}) no puede bajar de 256: son los bytes.")
-
-    chunks = [text] if pattern is None else regex.findall(pattern, text)
-    ids: list[list[int]] = [list(chunk.encode("utf-8")) for chunk in chunks if chunk]
-
-    merges: Merges = {}
-    vocab: Vocab = {i: bytes([i]) for i in range(256)}
-
-    for i in range(vocab_size - 256):
-        stats: dict[Pair, int] = {}
-        for chunk_ids in ids:
-            get_stats(chunk_ids, stats)
-        if not stats:
-            break  # ya no quedan pares que fusionar
-
-        pair = max(stats, key=lambda p: (stats[p], p))
-        new_id = 256 + i
-
-        ids = [merge(chunk_ids, pair, new_id) for chunk_ids in ids]
-        merges[pair] = new_id
-        vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]
-
-        if verbose:
-            print(f"merge {i + 1}/{vocab_size - 256}: {pair} -> {new_id} "
-                  f"({vocab[new_id]!r}) x{stats[pair]}")
-
-    return merges, vocab
-
-
-def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
-    chunks = [text] if pattern is None else regex.findall(pattern, text)
-    out: list[int] = []
-    for chunk in chunks:
-        out.extend(_encode_chunk(list(chunk.encode("utf-8")), merges))
-    return out
-
-
-def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
-    raw = b"".join(vocab[i] for i in ids)
-    return raw.decode("utf-8", errors="replace")
-```
-
-Los imports que hacen falta ya están en el `exercises.py` del módulo, salvo los que
-aparezcan arriba del bloque.
-
----
-
-## The complete code
-
-If you got stuck, here is the whole implementation. **Copy it, paste it and run the
-tests**: seeing them pass with code you understand beats staying blocked.
-
-And then go back to the exercise and write it yourself. Reading a solution you have already
-wrestled with works very well; reading it cold does not work at all.
-
-```python
-def _encode_chunk(ids: list[int], merges: Merges) -> list[int]:
-    while len(ids) >= 2:
-        stats = get_stats(ids)
-        # The pair whose merge was learned first (lowest id). `inf` for those that do not exist.
-        pair = min(stats, key=lambda p: merges.get(p, float("inf")))
-        if pair not in merges:
-            break
-        ids = merge(ids, pair, merges[pair])
-    return ids
-
-
-def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
-    counts = {} if counts is None else counts
-    for pair in zip(ids, ids[1:]):
-        counts[pair] = counts.get(pair, 0) + 1
-    return counts
-
-
-def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
-    out: list[int] = []
-    i = 0
-    n = len(ids)
-    while i < n:
-        if i < n - 1 and ids[i] == pair[0] and ids[i + 1] == pair[1]:
-            out.append(new_id)
-            i += 2
-        else:
-            out.append(ids[i])
-            i += 1
-    return out
-
-
-def train_bpe(
-    text: str,
-    vocab_size: int,
-    pattern: str | None = None,
-    verbose: bool = False,
-) -> tuple[Merges, Vocab]:
-    if vocab_size < 256:
-        raise ValueError(f"vocab_size ({vocab_size}) cannot go below 256: those are the bytes.")
-
-    chunks = [text] if pattern is None else regex.findall(pattern, text)
-    ids: list[list[int]] = [list(chunk.encode("utf-8")) for chunk in chunks if chunk]
-
-    merges: Merges = {}
-    vocab: Vocab = {i: bytes([i]) for i in range(256)}
-
-    for i in range(vocab_size - 256):
-        stats: dict[Pair, int] = {}
-        for chunk_ids in ids:
-            get_stats(chunk_ids, stats)
-        if not stats:
-            break  # there are no pairs left to merge
-
-        pair = max(stats, key=lambda p: (stats[p], p))
-        new_id = 256 + i
-
-        ids = [merge(chunk_ids, pair, new_id) for chunk_ids in ids]
-        merges[pair] = new_id
-        vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]
-
-        if verbose:
-            print(f"merge {i + 1}/{vocab_size - 256}: {pair} -> {new_id} "
-                  f"({vocab[new_id]!r}) x{stats[pair]}")
-
-    return merges, vocab
-
-
-def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
-    chunks = [text] if pattern is None else regex.findall(pattern, text)
-    out: list[int] = []
-    for chunk in chunks:
-        out.extend(_encode_chunk(list(chunk.encode("utf-8")), merges))
-    return out
-
-
-def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
-    raw = b"".join(vocab[i] for i in ids)
-    return raw.decode("utf-8", errors="replace")
-```
-
-The imports you need are already in the module's `exercises.py`, except for any that appear
-at the top of the block.
+And the most telling detail: note that tiktoken's tokens **start with a space** (`" king"`,
+`" shall"`). That is not an accident, it is the pre-tokenizer: the pattern assigns the
+preceding space to the word that follows, so that `"king"` at the start of a sentence and
+`" king"` in the middle are different tokens. It is one of the reasons LLMs are sensitive to
+whether or not your prompt ends with a space.

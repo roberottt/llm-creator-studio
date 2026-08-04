@@ -1,200 +1,198 @@
-# 03 — Tokenización y BPE
+# 03 — Tokenization and BPE
 
-## Por qué importa este módulo
+## Why this module matters
 
-**Porque una red neuronal no sabe leer.**
+**Because a neural network cannot read.**
 
-Sólo hace cuentas con números, así que el texto hay que convertirlo en una lista de enteros
-antes de que el modelo lo vea. Y cómo lo trocees no es un detalle de fontanería: decide
-cuántos parámetros tendrá tu modelo, cuánto texto le cabe en la ventana, y qué cosas le
-saldrán raras.
+It only does arithmetic with numbers, so text has to be turned into a list of integers
+before the model sees it. And how you chop it up is not a plumbing detail: it decides how
+many parameters your model will have, how much text fits in its window, and what it will get
+strangely wrong.
 
-Aquí construyes el tokenizador que usa el modelo final: BPE desde cero, con un vocabulario
-de 4096 tokens entrenado sobre el corpus. No es una librería que llamas: son 60 líneas que
-escribes tú.
+Here you build the tokenizer the final model uses: BPE from scratch, with a 4096-token
+vocabulary trained on the corpus. It is not a library you call: it is 60 lines you write.
 
-Y de paso entenderás por qué los LLM fallan contando las letras de una palabra, por qué se
-les da mal la aritmética, y por qué el español sale más caro que el inglés.
+And along the way you will understand why LLMs fail at counting the letters in a word, why
+they are bad at arithmetic, and why languages other than English come out more expensive.
 
-### Qué sabrás al terminar
+### What you will know by the end
 
-- Por qué no se usan ni caracteres ni palabras, sino trozos de palabra
-- Cómo BPE **aprende solo** qué trozos merecen ser un token, sin que nadie se lo diga
-- Por qué se trabaja con bytes y no con caracteres (spoiler: para que no exista el token
-  desconocido)
-- **Por qué 4096 y no 50.000**, con los números que lo justifican
+- Why neither characters nor words are used, but word fragments
+- How BPE **learns on its own** which fragments deserve to be a token, without anyone
+  telling it
+- Why we work with bytes and not characters (spoiler: so the unknown token cannot exist)
+- **Why 4096 and not 50,000**, with the numbers that justify it
 
-### Cuánto cuesta
+### What it costs
 
-4 horas. Es el módulo más largo de la Parte I, y el tokenizador que salga de aquí es el que
-usarás el resto del curso.
+4 hours. It is the longest module in Part I, and the tokenizer that comes out of it is the
+one you will use for the rest of the course.
 
 ---
 
-## El problema: una red no sabe leer
+## The problem: a network cannot read
 
-Una red neuronal solo hace cuentas con números. El texto hay que convertirlo en una lista
-de enteros antes de que el modelo lo vea, y **cómo lo trocees condiciona todo lo demás**:
-cuántos parámetros tendrá el modelo, cuánto texto le cabe en la ventana y qué cosas le
-saldrán raras.
+A neural network only does arithmetic with numbers. Text has to be turned into a list of
+integers before the model sees it, and **how you chop it up conditions everything else**:
+how many parameters the model will have, how much text fits in its window, and what it will
+get strangely wrong.
 
-La pregunta es: ¿cuál es la unidad? ¿Letras? ¿Palabras? ¿Algo intermedio?
+The question is: what is the unit? Letters? Words? Something in between?
 
-## Opción A: por caracteres
+## Option A: by characters
 
-Asignas un número a cada carácter distinto. Con Shakespeare salen 65 símbolos:
+You assign a number to each distinct character. With Shakespeare there are 65 symbols:
 
 ```
-"gato"  ->  [45, 34, macarrones...]   en realidad:  'g'=45, 'a'=34, 't'=58, 'o'=52
+"cat"  ->  'c'=36, 'a'=34, 't'=58
 ```
 
-**A favor:** el vocabulario es diminuto y nunca hay un carácter desconocido.
+**In favour:** the vocabulary is tiny and there is never an unknown character.
 
-**En contra:** las secuencias se vuelven larguísimas. Una historia de 200 palabras son unos
-1000 caracteres. Y aquí está el problema serio: el coste de la atención crece con el
-**cuadrado** de la longitud de la ventana (módulo 06). Doblar la longitud cuadruplica el
-coste. Trocear fino sale caro.
+**Against:** the sequences become extremely long. A 200-word story is about 1000 characters.
+And here is the serious problem: attention's cost grows with the **square** of the window
+length (module 06). Doubling the length quadruples the cost. Chopping finely is expensive.
 
-Además obligas al modelo a gastar capacidad en aprender a deletrear antes de poder aprender
-nada sobre el significado.
+You also force the model to spend capacity learning to spell before it can learn anything
+about meaning.
 
-## Opción B: por palabras
+## Option B: by words
 
-Una entrada por palabra del diccionario.
+One entry per dictionary word.
 
-**A favor:** secuencias cortas, y cada token ya significa algo.
+**In favour:** short sequences, and each token already means something.
 
-**En contra:** dos problemas gordos. El primero, el vocabulario se dispara: 50.000 palabras
-como mínimo para inglés, y muchas más para español con su conjugación. El segundo es peor:
-**¿qué haces con una palabra que no está?** Nombres propios, erratas, palabras nuevas. La
-respuesta clásica era un token `<UNK>` que destruye información sin remedio.
+**Against:** two big problems. First, the vocabulary explodes: 50,000 words minimum for
+English, and many more for languages with rich inflection. The second is worse: **what do
+you do with a word that is not there?** Proper nouns, typos, new words. The classic answer
+was an `<UNK>` token that destroys information irrecoverably.
 
-## Opción C: trozos de palabra, aprendidos de los datos
+## Option C: word fragments, learned from the data
 
-La idea de **BPE** (*Byte Pair Encoding*): que las palabras frecuentes sean un solo token y
-las raras se partan en piezas. Ni caracteres ni palabras: lo que los datos digan.
+The idea behind **BPE** (*Byte Pair Encoding*): let frequent words be a single token and
+rare ones be split into pieces. Neither characters nor words: whatever the data says.
 
-El algoritmo es sorprendentemente simple. Empiezas con las unidades más pequeñas posibles y
-vas **fusionando el par que más se repite**, una y otra vez.
+The algorithm is surprisingly simple. You start with the smallest possible units and keep
+**merging the most repeated pair**, over and over.
 
-### El ejemplo, paso a paso
+### The example, step by step
 
-Texto: `aaabdaaabac`. Empezamos con los bytes (`a`=97, `b`=98, `c`=99, `d`=100):
+Text: `aaabdaaabac`. We start with the bytes (`a`=97, `b`=98, `c`=99, `d`=100):
 
 ```
 [97, 97, 97, 98, 100, 97, 97, 97, 98, 97, 99]
 ```
 
-**Paso 1.** Contamos cada par de vecinos:
+**Step 1.** We count each pair of neighbours:
 
 ```
-(a,a) -> 4 veces      (b,d) -> 1
+(a,a) -> 4 times      (b,d) -> 1
 (a,b) -> 2            (d,a) -> 1
                       (b,a) -> 1     (a,c) -> 1
 ```
 
-Gana `(a,a)`. Le damos el número 256 (los del 0 al 255 ya están cogidos por los bytes) y
-sustituimos, de izquierda a derecha y sin solapar:
+`(a,a)` wins. We give it the number 256 (0 to 255 are already taken by the bytes) and
+substitute, left to right and without overlapping:
 
 ```
 aaabdaaabac  ->  [256] a b d [256] a b a c
 ```
 
-**Paso 2.** Volvemos a contar sobre el resultado. Ahora `(256, a)` sale 2 veces y `(a, b)`
-también 2. Empate, que se resuelve con una regla fija (aquí gana el par mayor). Sale
-`(256, a)`, que pasa a ser el 257 y representa `"aaa"`:
+**Step 2.** We count again over the result. Now `(256, a)` comes up twice and `(a, b)` twice
+too. A tie, resolved by a fixed rule (here the greater pair wins). `(256, a)` comes out, and
+it becomes 257, representing `"aaa"`:
 
 ```
 [257] b d [257] b a c   ->   [257, 98, 100, 257, 98, 97, 99]
 ```
 
-De 11 números hemos pasado a 7, y hemos aprendido dos "palabras" que nadie nos dijo:
-`"aa"` y `"aaa"`. Con un texto de verdad y 4096 merges, lo que aprende son cosas como
-`" the"`, `"ing"` o `" que"`.
+We have gone from 11 numbers to 7, and we have learned two "words" nobody told us about:
+`"aa"` and `"aaa"`. With real text and 4096 merges, what it learns are things like `" the"`,
+`"ing"` or `" that"`.
 
-### Codificar y decodificar
+### Encoding and decoding
 
-Para **codificar** texto nuevo, aplicas los merges aprendidos **en el orden en que se
-aprendieron**. Ese detalle importa: si los aplicas en otro orden sale una tokenización
-distinta, válida pero incompatible con la que vio el modelo al entrenar.
+To **encode** new text, you apply the learned merges **in the order they were learned**.
+That detail matters: if you apply them in another order you get a different tokenization,
+valid but incompatible with the one the model saw during training.
 
-Para **decodificar**, concatenas los bytes de cada token y decodificas al final. No token a
-token: un token puede cortar un carácter multibyte por la mitad (una `ñ` son dos bytes y
-BPE no sabe nada de eso), así que decodificar por separado fallaría.
+To **decode**, you concatenate each token's bytes and decode at the end. Not token by token:
+a token can cut a multi-byte character in half (an `ñ` is two bytes and BPE knows nothing
+about that), so decoding separately would fail.
 
-## Por qué bytes y no caracteres
+## Why bytes and not characters
 
-Empezar por los 256 bytes en lugar de por los caracteres Unicode tiene una consecuencia
-enorme: **no existe el texto no codificable**. Cualquier cosa —emoji, chino, un binario mal
-pegado— es una secuencia de bytes, y los 256 bytes están todos en el vocabulario. El token
-`<UNK>` desaparece del problema.
+Starting from the 256 bytes instead of from Unicode characters has an enormous consequence:
+**there is no such thing as unencodable text**. Anything — an emoji, Chinese, a badly pasted
+binary — is a sequence of bytes, and all 256 bytes are in the vocabulary. The `<UNK>` token
+disappears from the problem.
 
-Al decodificar sí puede pasar que salga una secuencia de bytes que no es UTF-8 válido (un
-modelo a medio entrenar los produce constantemente). Para eso está
-`errors="replace"`: sale un `�` en vez de una excepción que tumbe la generación.
+When decoding it can still happen that a byte sequence is not valid UTF-8 (a half-trained
+model produces them constantly). That is what `errors="replace"` is for: you get a `�`
+instead of an exception that takes generation down.
 
-## El pre-tokenizador: por qué no se cuenta sobre el texto entero
+## The pre-tokenizer: why we do not count over the whole text
 
-Si dejas a BPE contar libremente sobre todo el texto, aprende tokens como `"perro."` o
-`" el gato"`, que mezclan puntuación y palabras y desperdician vocabulario en
-combinaciones que no significan nada.
+If you let BPE count freely over all the text, it learns tokens like `"dog."` or `" the
+cat"`, which mix punctuation and words and waste vocabulary on combinations that mean
+nothing.
 
-La solución es partir el texto antes con una expresión regular, y **contar los pares solo
-dentro de cada trozo**, nunca a través de las fronteras. El patrón que usamos es el de
-GPT-4: separa palabras, números (en grupos de 3 dígitos como máximo), signos de puntuación
-y espacios. Necesita el módulo `regex` y no el `re` de la biblioteca estándar, porque usa
-clases Unicode (`\p{L}` = "cualquier letra") y cuantificadores posesivos.
+The fix is to split the text first with a regular expression, and **count pairs only within
+each chunk**, never across the boundaries. The pattern we use is GPT-4's: it separates
+words, numbers (in groups of at most 3 digits), punctuation and whitespace. It needs the
+`regex` module rather than the standard library's `re`, because it uses Unicode classes
+(`\p{L}` = "any letter") and possessive quantifiers.
 
-## Por qué 4096 y no 50.000
+## Why 4096 and not 50,000
 
-Aquí es donde el tokenizador se convierte en una decisión de arquitectura. La tabla de
-embeddings tiene `vocab_size × d_model` parámetros. Con nuestro modelo:
+This is where the tokenizer becomes an architecture decision. The embedding table has
+`vocab_size × d_model` parameters. With our model:
 
-| vocabulario | parámetros en embeddings | % del modelo |
+| vocabulary | parameters in embeddings | % of the model |
 |---|---|---|
-| 4.096 | 4096 × 320 = **1,31 M** | 15% de 8,9M |
-| 32.000 | 32000 × 320 = **10,2 M** | más que todo el resto del modelo |
-| 50.257 (GPT-2) | 50257 × 320 = **16,1 M** | el modelo sería casi solo embeddings |
+| 4,096 | 4096 × 320 = **1.31 M** | 15% of 8.9M |
+| 32,000 | 32000 × 320 = **10.2 M** | more than the whole rest of the model |
+| 50,257 (GPT-2) | 50257 × 320 = **16.1 M** | the model would be almost only embeddings |
 
-Con un modelo pequeño, un vocabulario grande es un desastre: te gastas los parámetros en
-una tabla de consulta en vez de en las capas que razonan. Y encima cada fila se vería poquísimas
-veces durante el entrenamiento, así que aprendería mal.
+With a small model, a large vocabulary is a disaster: you spend your parameters on a lookup
+table instead of on the layers that reason. And on top of that each row would be seen very
+few times during training, so it would learn badly.
 
-El precio es la **compresión**. Medida sobre Shakespeare, con nuestro código:
+The price is **compression**. Measured on Shakespeare, with our code:
 
-| vocabulario | bytes por token |
+| vocabulary | bytes per token |
 |---|---|
-| 300 | 1,42 |
-| 512 | 2,05 |
-| 1.024 | 2,74 |
+| 300 | 1.42 |
+| 512 | 2.05 |
+| 1,024 | 2.74 |
 
-Cuanto más pequeño el vocabulario, más tokens necesitas para el mismo texto, y por tanto
-más pasos de entrenamiento y menos texto real cabe en la ventana de 512. Es un intercambio
-directo: **parámetros en la tabla contra longitud de las secuencias**. Con 9M de parámetros,
-4096 es un punto razonable; no es la única respuesta defendible.
+The smaller the vocabulary, the more tokens you need for the same text, and therefore more
+training steps and less real text fits in the 512-token window. It is a direct trade:
+**parameters in the table against sequence length**. With 9M parameters, 4096 is a
+reasonable point; it is not the only defensible answer.
 
-Un aviso práctico que verás en el módulo 04: como TinyStories tokenizado con 4096 comprime
-peor que con los 50k de GPT-2, el corpus dará bastantes más tokens de los ~470M que se
-citan habitualmente. Ese número se mide, no se supone.
+A practical warning you will see in module 04: since TinyStories tokenized with 4096
+compresses worse than with GPT-2's 50k, the corpus will yield considerably more tokens than
+the ~470M usually quoted. That number gets measured, not assumed.
 
-## Dónde está el debate
+## Where the debate is
 
-La tokenización es probablemente la parte más fea de los LLM modernos, y hay bastante gente
-que piensa que debería desaparecer.
+Tokenization is probably the ugliest part of modern LLMs, and quite a few people think it
+should go away.
 
-Muchas rarezas conocidas salen de aquí. Que los modelos fallen contando letras de una
-palabra: no ven letras, ven trozos. Que la aritmética se les dé mal: `327` puede ser un
-token y `328` tres. Que los idiomas distintos del inglés cuesten más caros: el mismo texto
-necesita más tokens, y a igualdad de ventana cabe menos.
+Many well-known oddities come from here. That models fail at counting the letters in a word:
+they do not see letters, they see fragments. That they are bad at arithmetic: `327` may be
+one token and `328` three. That languages other than English are more expensive: the same
+text needs more tokens, and at equal window size less of it fits.
 
-Hay líneas de investigación activas hacia modelos que trabajen directamente sobre bytes,
-sin tokenizador. Todavía no han desplazado a BPE, entre otras cosas por el coste cuadrático
-de la atención sobre secuencias tan largas. Es un problema abierto de verdad.
+There are active lines of research towards models that work directly over bytes, with no
+tokenizer. They have not displaced BPE yet, partly because of attention's quadratic cost
+over such long sequences. It is a genuinely open problem.
 
 ---
 
-**Para ampliar:** Sennrich et al. 2016,
+**Further reading:** Sennrich et al. 2016,
 [Neural Machine Translation of Rare Words with Subword Units](https://arxiv.org/abs/1508.07909)
-(el paper que trajo BPE al lenguaje) · Karpathy,
-[minbpe](https://github.com/karpathy/minbpe) y su vídeo, muy recomendable después de hacer
-los ejercicios. Términos sueltos, en [GLOSSARY.md](../../GLOSSARY.md).
+(the paper that brought BPE to language) · Karpathy,
+[minbpe](https://github.com/karpathy/minbpe) and his video, very much worth watching after
+doing the exercises. Stray terms are in [GLOSSARY.md](../../GLOSSARY.md).

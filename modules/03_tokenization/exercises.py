@@ -1,42 +1,42 @@
-"""Modulo 03 - Tokenizacion y BPE.
+"""Module 03 - Tokenization and BPE.
 
-CÓMO SE HACE ESTE MÓDULO
-========================
+HOW TO DO THIS MODULE
+=====================
 
-Lee `THEORY.md` -> implementa en orden -> `llmfs check 03` -> `llmfs hint 03 -e N`
--> `SOLUTION.md` tiene el codigo completo.
+Read `THEORY.md` -> implement in order -> `llmfs check 03` -> `llmfs hint 03 -e N`
+-> `SOLUTION.md` has the complete code.
 
-El ejemplo de "aaabdaaabac" del THEORY.md, hecho paso a paso a mano, es EXACTAMENTE lo que
-vas a programar. Tenlo delante.
+The "aaabdaaabac" example from THEORY.md, worked through by hand, is EXACTLY what you are
+going to program. Keep it in front of you.
 
-QUÉ VAS A CONSTRUIR
-===================
+WHAT YOU ARE GOING TO BUILD
+===========================
 
-El tokenizador del modelo final. Cinco funciones que encajan asi:
+The final model's tokenizer. Five functions that fit together like this:
 
-    get_stats    (ej. 1)  contar que pares de vecinos se repiten mas
-    merge        (ej. 2)  sustituir un par por un token nuevo
+    get_stats    (ex. 1)  count which pairs of neighbours repeat most
+    merge        (ex. 2)  replace a pair with a new token
         |
-        +--> train_bpe   (ej. 3)  repetir 1 y 2 hasta tener 4096 tokens
+        +--> train_bpe   (ex. 3)  repeat 1 and 2 until there are 4096 tokens
                  |
-                 +--> bpe_encode  (ej. 4)  texto -> ids
-                 +--> bpe_decode  (ej. 5)  ids -> texto
+                 +--> bpe_encode  (ex. 4)  text -> ids
+                 +--> bpe_decode  (ex. 5)  ids -> text
 
-Los dos primeros son cortos y mecanicos. El tercero es el central. Los dos ultimos usan lo
-que aprendio el tercero.
+The first two are short and mechanical. The third is the central one. The last two use what
+the third learned.
 
-VOCABULARIO QUE VAS A NECESITAR
-===============================
+VOCABULARY YOU ARE GOING TO NEED
+================================
 
-- **token**: la unidad de texto que maneja el modelo. Con BPE, un trozo de palabra.
-- **vocabulario**: cuantos tokens distintos existen. El nuestro tendra 4096.
-- **merge**: fusionar dos tokens adyacentes en uno nuevo. Es la operacion de BPE.
-- **pre-tokenizador**: la expresion regular que trocea el texto ANTES de contar pares, para
-  que ningun merge cruce de una palabra a la siguiente.
-- **bytes fallback**: trabajar sobre bytes (0-255) en vez de caracteres, para que no exista
-  el "caracter desconocido".
+- **token**: the unit of text the model handles. With BPE, a word fragment.
+- **vocabulary**: how many distinct tokens exist. Ours will have 4096.
+- **merge**: fusing two adjacent tokens into a new one. It is BPE's operation.
+- **pre-tokenizer**: the regular expression that splits the text BEFORE counting pairs, so
+  no merge crosses from one word to the next.
+- **bytes fallback**: working over bytes (0-255) instead of characters, so the "unknown
+  character" cannot exist.
 
-    llmfs demo 03     entrena vocabularios de varios tamanyos y compara con tiktoken
+    llmfs demo 03     trains vocabularies of several sizes and compares against tiktoken
 """
 
 from __future__ import annotations
@@ -45,12 +45,12 @@ from typing import Iterable, Mapping, Sequence
 
 import regex
 
-# El patron de pre-tokenizacion de GPT-4. No hay que entenderlo entero: lo que hace es
-# partir el texto en palabras, numeros, signos y espacios, para que los merges no crucen
-# fronteras que no tienen sentido (ver THEORY.md).
+# GPT-4's pre-tokenization pattern. You do not have to understand all of it: what it does is
+# split the text into words, numbers, punctuation and whitespace, so merges do not cross
+# boundaries that make no sense (see THEORY.md).
 #
-#     regex.findall(GPT4_SPLIT_PATTERN, "Hola, mundo!")
-#     -> ['Hola', ',', ' mundo', '!']
+#     regex.findall(GPT4_SPLIT_PATTERN, "Hello, world!")
+#     -> ['Hello', ',', ' world', '!']
 from llmfs.reference import GPT4_SPLIT_PATTERN
 
 Pair = tuple[int, int]
@@ -59,111 +59,112 @@ Vocab = dict[int, bytes]
 
 
 def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
-    """Cuenta cuantas veces aparece cada par de numeros CONSECUTIVOS.
+    """Counts how many times each pair of CONSECUTIVE numbers appears.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Tres lineas.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Three lines.
 
-        1. Si `counts` es None, empieza con un diccionario vacio:
+        1. If `counts` is None, start with an empty dictionary:
 
                counts = {} if counts is None else counts
 
-        2. Recorre los pares de vecinos y suma uno a cada uno:
+        2. Walk the pairs of neighbours and add one to each:
 
                for pair in zip(ids, ids[1:]):
                    counts[pair] = counts.get(pair, 0) + 1
 
-        3. Devuelve `counts`.
+        3. Return `counts`.
 
-    `zip(ids, ids[1:])` produce todos los pares de vecinos —(ids[0],ids[1]), (ids[1],ids[2])…—
-    sin tener que manejar indices a mano.
+    `zip(ids, ids[1:])` produces every pair of neighbours — (ids[0],ids[1]),
+    (ids[1],ids[2])… — without handling indices by hand.
 
-    EJEMPLO PARA COMPROBAR
-    ----------------------
+    EXAMPLE TO CHECK AGAINST
+    ------------------------
         get_stats([97, 97, 97, 98])  ->  {(97, 97): 2, (97, 98): 1}
 
-    Fijate en que el par (97,97) sale DOS veces: en las posiciones 0-1 y en las 1-2. Al
-    CONTAR, los pares SE SOLAPAN. (Al FUSIONAR, en el ejercicio 2, no. Son cosas distintas y
-    conviene tenerlo claro desde ya.)
+    Note that the pair (97,97) comes up TWICE: at positions 0-1 and at 1-2. When COUNTING,
+    pairs DO overlap. (When MERGING, in exercise 2, they do not. They are different things
+    and it is worth being clear about that from the start.)
 
-    PARA QUÉ SIRVE EL PARÁMETRO `counts`
-    ------------------------------------
-    Para acumular sobre un diccionario que ya existe, sin tener que concatenar listas.
-    `train_bpe` lo necesita porque procesa el texto partido en trozos y quiere la suma de
-    todos, pero SIN contar los pares que cruzan de un trozo al siguiente:
+    WHAT THE `counts` PARAMETER IS FOR
+    ----------------------------------
+    To accumulate into a dictionary that already exists, without having to concatenate
+    lists. `train_bpe` needs it because it processes the text split into chunks and wants
+    the sum over all of them, but WITHOUT counting pairs that cross from one chunk to the
+    next:
 
         stats = {}
         for chunk in chunks:
-            get_stats(chunk, stats)     # va sumando sobre el mismo diccionario
+            get_stats(chunk, stats)     # keeps adding into the same dictionary
 
-    Devuelve el diccionario ademas de mutarlo: asi vale para los dos usos.
+    It returns the dictionary as well as mutating it: that way it works for both uses.
 
-    UN DETALLE DE PYTHON
-    --------------------
-    El valor por defecto es `None` y no `{}` a proposito. Un `{}` como valor por defecto se
-    crea UNA VEZ al definir la funcion y se comparte entre todas las llamadas: es el clasico
-    bug de los argumentos mutables.
+    A PYTHON DETAIL
+    ---------------
+    The default value is `None` and not `{}` on purpose. A `{}` as a default value is
+    created ONCE when the function is defined and shared across every call: the classic
+    mutable-argument bug.
 
     Args:
-        ids: la secuencia de numeros.
-        counts: diccionario donde acumular, o `None` para crear uno nuevo.
+        ids: the sequence of numbers.
+        counts: dictionary to accumulate into, or `None` to create a new one.
 
     Returns:
-        `{(a, b): veces}`. Es el mismo diccionario que se paso en `counts`, si se paso alguno.
+        `{(a, b): times}`. It is the same dictionary passed in as `counts`, if one was.
     """
-    raise NotImplementedError("TODO: modulo 03, ejercicio 1 - get_stats")
+    raise NotImplementedError("TODO: module 03, exercise 1 - get_stats")
 
 
 def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
-    """Sustituye cada aparicion de un par por un unico numero nuevo.
+    """Replaces every occurrence of a pair with a single new number.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Un `while` con un indice que controlas tu.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A `while` with an index you control yourself.
 
         out, i, n = [], 0, len(ids)
 
         while i < n:
             if i < n - 1 and ids[i] == pair[0] and ids[i+1] == pair[1]:
                 out.append(new_id)
-                i += 2                      # <- consume DOS posiciones
+                i += 2                      # <- consumes TWO positions
             else:
                 out.append(ids[i])
-                i += 1                      # <- consume UNA
+                i += 1                      # <- consumes ONE
 
         return out
 
-    POR QUÉ UN `while` Y NO UN `for`
-    --------------------------------
-    Un `for` avanza de uno en uno SIEMPRE. Aqui necesitas saltar dos posiciones cuando hay
-    coincidencia, y esa es exactamente la diferencia entre contar pares (que si solapan) y
-    fusionarlos (que no).
+    WHY A `while` AND NOT A `for`
+    -----------------------------
+    A `for` ALWAYS advances by one. Here you need to skip two positions on a match, and that
+    is exactly the difference between counting pairs (which do overlap) and merging them
+    (which do not).
 
-    Compruebalo con `[1, 1, 1]` fusionando `(1,1)`:
+    Check it with `[1, 1, 1]` merging `(1,1)`:
 
-        - encuentras el par en la posicion 0, lo sustituyes y SALTAS a la posicion 2
-        - en la 2 solo queda un 1 suelto, sin pareja
-        - resultado: [256, 1], NO [256, 256]
+        - you find the pair at position 0, replace it and SKIP to position 2
+        - at position 2 only a stray 1 is left, with no partner
+        - result: [256, 1], NOT [256, 256]
 
-    EJEMPLO PARA COMPROBAR
-    ----------------------
+    EXAMPLE TO CHECK AGAINST
+    ------------------------
         merge([97, 97, 97, 98, 97, 97], (97, 97), 256)  ->  [256, 97, 98, 256]
 
-    EL `i < n - 1`
-    --------------
-    Evita mirar `ids[i+1]` cuando estas en el ultimo elemento. Sin el, te llevas un
-    `IndexError` en cuanto la lista acabe justo en el primer elemento del par.
+    THE `i < n - 1`
+    ---------------
+    It stops you looking at `ids[i+1]` when you are on the last element. Without it you get
+    an `IndexError` as soon as the list ends right on the first element of the pair.
 
     Args:
-        ids: la secuencia original.
-        pair: el par a fusionar.
-        new_id: el numero que lo sustituye.
+        ids: the original sequence.
+        pair: the pair to merge.
+        new_id: the number that replaces it.
 
     Returns:
-        Una lista NUEVA. No modifiques `ids`.
+        A NEW list. Do not modify `ids`.
     """
-    raise NotImplementedError("TODO: modulo 03, ejercicio 2 - merge")
+    raise NotImplementedError("TODO: module 03, exercise 2 - merge")
 
 
 def train_bpe(
@@ -172,109 +173,108 @@ def train_bpe(
     pattern: str | None = None,
     verbose: bool = False,
 ) -> tuple[Merges, Vocab]:
-    """Entrena el tokenizador: aprende que pares fusionar y en que orden.
+    """Trains the tokenizer: learns which pairs to merge and in what order.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Es el ejemplo de "aaabdaaabac" del THEORY.md, en bucle. Seis pasos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    It is the "aaabdaaabac" example from THEORY.md, in a loop. Six steps.
 
-        1. Valida que `vocab_size >= 256` y lanza `ValueError` si no. (Son los bytes: no puede
-           haber un vocabulario mas pequenyo.)
+        1. Validate that `vocab_size >= 256` and raise `ValueError` if not. (Those are the
+           bytes: there cannot be a smaller vocabulary.)
 
-        2. Trocea el texto:
+        2. Split the text:
 
                chunks = [text] if pattern is None else regex.findall(pattern, text)
 
-        3. Pasa cada trozo a bytes y de ahi a enteros 0-255:
+        3. Turn each chunk into bytes and from there into integers 0-255:
 
                ids = [list(chunk.encode("utf-8")) for chunk in chunks if chunk]
 
-        4. Arranca las dos estructuras de salida:
+        4. Start the two output structures:
 
                merges = {}
                vocab = {i: bytes([i]) for i in range(256)}
 
-        5. Repite `vocab_size - 256` veces, con `i` como contador:
+        5. Repeat `vocab_size - 256` times, with `i` as the counter:
 
-             a. Cuenta los pares de TODOS los trozos sobre un mismo diccionario:
+             a. Count the pairs of ALL the chunks into one dictionary:
 
                     stats = {}
                     for chunk_ids in ids:
                         get_stats(chunk_ids, stats)
 
-             b. Si `stats` esta vacio, `break`. (Ya no quedan pares que fusionar.)
+             b. If `stats` is empty, `break`. (There are no pairs left to merge.)
 
-             c. Elige el ganador:
+             c. Pick the winner:
 
                     pair = max(stats, key=lambda p: (stats[p], p))
 
-             d. El id nuevo es `256 + i`.
+             d. The new id is `256 + i`.
 
-             e. Aplica el merge a cada trozo:
+             e. Apply the merge to each chunk:
 
                     ids = [merge(c, pair, new_id) for c in ids]
 
-             f. Apunta lo aprendido:
+             f. Record what was learned:
 
                     merges[pair] = new_id
                     vocab[new_id] = vocab[pair[0]] + vocab[pair[1]]     # bytes + bytes
 
-        6. Devuelve `(merges, vocab)`.
+        6. Return `(merges, vocab)`.
 
-    EL DESEMPATE DEL PASO 5c
+    THE TIE-BREAK IN STEP 5c
     ------------------------
-    `max(stats, key=lambda p: (stats[p], p))` compara TUPLAS: primero la frecuencia y, si
-    empata, el par. Python compara tuplas elemento a elemento, asi que eso hace exactamente lo
-    que quieres.
+    `max(stats, key=lambda p: (stats[p], p))` compares TUPLES: frequency first and, on a tie,
+    the pair. Python compares tuples element by element, so that does exactly what you want.
 
-    Cual gane un empate da igual para la calidad del tokenizador, pero tiene que ser
-    determinista y tiene que ser EL MISMO criterio que la referencia. Si usaras
-    `max(stats, key=stats.get)`, el ganador dependeria del orden de insercion del diccionario
-    y tus merges divergirian de los del test en cuanto hubiera un empate.
+    Which one wins a tie makes no difference to the tokenizer's quality, but it has to be
+    deterministic and it has to be THE SAME criterion as the reference. If you used
+    `max(stats, key=stats.get)`, the winner would depend on the dictionary's insertion order
+    and your merges would diverge from the test's as soon as there was a tie.
 
-    EL `break` DEL PASO 5b NO ES OPCIONAL
-    -------------------------------------
-    Si pides 4096 merges sobre un texto de 20 caracteres, llega un momento en que cada trozo
-    queda reducido a un solo token y no hay pares que contar. Sin el `break`, `max()` sobre un
-    diccionario vacio lanza `ValueError`. Hay un test que cubre ese caso.
+    THE `break` IN STEP 5b IS NOT OPTIONAL
+    --------------------------------------
+    If you ask for 4096 merges over a 20-character text, at some point every chunk is reduced
+    to a single token and there are no pairs to count. Without the `break`, `max()` over an
+    empty dictionary raises `ValueError`. There is a test that covers that case.
 
-    POR QUÉ SE CUENTA TROZO A TROZO
-    -------------------------------
-    Para que ningun merge pueda unir el final de una palabra con el principio de la siguiente.
-    Si concatenaras los trozos, BPE aprenderia tokens como "gato.El".
+    WHY WE COUNT CHUNK BY CHUNK
+    ---------------------------
+    So no merge can join the end of one word with the start of the next. If you concatenated
+    the chunks, BPE would learn tokens like "cat.The".
 
-    SOBRE EL RENDIMIENTO
-    --------------------
-    Esta implementacion recorre el corpus entero en cada merge. Para 4096 merges sobre 2 GB
-    serian dias. Es una decision consciente: el codigo esta escrito para entenderse. Por eso
-    el modulo 04 entrena los merges sobre una muestra y luego codifica el corpus completo.
+    ABOUT PERFORMANCE
+    -----------------
+    This implementation walks the whole corpus on every merge. For 4096 merges over 2 GB that
+    would be days. It is a conscious decision: the code is written to be understood. That is
+    why module 04 trains the merges on a sample and then encodes the full corpus.
 
     Args:
-        text: el texto de entrenamiento.
-        vocab_size: tamanyo final del vocabulario. >= 256.
-        pattern: expresion regular de pre-tokenizacion, o `None` para no trocear.
-        verbose: si `True`, imprime cada merge segun lo aprende.
+        text: the training text.
+        vocab_size: final vocabulary size. >= 256.
+        pattern: the pre-tokenization regular expression, or `None` for no splitting.
+        verbose: if `True`, prints each merge as it is learned.
 
     Returns:
         `(merges, vocab)`:
-          - `merges`: `{(a, b): id_nuevo}` en el ORDEN en que se aprendieron (los dicts de
-            python conservan el orden de insercion, asi que no hay que hacer nada especial).
-          - `vocab`: `{id: bytes}` con los 256 bytes iniciales mas uno por cada merge.
+          - `merges`: `{(a, b): new_id}` in the ORDER they were learned (python dicts
+            preserve insertion order, so nothing special is needed).
+          - `vocab`: `{id: bytes}` with the 256 initial bytes plus one per merge.
 
     Raises:
-        ValueError: si `vocab_size` es menor que 256.
+        ValueError: if `vocab_size` is less than 256.
     """
-    raise NotImplementedError("TODO: modulo 03, ejercicio 3 - train_bpe")
+    raise NotImplementedError("TODO: module 03, exercise 3 - train_bpe")
 
 
 def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
-    """Convierte texto en ids, aplicando los merges aprendidos.
+    """Turns text into ids, applying the learned merges.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Una funcion auxiliar que codifica UN trozo, y un bucle que la aplica a todos.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    A helper function that encodes ONE chunk, and a loop that applies it to all of them.
 
-    **La auxiliar** (puedes llamarla `_encode_chunk` y ponerla donde quieras del fichero):
+    **The helper** (you can call it `_encode_chunk` and put it anywhere in the file):
 
         def _encode_chunk(ids, merges):
             while len(ids) >= 2:
@@ -285,89 +285,92 @@ def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[in
                 ids = merge(ids, pair, merges[pair])
             return ids
 
-    **Y la funcion principal:**
+    **And the main function:**
 
-        1. Trocea el texto con el MISMO patron con el que entrenaste.
-        2. Para cada trozo: `list(chunk.encode("utf-8"))` y pasalo por `_encode_chunk`.
-        3. Concatena los ids de todos los trozos en una sola lista y devuelvela.
+        1. Split the text with the SAME pattern you trained with.
+        2. For each chunk: `list(chunk.encode("utf-8"))` and run it through `_encode_chunk`.
+        3. Concatenate the ids of every chunk into a single list and return it.
 
-    EL `min` CON `float("inf")` ES EL CORAZÓN DEL EJERCICIO
-    ------------------------------------------------------
-    Los ids de merge son 256, 257, 258... en ORDEN de aprendizaje. Asi que "el que se aprendio
-    antes" es lo mismo que "el que tiene el id mas bajo".
+    THE `min` WITH `float("inf")` IS THE HEART OF THE EXERCISE
+    ---------------------------------------------------------
+    The merge ids are 256, 257, 258... in the ORDER they were learned. So "the one learned
+    first" is the same as "the one with the lowest id".
 
-    `merges.get(p, float("inf"))` da infinito a los pares que no estan en `merges`, de forma
-    que nunca ganan el `min`. Y si el ganador resulta no estar en `merges`, significa que
-    NINGUNO de los pares presentes es fusionable: hay que parar.
+    `merges.get(p, float("inf"))` gives infinity to pairs that are not in `merges`, so they
+    never win the `min`. And if the winner turns out not to be in `merges`, that means NONE
+    of the present pairs is mergeable: it is time to stop.
 
-    POR QUÉ IMPORTA TANTO EL ORDEN
-    ------------------------------
-    El tokenizador no es "parte el texto en los trozos mas largos posibles": es "reproduce
-    exactamente el proceso de entrenamiento".
+    WHY THE ORDER MATTERS SO MUCH
+    -----------------------------
+    The tokenizer is not "split the text into the longest possible pieces": it is "reproduce
+    the training process exactly".
 
-    Dos tokenizaciones distintas del mismo texto pueden ser ambas validas como secuencias de
-    ids, pero solo una es la que el modelo vio millones de veces al entrenar. La otra le
-    resulta tan extranya como texto en otro idioma.
+    Two different tokenizations of the same text can both be valid as sequences of ids, but
+    only one is the one the model saw millions of times during training. The other one looks
+    as foreign to it as text in another language.
 
-    UNA CONSECUENCIA QUE SORPRENDE
-    ------------------------------
-    Con merges `(a,a)->256` y `(256,a)->257`, la cadena "aaaa" da `[256, 256]`, NO `[257, a]`.
+    A CONSEQUENCE THAT SURPRISES PEOPLE
+    -----------------------------------
+    With merges `(a,a)->256` and `(256,a)->257`, the string "aaaa" gives `[256, 256]`, NOT
+    `[257, a]`.
 
-    El primer merge se aplica a TODA la secuencia de golpe y se lleva las cuatro 'a' de dos en
-    dos, asi que el par `(256, a)` nunca llega a formarse. Con tres 'a' si sale `[257]`. No es
-    un bug: es como funciona BPE, y lo mismo pasa en tiktoken. Hay un test que lo documenta.
+    The first merge is applied to the WHOLE sequence at once and takes the four 'a's two at a
+    time, so the pair `(256, a)` never gets to form. With three 'a's you do get `[257]`. It
+    is not a bug: it is how BPE works, and the same happens in tiktoken. There is a test that
+    documents it.
 
     Args:
-        text: el texto a codificar.
-        merges: lo que devolvio `train_bpe`.
-        pattern: el MISMO patron que usaste al entrenar. Si entrenaste con patron y codificas
-            sin el (o al reves), los resultados no cuadran.
+        text: the text to encode.
+        merges: what `train_bpe` returned.
+        pattern: the SAME pattern you trained with. If you trained with a pattern and encode
+            without it (or the other way round), the results do not line up.
 
     Returns:
-        La lista de ids.
+        The list of ids.
     """
-    raise NotImplementedError("TODO: modulo 03, ejercicio 4 - bpe_encode")
+    raise NotImplementedError("TODO: module 03, exercise 4 - bpe_encode")
 
 
 def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
-    """Convierte una lista de ids de vuelta en texto.
+    """Turns a list of ids back into text.
 
-    QUÉ TIENES QUE ESCRIBIR
-    -----------------------
-    Dos lineas. Y el orden de esas dos lineas es todo el ejercicio.
+    WHAT YOU HAVE TO WRITE
+    ----------------------
+    Two lines. And the order of those two lines is the whole exercise.
 
         raw = b"".join(vocab[i] for i in ids)
         return raw.decode("utf-8", errors="replace")
 
-    PRIMERO JUNTAR, DESPUÉS DECODIFICAR
-    -----------------------------------
-    NO hagas esto:
+    JOIN FIRST, DECODE AFTERWARDS
+    -----------------------------
+    Do NOT do this:
 
-        "".join(vocab[i].decode("utf-8") for i in ids)      # MAL
+        "".join(vocab[i].decode("utf-8") for i in ids)      # WRONG
 
-    Motivo: UTF-8 codifica los caracteres no-ASCII en varios bytes. Una 'n' es un byte, pero
-    una 'ñ' son dos: 0xC3 0xB1.
+    Reason: UTF-8 encodes non-ASCII characters in several bytes. An 'n' is one byte, but an
+    'ñ' is two: 0xC3 0xB1.
 
-    A BPE eso le da completamente igual —trabaja con bytes y no sabe nada de caracteres— asi
-    que puede perfectamente haber aprendido un token que ACABA en 0xC3 y otro que EMPIEZA por
-    0xB1. Decodificados por separado, ninguno de los dos es UTF-8 valido. Juntos, son una 'ñ'.
+    BPE does not care at all — it works with bytes and knows nothing about characters — so it
+    may perfectly well have learned a token that ENDS in 0xC3 and another that STARTS with
+    0xB1. Decoded separately, neither is valid UTF-8. Together, they are an 'ñ'.
 
-    Hay un test que construye exactamente ese caso.
+    There is a test that builds exactly that case.
 
-    POR QUÉ `errors="replace"`
-    --------------------------
-    Es lo que se llama BYTES FALLBACK. Un modelo a medio entrenar genera secuencias de ids
-    cualesquiera, y muchas no forman UTF-8 valido. Con `errors="replace"` sale un caracter de
-    reemplazo donde no se pudo decodificar y la generacion continua; sin el, una excepcion
-    tumbaria el bucle de generacion entero por un byte suelto.
+    WHY `errors="replace"`
+    ----------------------
+    It is what is called the BYTES FALLBACK. A half-trained model generates arbitrary
+    sequences of ids, and many of them do not form valid UTF-8. With `errors="replace"` you
+    get a replacement character where decoding failed and generation continues; without it,
+    one exception would take down the whole generation loop over a stray byte.
 
-    Cuando en el modulo 14 veas caracteres raros en las primeras muestras, ya sabes que son.
+    When you see odd characters in the first samples in module 14, now you know what they
+    are.
 
     Args:
-        ids: los ids a decodificar.
-        vocab: lo que devolvio `train_bpe`.
+        ids: the ids to decode.
+        vocab: what `train_bpe` returned.
 
     Returns:
-        El texto.
+        The text.
     """
-    raise NotImplementedError("TODO: modulo 03, ejercicio 5 - bpe_decode")
+    raise NotImplementedError("TODO: module 03, exercise 5 - bpe_decode")
