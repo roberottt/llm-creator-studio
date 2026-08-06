@@ -130,6 +130,32 @@ steps.
 Before launching it, two things: the overfit on a batch (30 s) and `--max-steps 100` to see the
 real pace.
 
+## Training and generating text
+
+Two configs ship in `configs/`: `tiny_char` is a smoke test (Shakespeare, character-level,
+~70 s) that proves the pipeline works end to end; `tinystories_9m` is the course's actual
+model (8,933,440 parameters, BPE tokenizer, 500M tokens).
+
+```bash
+# smoke test: quick, no download needed (data/tinyshakespeare.txt ships in the repo)
+llmfs train --config tiny_char
+llmfs sample --config tiny_char --prompt "ROMEO:"
+
+# the real run
+llmfs train --config tinystories_9m    # first run: downloads TinyStories and trains the BPE
+                                        # tokenizer (needs network, one-off), then trains for
+                                        # ~10,172 steps over 500M tokens: see "Measured times"
+                                        # above for the ETA
+llmfs sample --config tinystories_9m --prompt "Once upon a time"
+```
+
+`train` writes checkpoints under `checkpoints/<config-name>/`, and `sample` reads
+`checkpoints/<config-name>/best.pt` by default — running `sample` before `train` fails on
+purpose, with a message telling you which config to train first. `train --resume` picks a run
+back up from its last checkpoint; `train --max-steps N` shortens a run to check the pace before
+committing to the full one; `sample --checkpoint path/to/file.pt` points at an explicit
+checkpoint instead of the config's default.
+
 ## Hardware
 
 Everything runs on **CUDA, MPS and CPU without changes**. Detection and the precision policy
@@ -159,7 +185,11 @@ llmfs check 06                  # module 06 tests
 llmfs hint 06 -e 2              # progressive hint (repeat for a deeper level)
 llmfs demo 06                   # the module's experiment
 llmfs device                    # detected hardware
-llmfs train --config tiny_char  # trains for real
+llmfs train --config tiny_char  # trains for real (smoke test)
+llmfs train --config tinystories_9m   # the real run: 8.93M-parameter GPT, 500M tokens
+                                       # (downloads TinyStories and trains the BPE tokenizer
+                                       # on the first run)
+llmfs sample --config tinystories_9m --prompt "Once upon a time"  # generate text from a trained checkpoint
 ```
 
 **The curriculum state is not declared anywhere**: it is computed by running the tests.
