@@ -392,7 +392,6 @@ def cmd_device(args: argparse.Namespace) -> int:
 
 
 _LATER = {
-    "sample": ("14_inferencia", "la generacion de texto"),
     "data": ("04_datos", "la preparacion del dataset"),
 }
 
@@ -491,6 +490,67 @@ def _resolve_gpt():
     return resolve("10_el_gpt_completo", "GPT")
 
 
+def cmd_sample(args: argparse.Namespace) -> int:
+    """Genera texto a partir de un checkpoint entrenado. Se construye en el modulo 14."""
+    import torch
+
+    from llmfs.bridge import resolve
+    from llmfs.config import RunConfig
+    from llmfs.data import preparar
+    from llmfs.device import get_device
+    from llmfs.paths import configs_dir
+    from llmfs.train import cargar_checkpoint
+
+    if args.checkpoint:
+        ruta = Path(args.checkpoint)
+    else:
+        ruta_config = Path(args.config)
+        if not ruta_config.exists():
+            ruta_config = configs_dir() / args.config
+        if not ruta_config.exists() and not str(ruta_config).endswith(".yaml"):
+            ruta_config = configs_dir() / f"{args.config}.yaml"
+        if not ruta_config.exists():
+            console.print(f"[red]No encuentro el config {args.config}[/red]")
+            return 2
+        ruta = RunConfig.from_yaml(ruta_config).run_dir / "best.pt"
+
+    if not ruta.exists():
+        console.print(
+            f"[red]No hay checkpoint en {ruta}.[/red] Entrena uno primero con "
+            f"[cyan]llmfs train --config {args.config}[/cyan]."
+        )
+        return 2
+
+    payload = cargar_checkpoint(ruta, map_location="cpu")
+    cfg = RunConfig.from_dict(payload["config"])
+
+    dispositivo = get_device(prefer=args.device, amp=cfg.train.amp)
+    dataset = preparar(cfg, quiet=True)
+
+    GPT = _resolve_gpt()
+    modelo = GPT(cfg.model)
+    modelo.load_state_dict(payload["model"])
+    modelo.to(dispositivo.device)
+    modelo.eval()
+
+    generate_with_cache = resolve("14_inferencia", "generate_with_cache")
+    prompt = args.prompt or "\n"
+    idx = torch.tensor([dataset.encode(prompt)], dtype=torch.long, device=dispositivo.device)
+
+    salida = generate_with_cache(
+        modelo,
+        idx,
+        max_new_tokens=args.max_new_tokens,
+        temperature=args.temperature,
+        top_k=args.top_k,
+        top_p=args.top_p,
+        repetition_penalty=args.repetition_penalty,
+    )
+    texto = dataset.decode(salida[0].tolist())
+    console.print(Panel(texto, title=f"muestra de {ruta}", border_style="green"))
+    return 0
+
+
 def _make_stub(name: str) -> Any:
     def stub(args: argparse.Namespace) -> int:
         module_id, what = _LATER[name]
@@ -566,6 +626,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--device", default=None, help="fuerza cuda, mps o cpu")
     p_train.add_argument("--prompt", default=None, help="prompt para las muestras periodicas")
     p_train.set_defaults(func=cmd_train)
+
+    p_sample = sub.add_parser("sample", help="genera texto a partir de un checkpoint entrenado")
+    p_sample.add_argument(
+        "--checkpoint", default=None,
+        help="ruta a un fichero .pt (por defecto: <out_dir>/<config>/best.pt)",
+    )
+    p_sample.add_argument(
+        "--config", default="tiny_char",
+        help="se usa para encontrar el checkpoint por defecto si no se pasa --checkpoint",
+    )
+    p_sample.add_argument("--prompt", default=None, help="texto a continuar (por defecto: vacio)")
+    p_sample.add_argument("--max-new-tokens", type=int, default=200)
+    p_sample.add_argument("--temperature", type=float, default=0.8)
+    p_sample.add_argument("--top-k", type=int, default=40)
+    p_sample.add_argument("--top-p", type=float, default=None)
+    p_sample.add_argument("--repetition-penalty", type=float, default=1.0)
+    p_sample.add_argument("--device", default=None, help="fuerza cuda, mps o cpu")
+    p_sample.set_defaults(func=cmd_sample)
 
     for name, (module_id, _) in _LATER.items():
         p = sub.add_parser(name, help=f"(modulo {module_id})")

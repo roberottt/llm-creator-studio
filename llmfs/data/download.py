@@ -73,3 +73,57 @@ def fetch_tinyshakespeare(quiet: bool = False) -> tuple[str, str]:
     if not quiet:
         print("[llmfs] sin conexion: se usa el texto de reserva, mucho mas pequenyo.")
     return FALLBACK_TEXT, "reserva"
+
+
+def fetch_tinystories(quiet: bool = False) -> str:
+    """Devuelve el split de entrenamiento de TinyStories entero, descargandolo la primera vez.
+
+    Son ~2 GB de cuentos infantiles cortos y sinteticos (Eldan & Li 2023), generados por
+    GPT-3.5/4 con un vocabulario que entenderia un nino de 3-4 anyos. Es el corpus "de
+    verdad" de este curso, a diferencia de tiny-shakespeare, que solo valida el pipeline.
+
+    La libreria `datasets` se usa UNICAMENTE para traer el texto crudo del hub de
+    HuggingFace; nada de `transformers` toca nunca el modelo (ver CLAUDE.md). No hay un
+    texto de reserva pequenyo como `FALLBACK_TEXT` aqui: 2 GB no se pueden sustituir por
+    unos parrafos escritos a mano sin mentir sobre con que se entreno el modelo, asi que
+    la falta de conexion es un error explicito, no una degradacion silenciosa.
+
+    El texto se escribe a disco mientras llega en streaming y luego se relee, asi el pico
+    de memoria es una copia del corpus, no dos.
+
+    Returns:
+        Los textos de los cuentos concatenados, separados por lineas en blanco.
+
+    Raises:
+        RuntimeError: si no se puede descargar el dataset (sin conexion, hub de
+            HuggingFace inalcanzable, etc).
+    """
+    destino = data_dir() / "tinystories.txt"
+    if destino.exists():
+        return destino.read_text(encoding="utf-8")
+
+    if not quiet:
+        print(
+            "[llmfs] descargando TinyStories (~2 GB) desde HuggingFace "
+            "(roneneldan/TinyStories); esto solo pasa una vez..."
+        )
+
+    try:
+        from datasets import load_dataset
+
+        filas = load_dataset("roneneldan/TinyStories", split="train")
+    except Exception as exc:  # error de red, hub inalcanzable, dataset con acceso restringido, etc.
+        raise RuntimeError(
+            "No se ha podido descargar TinyStories desde HuggingFace. Comprueba tu "
+            f"conexion a internet y vuelve a intentarlo. Error original: {exc}"
+        ) from exc
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporal = destino.with_suffix(".txt.tmp")
+    with temporal.open("w", encoding="utf-8") as f:
+        for fila in filas:
+            f.write(fila["text"])
+            f.write("\n\n")
+    temporal.replace(destino)
+
+    return destino.read_text(encoding="utf-8")
