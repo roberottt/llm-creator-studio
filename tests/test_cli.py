@@ -32,6 +32,7 @@ def sin_recursion(monkeypatch):
         ["hint", "06", "-e", "causal_mask", "--nivel", "2"],
         ["device"],
         ["train"],
+        ["sample"],
     ],
 )
 def test_el_parser_acepta_todos_los_comandos(argv):
@@ -84,9 +85,9 @@ def test_modulo_desconocido_devuelve_codigo_2():
 
 
 def test_los_comandos_de_fases_futuras_explican_donde_se_construyen(capsys):
-    """`sample` todavia no existe; tiene que decir en que modulo se construye."""
-    assert main(["sample"]) == 2
-    assert "14_inferencia" in capsys.readouterr().out
+    """`data` todavia no existe; tiene que decir en que modulo se construye."""
+    assert main(["data"]) == 2
+    assert "04_datos" in capsys.readouterr().out
 
 
 def test_train_ya_no_es_un_stub():
@@ -98,3 +99,19 @@ def test_train_ya_no_es_un_stub():
 def test_train_avisa_si_el_config_no_existe(capsys):
     assert main(["train", "--config", "no_existe"]) == 2
     assert "tiny_char" in capsys.readouterr().out
+
+
+def test_sample_ya_no_es_un_stub():
+    """Se implementa en el modulo 14: genera texto a partir de un checkpoint guardado."""
+    args = build_parser().parse_args(["sample", "--config", "tiny_char"])
+    assert args.func.__name__ == "cmd_sample"
+
+
+def test_sample_avisa_si_el_config_no_existe(capsys):
+    assert main(["sample", "--config", "no_existe"]) == 2
+    assert "no_existe" in capsys.readouterr().out
+
+
+def test_sample_avisa_si_no_hay_checkpoint(tmp_path, capsys):
+    assert main(["sample", "--checkpoint", str(tmp_path / "nope.pt")]) == 2
+    assert "checkpoint" in capsys.readouterr().out.lower()
