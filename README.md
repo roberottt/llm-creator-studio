@@ -140,6 +140,33 @@ pasos.
 Antes de lanzarla, dos cosas: el overfit a un batch (30 s) y `--max-steps 100` para ver el
 ritmo real.
 
+## Entrenar y generar texto
+
+En `configs/` hay dos configuraciones: `tiny_char` es una prueba de humo (Shakespeare, a
+nivel de carácter, ~70 s) que demuestra que el pipeline funciona de punta a punta;
+`tinystories_9m` es el modelo real del curso (8.933.440 parámetros, tokenizador BPE, 500M
+tokens).
+
+```bash
+# prueba de humo: rápida, no hace falta descargar nada (data/tinyshakespeare.txt va en el repo)
+llmfs train --config tiny_char
+llmfs sample --config tiny_char --prompt "ROMEO:"
+
+# la tirada real
+llmfs train --config tinystories_9m    # la primera vez: descarga TinyStories y entrena el
+                                        # tokenizador BPE (necesita red, es un paso único),
+                                        # y luego entrena ~10.172 pasos sobre 500M tokens:
+                                        # ver "Tiempos medidos" arriba para la estimacion
+llmfs sample --config tinystories_9m --prompt "Once upon a time"
+```
+
+`train` escribe checkpoints en `checkpoints/<nombre-config>/`, y `sample` lee por defecto
+`checkpoints/<nombre-config>/best.pt` — ejecutar `sample` antes de `train` falla a propósito,
+con un mensaje que dice qué config entrenar primero. `train --resume` retoma una tirada desde
+su último checkpoint; `train --max-steps N` acorta una tirada para comprobar el ritmo antes de
+lanzar la completa; `sample --checkpoint ruta/al/archivo.pt` apunta a un checkpoint explícito
+en vez del que marca la config.
+
 ## Hardware
 
 Todo corre en **CUDA, MPS y CPU sin cambios**. La detección y la política de precisión viven
@@ -169,7 +196,11 @@ llmfs check 06                  # tests del módulo 06
 llmfs hint 06 -e 2              # pista progresiva (repite para más nivel)
 llmfs demo 06                   # el experimento del módulo
 llmfs device                    # hardware detectado
-llmfs train --config tiny_char  # entrena de verdad
+llmfs train --config tiny_char  # entrena de verdad (prueba de humo)
+llmfs train --config tinystories_9m   # la tirada real: GPT de 8.93M parametros, 500M tokens
+                                       # (descarga TinyStories y entrena el tokenizador BPE
+                                       # la primera vez)
+llmfs sample --config tinystories_9m --prompt "Once upon a time"  # genera texto desde un checkpoint entrenado
 ```
 
 **El estado del currículo no se declara en ningún sitio**: se calcula ejecutando los tests.
