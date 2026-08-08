@@ -195,7 +195,12 @@ class GPT(nn.Module):
         if self.cfg.pos == "rope":
             cos, sin = self.rope_cos, self.rope_sin
 
-        mask = None if (use_cache and cache is not None) else causal_mask(seq_len, device=idx.device)
+        # La mascara solo se puede omitir cuando entra UN token (decode con cache): ahi la
+        # query es una sola y ve todo el pasado, que es justo lo que debe. En prefill entra
+        # el prompt entero, `seq_len > 1`, y sin mascara los tokens del prompt se ven entre
+        # si hacia delante: fuga de informacion que corrompe las K/V guardadas en la cache
+        # y, con ellas, todo lo que se genere despues.
+        mask = None if seq_len == 1 else causal_mask(seq_len, device=idx.device)
         for i, block in enumerate(self.blocks):
             x = block(
                 x,

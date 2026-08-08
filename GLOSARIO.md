@@ -533,7 +533,27 @@ antes del backward para que los gradientes no desaparezcan. *(módulo 11)*
 automáticamente.
 
 **KV cache** — Guardar las keys y values ya calculadas para no recalcularlas en cada token
-generado. Hace la generación varias veces más rápida. *(módulo 14)*
+generado. Convierte un coste `O(N²)` en `O(N)`, y su ganancia crece con la longitud. Las
+**queries** no se cachean: cada token nuevo necesita su propia pregunta. *(módulo 14)*
+
+**Prefill / decode** — Las dos fases de la generación con cache. En *prefill* entra el prompt
+entero de golpe y se llena la cache — y ahí **sí** hace falta máscara causal. En *decode* entra un
+solo token por paso, que legítimamente ve todo el pasado y no necesita máscara. *(módulo 14)*
+
+**Temperatura** — Dividir los logits antes del softmax. Por debajo de 1 afila la distribución
+(más determinista), por encima la aplana (más variedad), y en el límite a 0 equivale a greedy.
+*(módulo 14)*
+
+**Top-k** — Quedarse con los `k` logits mayores y poner el resto a `-inf`. Su defecto es que `k`
+es fijo, así que no se adapta a lo seguro que esté el modelo. *(módulo 14)*
+
+**Top-p** (*nucleus sampling*) — Quedarse con el conjunto más pequeño cuya probabilidad acumulada
+**excede** `p`. El número de candidatos se adapta solo: pocos cuando el modelo está seguro,
+muchos cuando duda. Ojo con el off-by-one: el token que cruza el umbral entra. *(módulo 14)*
+
+**Penalización de repetición** — Bajar el logit de los tokens ya emitidos para romper los bucles.
+Hay que **dividir si el logit es positivo y multiplicar si es negativo**; dividir siempre haría
+más probables los tokens de logit negativo, que son la mayoría. *(módulo 14)*
 
 **Chinchilla** — El resultado de 2022 que dice cuántos tokens conviene usar para entrenar
 un modelo de un tamaño dado (aproximadamente 20 por parámetro). Se derivó entrenando más de 400
