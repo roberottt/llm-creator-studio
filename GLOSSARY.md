@@ -17,6 +17,34 @@ Our final model handles 4096 distinct tokens. *(module 03)*
 **Vocabulary** (`vocab_size`) — How many distinct tokens the model knows. It is a number you
 choose when designing it, not something that gets discovered.
 
+**Tokenize** — Turn text into the list of integers the model understands, and back. It
+happens **before** the model sees anything: it is not part of the network. *(module 03)*
+
+**BPE** (*Byte Pair Encoding*) — The algorithm that decides what the tokens are: it starts
+from the 256 bytes and keeps merging the most frequent pair of neighbours until the
+vocabulary is full. Nobody writes the list of tokens; it is discovered by counting.
+*(module 03)*
+
+**Merge** — One of those fusions: the rule "whenever you see this pair, replace it with this
+new id". A trained tokenizer is an ordered list of merges, and the order matters: when
+encoding, they are applied in the same order they were learned. *(module 03)*
+
+**Pre-tokenizer** — The regular expression that splits the text into words, numbers and
+punctuation **before** pairs are counted, so no merge crosses from one word into the next.
+Without it, BPE learns tokens like `". the cat sleeps"`. *(module 03)*
+
+**Bytes fallback** — Working over bytes (0-255) instead of over Unicode characters. Since all
+text is a sequence of bytes and all 256 are in the vocabulary, there is no such thing as an
+unencodable character. When decoding, `errors="replace"` covers the opposite case: bytes that
+do not form valid UTF-8 come out as `�` instead of taking generation down. *(module 03)*
+
+**`<UNK>`** — The "unknown word" token of classic word-level tokenizers. It destroys
+information irrecoverably, and with bytes fallback it stops being necessary. *(module 03)*
+
+**Compression** (*bytes per token*) — How much text fits in a token on average. A larger
+vocabulary compresses better (shorter sequences, fewer training steps) but eats the parameter
+budget in the embedding table. That trade is what decides `vocab_size`. *(module 03)*
+
 **Language model** — A function that, given a text, returns the probability of every possible
 token as a continuation. That is all it is. *(module 00)*
 

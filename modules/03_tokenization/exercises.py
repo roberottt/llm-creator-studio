@@ -9,6 +9,22 @@ Read `THEORY.md` -> implement in order -> `llmfs check 03` -> `llmfs hint 03 -e 
 The "aaabdaaabac" example from THEORY.md, worked through by hand, is EXACTLY what you are
 going to program. Keep it in front of you.
 
+WHERE EACH THING IS EXPLAINED
+=============================
+
+Every exercise has its own section in THEORY.md, with the matching worked example. If a
+docstring tells you WHAT to type but you cannot quite see WHY, that is the place:
+
+    get_stats    -> "Exercise 1: counting the pairs"
+    merge        -> "Exercise 2: merging the winning pair"
+    train_bpe    -> "Exercise 3: the training loop"
+    bpe_encode   -> "Exercise 4: encoding"
+    bpe_decode   -> "Exercise 5: decoding"
+
+And before you start typing, the section "From the algorithm to the five functions" explains
+the three data structures that show up in every signature (the ids, `merges` and `vocab`).
+Without that clear, the module is an uphill fight.
+
 WHAT YOU ARE GOING TO BUILD
 ===========================
 
@@ -60,6 +76,10 @@ Vocab = dict[int, bytes]
 
 def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
     """Counts how many times each pair of CONSECUTIVE numbers appears.
+
+    This is BPE's "measure" half. The section "Exercise 1: counting the pairs" in `THEORY.md`
+    has the drawing of the two-element window advancing one step at a time, which is what
+    explains why pairs overlap.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -119,6 +139,10 @@ def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict
 def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
     """Replaces every occurrence of a pair with a single new number.
 
+    This is BPE's "act" half, and the opposite of exercise 1: when counting, pairs overlap;
+    when merging, they do not. The section "Exercise 2: merging the winning pair" in
+    `THEORY.md` has it drawn out.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     A `while` with an index you control yourself.
@@ -174,6 +198,12 @@ def train_bpe(
     verbose: bool = False,
 ) -> tuple[Merges, Vocab]:
     """Trains the tokenizer: learns which pairs to merge and in what order.
+
+    If you are not clear on what exactly `merges` and `vocab` are, or why both get returned,
+    read "From the algorithm to the five functions" in `THEORY.md` first. And if what you
+    cannot see is why the text has to be split before counting, the "Exercise 3" section
+    compares the first twenty merges with and without a pre-tokenizer over the same text:
+    without it, it learns '. the cat sleeps'.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -270,6 +300,10 @@ def train_bpe(
 def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
     """Turns text into ids, applying the learned merges.
 
+    Encoding is NOT "split the text into the longest fragments in the vocabulary": it is
+    reproducing the training. The section "Exercise 4: encoding" in `THEORY.md` explains why,
+    and has a real sentence tokenized piece by piece.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     A helper function that encodes ONE chunk, and a loop that applies it to all of them.
@@ -333,6 +367,9 @@ def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[in
 
 def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
     """Turns a list of ids back into text.
+
+    The section "Exercise 5: decoding" in `THEORY.md` has the bytes of "naive cafe" broken
+    down, which is where you see at a glance why you have to join before decoding.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
