@@ -518,8 +518,28 @@ before the backward so the gradients do not disappear. *(module 11)*
 **AMP** (*Automatic Mixed Precision*) — Doing some operations in 16 bits and others in 32,
 automatically.
 
-**KV cache** — Saving the keys and values already computed so they are not recomputed for every
-generated token. It makes generation several times faster. *(module 14)*
+**KV cache** — Storing the keys and values already computed so they do not get recomputed for
+every generated token. It turns an `O(N²)` cost into `O(N)`, and its gain grows with length. The
+**queries** are not cached: every new token needs its own question. *(module 14)*
+
+**Prefill / decode** — The two phases of cached generation. In *prefill* the whole prompt goes in
+at once and fills the cache — and there a causal mask **is** needed. In *decode* a single token
+goes in per step, which legitimately sees the whole past and needs no mask. *(module 14)*
+
+**Temperature** — Dividing the logits before the softmax. Below 1 it sharpens the distribution
+(more deterministic), above 1 it flattens it (more variety), and in the limit at 0 it is greedy.
+*(module 14)*
+
+**Top-k** — Keeping the `k` largest logits and setting the rest to `-inf`. Its flaw is that `k` is
+fixed, so it does not adapt to how sure the model is. *(module 14)*
+
+**Top-p** (*nucleus sampling*) — Keeping the smallest set whose cumulative probability **exceeds**
+`p`. The number of candidates adapts on its own: few when the model is sure, many when it hesitates.
+Watch the off-by-one: the token that crosses the threshold gets in. *(module 14)*
+
+**Repetition penalty** — Lowering the logit of already-emitted tokens to break loops. You have to
+**divide if the logit is positive and multiply if it is negative**; always dividing would make
+negative-logit tokens more probable, and those are the majority. *(module 14)*
 
 **Chinchilla** — The 2022 result that says how many tokens it is worth using to train a model
 of a given size (about 20 per parameter). It was derived by training over 400 models, and it

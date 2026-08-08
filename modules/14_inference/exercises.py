@@ -23,6 +23,13 @@ How you get text out of a trained model, and how to do it fast:
 The first three are short. Number 5 is where the difficulty is, and it has a relentless
 check: with the cache it has to produce EXACTLY the same text as without it.
 
+`THEORY.md` follows this same order and each docstring here tells you which section it maps to.
+The three filters are independent of each other; the cache and the loop chain.
+
+And there is something the theory explains that is in no docstring: THE ORDER the filters are
+applied in inside exercise 5, which is penalty -> temperature -> top-k -> top-p, and why that one
+and not another.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -54,6 +61,9 @@ def apply_repetition_penalty(
     logits: torch.Tensor, generated: torch.Tensor, penalty: float = 1.1
 ) -> torch.Tensor:
     """Penalizes the tokens that have already come out, to break loops.
+
+    Context in `THEORY.md`: section "Exercise 1: the repetition penalty", with the numbers
+    for why you have to divide if the logit is positive and multiply if it is negative.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -125,6 +135,9 @@ def apply_repetition_penalty(
 def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
     """Leaves only the `k` largest logits and sets the rest to -inf.
 
+    Context in `THEORY.md`: section "Exercise 2: top-k", which is short and mostly explains the flaw
+    that motivates the next exercise: k is fixed.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Three lines.
@@ -188,6 +201,9 @@ def top_k_filter(logits: torch.Tensor, k: int) -> torch.Tensor:
 
 def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
     """Nucleus sampling: keeps the tokens that accumulate a mass of `p`.
+
+    Context in `THEORY.md`: section "Exercise 3: top-p or nucleus", with the six-token table where you
+    can see that the token CROSSING the threshold gets in, which is the exercise's off-by-one.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -278,6 +294,9 @@ def top_p_filter(logits: torch.Tensor, p: float) -> torch.Tensor:
 
 class KVCache:
     """Saves the keys and values already computed so they are not recomputed.
+
+    Context in `THEORY.md`: section "Exercise 4: the KV cache", with the problem it solves and why K and V
+    get cached but the queries do not.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -383,6 +402,10 @@ def generate_with_cache(
     eos_token: int | None = None,
 ) -> torch.Tensor:
     """The generation loop, with a cache and with all the filters.
+
+    Context in `THEORY.md`: section "Exercise 5: the full loop", with the filter order, RoPE's
+    pos_offset, the measured speedup table and —if the output does not match the uncached one—
+    the two things to look at, in order.
 
     It is the same autoregressive loop from module 00 —context, distribution, sample, append,
     repeat— now with a real model.

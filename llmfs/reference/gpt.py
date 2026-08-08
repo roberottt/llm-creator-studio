@@ -195,7 +195,12 @@ class GPT(nn.Module):
         if self.cfg.pos == "rope":
             cos, sin = self.rope_cos, self.rope_sin
 
-        mask = None if (use_cache and cache is not None) else causal_mask(seq_len, device=idx.device)
+        # The mask can only be skipped when ONE token comes in (decode with cache): there the
+        # query is a single one and sees the whole past, which is exactly right. In prefill
+        # the entire prompt comes in, `seq_len > 1`, and without a mask the prompt tokens see
+        # each other forwards: an information leak that corrupts the K/V stored in the cache
+        # and, with them, everything generated afterwards.
+        mask = None if seq_len == 1 else causal_mask(seq_len, device=idx.device)
         for i, block in enumerate(self.blocks):
             x = block(
                 x,
