@@ -22,6 +22,13 @@ Los ejercicios 4 y 5 son tus dos primeros modelos en PyTorch.
 El ejercicio 1 es una linea y es el mas importante: `ln(V)` te va a decir, en el paso 0 de
 cualquier entrenamiento del curso, si hay un bug.
 
+`TEORIA.md` esta ordenada igual que esta lista: cada ejercicio tiene alli su propia seccion
+con su ejemplo numerico, y cada docstring de aqui te dice cual es. Antes del ejercicio 4 hay
+una seccion aparte, "Un alto en el camino: que es un modelo en PyTorch", que traduce lo que
+ya hiciste a mano en el modulo 02 al vocabulario de `torch.nn`: `nn.Module`, `forward`, las
+formas `(B, T, V)` y que hace `F.cross_entropy` por dentro. Si `nn.Embedding` te suena a
+nombre que hay que copiar sin saber que hace, esa seccion es la que falta.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -50,6 +57,8 @@ import torch.nn.functional as F
 
 def uniform_baseline_loss(vocab_size: int) -> float:
     """La perdida de un modelo que no sabe absolutamente nada.
+
+    Contexto en `TEORIA.md`: seccion "El suelo: lo que saca un modelo que no sabe nada".
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -99,6 +108,9 @@ def uniform_baseline_loss(vocab_size: int) -> float:
 
 def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
     """Cuenta cuantas veces sigue cada token a cada token.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: contar los pares", con la matriz de este
+    mismo ejemplo dibujada casilla a casilla y por que la tabla es de V x V.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -165,6 +177,9 @@ def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
 
 def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> float:
     """Mide como de bien predice una tabla de bigramas.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: medir la tabla", con la tabla del ejemplo
+    suavizada fila a fila, la perdida calculada a mano y la tabla de que pasa segun el alpha.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -236,6 +251,11 @@ def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> 
 class NeuralBigram(nn.Module):
     """El bigrama del ejercicio 2, pero aprendido por gradiente.
 
+    Si es tu primer modelo en PyTorch, lee antes en `TEORIA.md` la seccion "Un alto en el
+    camino: que es un modelo en PyTorch": que registra `nn.Module`, por que se llama
+    `modelo(x)` y no `modelo.forward(x)`, que son las formas `(B, T, V)` y por que
+    `F.cross_entropy` quiere logits aplanados. Y luego la seccion "Ejercicio 4".
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     **En `__init__`** (dos lineas ademas del `super()`):
@@ -303,6 +323,10 @@ class NeuralBigram(nn.Module):
 
 class BengioMLP(nn.Module):
     """El modelo de Bengio et al. 2003: el abuelo de los LLM modernos.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 5: mirar mas atras", con el recorrido de las
+    formas dibujado paso a paso y los numeros medidos de donde se rompe este modelo, que es
+    el problema que resuelve la atencion en el modulo 06.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------

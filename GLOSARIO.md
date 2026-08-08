@@ -67,6 +67,10 @@ determinista y tiende a meterse en bucles repetitivos. *(módulos 00 y 14)*
 cada secuencia de `n` tokens anteriores. Es lo que construyes en el módulo 00. Funciona,
 pero la tabla crece exponencialmente con `n`. *(módulo 00)*
 
+**Bigrama** — El n-grama más pequeño que sirve de algo: el modelo que predice mirando **un
+solo token atrás**. Su tabla de conteos es de `V × V`. Malísimo, y sorprende lo lejos que
+llega. *(módulo 05)*
+
 **Maldición de la dimensionalidad** — El motivo por el que contar no escala: al ampliar el
 contexto, las combinaciones posibles crecen exponencialmente y el corpus cubre una fracción
 cada vez más ridícula de ellas. Todo lo no visto se queda con probabilidad cero. Es el
@@ -75,6 +79,18 @@ problema que las redes neuronales resuelven generalizando. *(módulo 00)*
 **Suavizado** (*smoothing*) — Los parches clásicos para las probabilidades cero de un
 modelo de n-gramas: repartir algo de masa entre lo nunca visto, o mezclar modelos de varios
 tamaños de contexto. Alivia el síntoma, no la causa. *(módulo 00)*
+
+**Suavizado de Laplace** (*add-α*) — El suavizado más simple: sumar una constante `α` a
+todos los conteos antes de normalizar, para que ninguna probabilidad sea cero. Sin él, un
+único par no visto manda la pérdida a infinito, porque `-ln(0)` es infinito y la pérdida es
+una media. Es admitir que «no lo he visto» no es lo mismo que «es imposible». No es el mejor
+suavizado —**Kneser-Ney** reparte la masa sobrante según en cuántos contextos distintos
+aparece cada token, en vez de por igual, y gana con claridad—, pero sí el más simple, y el
+n-grama es un baseline que se abandona en el módulo siguiente. *(módulo 05)*
+
+**Baseline** — Un modelo deliberadamente simple contra el que se compara el modelo de
+verdad. Sin baseline, una pérdida de 2,49 no significa nada. El más importante es el
+**uniforme**, que reparte la probabilidad por igual y da exactamente `ln(V)`. *(módulo 05)*
 
 **Máxima verosimilitud** — El criterio de elegir los parámetros que hacen más probable el
 texto observado. Minimizar la cross-entropy es exactamente eso. *(módulos 00 y 05)*
@@ -162,6 +178,17 @@ divide entre la suma. Exponenciar es lo que permite trabajar con números negati
 es 0. Entrenar es minimizar este número. *(módulo 05)*
 
 **Cross-entropy** — El nombre técnico de esa pérdida. *(módulo 05)*
+
+**Nat** — La unidad en la que se mide la pérdida cuando se usa logaritmo natural, que es lo
+que hace `torch.log` y por tanto todo este curso. Un nat son 1,44 bits. *(módulo 05)*
+
+**One-hot** — Un vector de ceros con un único 1, en la posición del token. Multiplicar una
+matriz por un vector one-hot da exactamente la fila correspondiente de la matriz, y por eso
+`nn.Embedding` y `nn.Linear` son la misma operación: el embedding **lee** la fila en vez de
+multiplicar por una matriz llena de ceros. *(módulo 05)*
+
+**Capa oculta** (*hidden layer*) — Cualquier capa de una red que no es ni la entrada ni la
+salida. «Oculta» solo significa que nadie mira sus números directamente. *(módulos 02 y 05)*
 
 **Perplejidad** — `e` elevado a la pérdida. Se interpreta como "entre cuántas opciones está
 dudando el modelo, en la práctica". Perplejidad 10 ≈ está dudando entre 10 tokens.
