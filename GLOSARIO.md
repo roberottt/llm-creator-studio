@@ -260,6 +260,44 @@ paso. El hiperparámetro que más veces arruina un entrenamiento. *(módulo 11)*
 **Optimizador** — El algoritmo que decide cómo aplicar los gradientes. Usaremos AdamW.
 *(módulo 11)*
 
+**Adam** — El optimizador estándar en deep learning. Dos ideas: una media móvil de los gradientes
+(el **momento**, que cancela el ruido de cada batch) y una media móvil del gradiente al cuadrado
+por la que se divide, de forma que **cada parámetro acaba con su propio learning rate efectivo**.
+Por eso un único `lr` global sirve para todo el modelo. *(módulo 11)*
+
+**AdamW** — Adam con el *weight decay* **desacoplado**: aplicado directamente al parámetro en vez
+de sumado al gradiente. En la versión acoplada el decaimiento pasa por la división por `√v` y su
+efecto acaba dependiendo de la magnitud de los gradientes de cada peso; desacoplado es uniforme.
+Ésa es la W. *(módulo 11)*
+
+**Momento** — La media móvil de los gradientes recientes. Cada batch es una muestra distinta y
+sus gradientes son ruidosos; promediar cancela el ruido y deja la dirección consistente.
+*(módulo 11)*
+
+**Corrección de sesgo** — El ajuste que compensa que las medias móviles de Adam arrancan en cero
+y por tanto subestiman las magnitudes en los primeros pasos. Se divide por `1 - β^t`, y se
+desvanece sola según avanza `t`. Sin ella el entrenamiento puede diverger antes de empezar.
+*(módulo 11)*
+
+**Weight decay** — Empujar los pesos hacia cero para que no crezcan sin control. Se aplica **sólo
+a las matrices** (parámetros de 2 dimensiones o más): a las escalas de normalización y a los
+sesgos no, porque empujar hacia cero la escala de un RMSNorm es empujar hacia cero la salida de
+la capa. Aplicarlo a todo no da ningún error visible y degrada el resultado. *(módulo 11)*
+
+**Schedule** (*planificador del lr*) — Cómo cambia el learning rate a lo largo de la tirada. El
+nuestro tiene dos tramos: warmup lineal hasta el máximo y después decaimiento coseno hasta un
+suelo del 10%, que no se baja porque por debajo el modelo deja de aprender y el cómputo se tira.
+*(módulo 11)*
+
+**Recorte de gradientes** (*gradient clipping*) — Si la norma **global** de todos los gradientes
+supera un umbral, se multiplican todos por el mismo factor. Global y no por tensor: así se limita
+cuánto se avanza sin cambiar la dirección. Acota el daño que puede hacer un solo batch raro.
+*(módulo 11)*
+
+**Grupos de parámetros** — Subconjuntos del modelo con hiperparámetros distintos. PyTorch los
+acepta como lista de diccionarios con la clave `"params"`; cualquier otra clave sobreescribe el
+valor por defecto sólo para ese grupo. *(módulo 11)*
+
 **Overfitting** (*sobreajuste*) — Cuando el modelo memoriza los datos de entrenamiento en
 vez de aprender patrones. Se detecta porque la pérdida de entrenamiento baja y la de
 validación no.

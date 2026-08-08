@@ -73,16 +73,39 @@ def experimento_vs_torch():
         lambda p, lr: torch.optim.AdamW(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1)
     )
 
-    err = max(float((a - b).abs().max()) for a, b in zip(p_mio, p_torch))
+    # La comparacion se hace a 50 pasos, no a 200, y la razon merece la pena.
+    # Con esta tarea la perdida ya esta practicamente convergida hacia el paso 100, y
+    # entonces m y v son los dos casi cero: el cociente m/(sqrt(v)+eps) tiene numerador y
+    # denominador diminutos, asi que cualquier diferencia de ultimo bit entre dos
+    # implementaciones se amplifica sin parar. Medido con la referencia: 8e-07 a 50 pasos,
+    # 1.5e-04 a 200 y 4e-02 a 400. Comparar ahi dentro daria "divergen" a una
+    # implementacion perfectamente correcta. Es el mismo criterio que usa el test.
+    _, p_mio_50 = entrena(
+        lambda p, lr: AdamWScratch(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1), pasos=50
+    )
+    _, p_torch_50 = entrena(
+        lambda p, lr: torch.optim.AdamW(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1),
+        pasos=50,
+    )
+    err = max(float((a - b).abs().max()) for a, b in zip(p_mio_50, p_torch_50))
+    err_200 = max(float((a - b).abs().max()) for a, b in zip(p_mio, p_torch))
+
     console.print(
         f"  perdida final:  tuya {h_mio[-1]:.8f}   torch {h_torch[-1]:.8f}\n"
-        f"  error maximo en los pesos tras 200 pasos: [bold]{err:.2e}[/bold]\n"
+        f"  error maximo en los pesos tras 50 pasos: [bold]{err:.2e}[/bold]\n"
     )
     console.print(
         "[green]Identicos salvo redondeo de fp32.[/green] Estas haciendo exactamente las "
         "mismas\noperaciones en el mismo orden."
-        if err < 1e-4
+        if err < 1e-5
         else "[red]Divergen. Revisa la correccion de sesgo o el weight decay.[/red]"
+    )
+    console.print(
+        f"\n[dim]A los 200 pasos ese mismo error vale {err_200:.2e}, y NO significa que algo\n"
+        "este mal: con esta tarea la perdida ya esta convergida y entonces m y v son los dos\n"
+        "casi cero. El cociente m/(sqrt(v)+eps) se vuelve numericamente inestable y las dos\n"
+        "implementaciones se separan aunque hagan lo mismo. Por eso la comparacion, aqui y en\n"
+        "el test, se hace a 50 pasos.[/dim]"
     )
     return h_mio, h_torch
 
