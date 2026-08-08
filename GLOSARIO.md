@@ -88,6 +88,60 @@ verificación. *(módulo 00)*
 
 ---
 
+## Los datos
+
+**Aprendizaje autosupervisado** — Entrenar sin etiquetas hechas por humanos, porque la
+respuesta correcta se saca del propio dato: la respuesta a «¿qué token viene después?» es,
+literalmente, el token que venía después. Es lo que permite entrenar con texto crudo de
+internet y la razón de que los LLM despegaran. *(módulo 04)*
+
+**Pipeline de datos** — Todo lo que pasa entre el texto crudo y el batch que entra al
+modelo: tokenizar, empaquetar, guardar, partir en train/validación y muestrear. En un
+laboratorio de verdad incluye además filtrar, deduplicar y decidir la mezcla de fuentes.
+*(módulo 04)*
+
+**Corpus** — Todo el texto con el que se entrena, ya tokenizado: una tira de varios cientos
+de millones de enteros. El nuestro son 500M tokens de TinyStories. *(módulo 04)*
+
+**Deduplicar** — Quitar del corpus los documentos repetidos. Sin ello el modelo ve el mismo
+texto muchas veces y lo memoriza en vez de aprender de él. TinyStories viene limpio y aquí
+no hace falta. *(módulo 04)*
+
+**TinyStories** — El dataset del curso: historias cortas generadas con vocabulario de niño
+de cuatro años. Su gracia es que un modelo diminuto puede aprender a escribirlas coherentes,
+cosa que no pasa con un trozo de internet del mismo tamaño. *(módulo 04)*
+
+**`uint16`** — Entero sin signo de 2 bytes, de 0 a 65.535. El tipo en el que se guarda cada
+token: con `int64` el mismo corpus ocuparía cuatro veces más. *(módulo 04)*
+
+**Wrap around** (*desbordamiento silencioso*) — Lo que hace NumPy cuando conviertes a un
+tipo donde el número no cabe: da la vuelta al contador sin avisar (65.536 se convierte en
+0). Corrompe los datos sin lanzar ningún error. *(módulo 04)*
+
+**`memmap`** (*memoria mapeada*) — Un array cuyos datos viven en un fichero y no en RAM,
+pero que se usa exactamente igual que uno normal. El sistema operativo carga solo las
+páginas que tocas. *(módulo 04)*
+
+**Ventana deslizante** — La forma de sacar muestras del corpus: se elige una posición al
+azar y se toman `context_length` tokens seguidos. Dos ventanas contiguas comparten casi
+todos sus tokens, y de ahí sale la regla de no barajar al partir train/validación.
+*(módulo 04)*
+
+**Conjunto de validación** — El trozo de corpus con el que NO se entrena, reservado para
+medir si el modelo generaliza o está memorizando. Se corta contiguo y por el final, nunca al
+azar. *(módulo 04)*
+
+**Muestreo con reemplazo** — Elegir cada ventana al azar sin llevar cuenta de las que ya
+salieron. Algunas saldrán repetidas y otras ninguna, así que no es una época en sentido
+estricto; a cambio la función no tiene estado. *(módulo 04)*
+
+**Memoria fijada** (*pinned*, *page-locked*) — Memoria que el sistema operativo se
+compromete a no mover, lo que permite a la GPU leerla por DMA sin que la CPU haga de
+intermediaria. Con `non_blocking=True`, la copia del siguiente batch se solapa con el
+cálculo del actual. Solo tiene sentido en CUDA. *(módulo 04)*
+
+---
+
 ## Entrenamiento
 
 **Parámetro** (*peso*) — Cada número que la red ajusta durante el entrenamiento. Nuestro
