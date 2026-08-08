@@ -313,7 +313,28 @@ mechanistic interpretability. *(module 06)*
 grow or shrink uncontrollably layer after layer. *(module 07)*
 
 **Residual connection** — Adding a block's input to its output (`x + f(x)`). It is what makes
-deep networks trainable: it gives the gradient a direct path to the bottom. *(module 07)*
+deep networks trainable: it gives the gradient a direct path to the bottom. When you
+differentiate, that sum contributes a `1` no layer can attenuate. *(module 07)*
+
+**Residual stream** — The main channel carrying each token's representation from one end of the
+model to the other. Every block reads from it, computes something and **adds** its contribution
+back, instead of replacing it. *(module 07)*
+
+**Pre-norm / post-norm** — Whether the normalization goes inside the branch (`x + f(norm(x))`)
+or wrapped around the sum (`norm(x + f(x))`). Only the parentheses move, and it decides whether
+the gradient crosses a normalization per layer or arrives at the bottom intact. Everything
+modern is pre-norm. *(module 07)*
+
+**BatchNorm** — The normalization computed along the batch, not along each token's dimensions.
+Not used in Transformers: one example's result would depend on who it shares a batch with, and
+at inference with a single example you have to fall back on stored statistics. *(module 07)*
+
+**Vanishing / exploding gradient** — When the gradient gets multiplied layer after layer by a
+factor smaller or larger than 1 and ends up at zero or at infinity. With 64 linear layers it
+reaches **exactly** zero, by floating-point underflow. *(module 07)*
+
+**Warmup** — Starting training with a very small learning rate and raising it gradually over the
+first steps. Post-norm needs it in order not to explode; pre-norm does not. *(modules 07 and 11)*
 
 **FFN / MLP** — The part of each block that is not attention: two or three linear layers with a
 non-linearity in between. It usually has more parameters than the attention. *(module 08)*

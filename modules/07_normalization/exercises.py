@@ -18,6 +18,12 @@ The two pieces that make a deep network train instead of returning NaN:
 The third one has barely any code. What matters is understanding WHY the parentheses go
 where they go.
 
+`THEORY.md` is ordered just like this list: each exercise has its own section there with its
+numeric example, and each docstring here tells you which one. If you are wondering why exercise
+1 is a plain function and exercise 2 is a class, the answer is in the section "Why 1 is a
+function and 2 is a class": exercise 2 is the first layer in the course with weights of its
+own.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -51,6 +57,10 @@ def layer_norm(
     eps: float = 1e-5,
 ) -> torch.Tensor:
     """Normalizes each token to mean 0 and variance 1, then applies scale and shift.
+
+    Context in `THEORY.md`: section "Exercise 1: LayerNorm by hand", with the example worked out
+    by hand, which dimension the mean is computed over (and how that differs from BatchNorm),
+    and the two versions of the variance side by side.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -130,6 +140,10 @@ def layer_norm(
 class RMSNorm(nn.Module):
     """LayerNorm without the mean and without the bias. What Llama, Mistral and our model use.
 
+    Context in `THEORY.md`: section "Exercise 2: dropping half of it", with the measured table of
+    what LayerNorm and RMSNorm do to centered and shifted data, why this layer is a class and not
+    a function, and why the demo's timings do NOT say RMSNorm is slower.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     **In `__init__`** (two lines besides the `super()`):
@@ -205,6 +219,10 @@ def prenorm_residual(
     norm: Callable[[torch.Tensor], torch.Tensor],
 ) -> torch.Tensor:
     """Pre-norm. It is ONE LINE and it is the most important exercise in the module.
+
+    Context in `THEORY.md`: section "Exercise 3: where the parentheses go", with the gradient
+    table for the four configurations and the scale of the residual stream measured block by
+    block on the real model, which is where the need for `norm_f` comes from.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
