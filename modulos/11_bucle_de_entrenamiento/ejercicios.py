@@ -20,6 +20,14 @@ Las cuatro piezas que hacen que un entrenamiento funcione a escala:
 
 Cuando esten las cuatro en verde, el modelo final entrenara con TU optimizador.
 
+`TEORIA.md` los sigue en este mismo orden y cada docstring de aqui te dice que seccion le toca.
+Empieza por la seccion "El bucle, y que le falta": es el bucle del modulo 02 con las cuatro
+piezas colocadas en el sitio exacto donde entra cada una.
+
+Hay una pequenya dependencia circular entre el 1 y el 4 —el `step` que escribes en el 1 recorre
+los grupos que construye el 4— pero ninguno necesita al otro para funcionar ni para pasar sus
+tests. Si el ejercicio 1 se te atraganta, haz el 2, 3 y 4 primero y vuelve.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -48,6 +56,14 @@ import torch.nn as nn
 
 class AdamWScratch(torch.optim.Optimizer):
     """AdamW desde cero. Hereda de `torch.optim.Optimizer` y solo hay que escribir `step`.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: el optimizador", con el problema que resuelve
+    (un solo lr no vale para un embedding frecuente y otro raro), las dos ideas de Adam medidas
+    contra SGD, y la subseccion "Como se escribe un optimizador en PyTorch" para param_groups,
+    self.state y el @torch.no_grad.
+
+    Y lee tambien "Como saber si esta bien" antes de correr la demo: te ahorra buscar un bug que
+    no existe cuando veas que a 200 pasos tu optimizador y el de PyTorch se separan.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -232,6 +248,10 @@ def lr_at_step(
 ) -> float:
     """El learning rate que toca en un paso dado: warmup lineal + decaimiento coseno.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: el planificador del learning rate", con la
+    tabla de que lr toca en cada paso de la tirada final y la comprobacion de la formula del
+    coseno en sus dos extremos, que es como se sabe que esta bien sin ejecutar nada.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Tres tramos, en este orden (el orden importa: el warmup se comprueba primero).
@@ -323,6 +343,10 @@ def lr_at_step(
 def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float:
     """Recorta los gradientes para que su norma GLOBAL no pase de `max_norm`.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: el recorte de gradientes", con el coseno de
+    0,99999994 que demuestra que la direccion no cambia, y el efecto medido de un batch
+    envenenado: sin recortar la perdida SUBE 3x, con recorte ni se entera.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
         1. Reune los gradientes que existen:
@@ -394,6 +418,10 @@ def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float
 
 def build_param_groups(model: nn.Module, weight_decay: float = 0.1) -> list[dict[str, Any]]:
     """Separa los parametros en dos grupos: con weight decay y sin el.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 4: que parametros decaen", con el reparto real
+    del modelo (43 tensores y 8.929.280 parametros con decay, 13 y 4.160 sin el) y por que esos
+    13 son exactamente las capas de normalizacion que contaste en el modulo 10.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
