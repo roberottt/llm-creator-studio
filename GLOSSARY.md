@@ -155,8 +155,29 @@ parameters in our model. *(module 10)*
 **FLOP** — One floating point operation. It is used to measure how much training something
 costs.
 
+**TFLOPS** — Trillions of FLOPs per second. The unit GPU throughput is measured in. The peak
+on the spec sheet and the one you actually get are a factor of 3 or more apart.
+*(module 01)*
+
 **MFU** (*Model FLOPs Utilization*) — What fraction of your GPU's theoretical power you are
 really using. A small model rarely goes above 20%. *(modules 01 and 12)*
+
+**Compute-bound / memory-bound** — Whether an operation is limited by arithmetic throughput
+(a large matmul) or by memory bandwidth (an activation, a normalization). The FLOP formula
+only sees the former, and much of the gap between estimated and real time comes from that.
+*(module 01)*
+
+**Tensor cores** — The units in an NVIDIA GPU specialized in multiplying small matrices in
+16 bits. They are what produces the big numbers on the spec sheet, and they only pay off
+with matrices that are large enough. *(module 01)*
+
+**Compute capability** (`sm_75`, `sm_80`…) — The generation of an NVIDIA GPU, which
+determines what it can do. bf16 and FlashAttention-2 need `sm_80` (Ampere); the RTX 20
+series stops at `sm_75`. *(module 01)*
+
+**Gradient checkpointing** — Recomputing the forward pass of some blocks during the backward
+pass instead of storing their activations. Saves memory and raises the cost from 6N to 8N
+per token. *(modules 01 and 12)*
 
 **fp32 / fp16 / bf16** — 32- and 16-bit numeric formats. fp16 takes half the space and runs
 twice as fast, but its range is so narrow that gradients go to zero. *(module 01)*
