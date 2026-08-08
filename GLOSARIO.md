@@ -490,7 +490,9 @@ aprovechando de verdad. Un modelo pequeño rara vez pasa del 20%. *(módulos 01 
 **Compute-bound / memory-bound** — Si una operación está limitada por la potencia de cálculo
 (un matmul grande) o por el ancho de banda de la memoria (una activación, una
 normalización). La fórmula de los FLOPs solo ve las primeras, y de ahí viene buena parte de
-la diferencia entre el tiempo estimado y el real. *(módulo 01)*
+la diferencia entre el tiempo estimado y el real. Se ve muy claro en la curva de MFU del módulo
+12: sube con el batch y luego se estanca, y ese punto es donde dejas de estar limitado por el
+coste de lanzar kernels y pasas a estarlo por el cálculo. *(módulos 01 y 12)*
 
 **Tensor cores** — Las unidades de una GPU NVIDIA especializadas en multiplicar matrices
 pequeñas en 16 bits. Son las que dan las cifras grandes de la ficha técnica, y solo se
@@ -519,7 +521,22 @@ automáticamente.
 generado. Hace la generación varias veces más rápida. *(módulo 14)*
 
 **Chinchilla** — El resultado de 2022 que dice cuántos tokens conviene usar para entrenar
-un modelo de un tamaño dado (aproximadamente 20 por parámetro). *(módulo 12)*
+un modelo de un tamaño dado (aproximadamente 20 por parámetro). Se derivó entrenando más de 400
+modelos, y demostró que GPT-3 estaba doce veces infra-entrenado. *(módulo 12)*
+
+**Leyes de escala** — Las relaciones empíricas entre tamaño del modelo, cantidad de datos,
+cómputo y pérdida. Predicen **pérdida**, no capacidades, y sus coeficientes se ajustaron a un
+rango concreto de escalas: extrapolar fuera de ahí no está justificado. *(módulo 12)*
+
+**Presupuesto de cómputo** — Cuántos FLOPs totales te puedes permitir gastar entrenando. Es la
+restricción de la que parte Chinchilla: dado un presupuesto, cómo repartirlo entre tamaño y
+datos. Duplicarlo no duplica el modelo óptimo, lo hace crecer un 41%. *(módulo 12)*
+
+**Sobreentrenado / infraentrenado** — Por encima o por debajo de esos ~20 tokens por parámetro.
+Ninguna de las dos cosas es un error automático: Chinchilla optimiza el cómputo de
+**entrenamiento**, y si el modelo se va a ejecutar mucho compensa entrenar de más uno pequeño,
+porque la inferencia se paga cada vez. Llama-3 está 90 veces por encima a propósito.
+*(módulo 12)*
 
 **Cuantización** — Guardar los pesos con menos bits (int8 en vez de fp16) para que el
 modelo ocupe menos. *(módulo 17)*
