@@ -373,7 +373,7 @@ tabla cuando un módulo te parezca gratuito:
 | Lo que haces hoy | Lo que lo sustituye | Módulo |
 |---|---|---|
 | Un carácter = un token | Trozos de palabra, con BPE | 03 |
-| El carácter como clave de un dict | Un vector aprendido (embedding) | 06 |
+| El carácter como clave de un dict | Un vector aprendido (embedding) | 05 |
 | Mirar 1 carácter atrás | Mirar 512 tokens, decidiendo a cuáles hacer caso | 06 |
 | `conteo / total` | `softmax(logits)` | 05, 06 |
 | Contar (una pasada por el texto) | Bajar la pérdida con gradientes | 02, 05, 11 |
