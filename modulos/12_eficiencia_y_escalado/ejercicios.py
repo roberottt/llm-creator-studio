@@ -19,6 +19,15 @@ QUÉ VAS A CONSTRUIR
 El ejercicio 3 reproduce un resultado que en 2022 demostro que la industria entera estaba
 entrenando mal sus modelos. Y lo vas a verificar contra modelos historicos reales.
 
+`TEORIA.md` los sigue en este mismo orden y cada docstring de aqui te dice que seccion le toca.
+Los ejercicios 1 y 2 encadenan: el `total` que devuelve el primero es el `flops_per_token` que
+come el segundo. El tercero es independiente.
+
+Y hay una seccion que conviene leer si o si, "Los tres recuentos de parametros": el curso
+arrastra TRES numeros parecidos (total 8.933.440, no-embedding 7.622.720 y params_matmul
+8.929.280) y cada formula quiere uno distinto. El `6N` del modulo 01 usa params_matmul; el N de
+Chinchilla usa el no-embedding. Mezclarlos no da ningun error, solo numeros mal.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -42,6 +51,11 @@ from llmfs.config import ModelConfig
 
 def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
     """FLOPs por token, separados en matmuls y atencion.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: donde se van los FLOPs", con la tabla del
+    reparto matmul/atencion para seis longitudes de contexto (5% de atencion con T=128, 78% con
+    T=8192) y la subseccion de los tres recuentos de parametros, que es donde se pierde todo el
+    mundo.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -116,6 +130,11 @@ def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> di
 def compute_mfu(tokens_per_second: float, flops_per_token: int, peak_tflops: float) -> float:
     """Model FLOPs Utilization: que fraccion del pico del hardware estas aprovechando.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: cuanto de tu GPU estas usando", con la MFU
+    medida de verdad para cinco tamanyos de batch. Lo que hay que mirar ahi no es el numero sino
+    la forma de la curva: sube y se estanca, y ese punto es donde dejas de estar limitado por el
+    lanzamiento de kernels.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Dos lineas.
@@ -179,6 +198,11 @@ def chinchilla_optimal_allocation(
     compute_budget: float, tokens_per_param: float = 20.0
 ) -> dict[str, float]:
     """Reparte un presupuesto de computo entre parametros y tokens.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: como repartir el presupuesto", con la tabla de
+    seis modelos reales (GPT-3, Gopher, Chinchilla, dos Llama y el nuestro) y su veredicto, y la
+    consecuencia de la raiz cuadrada que conviene interiorizar: duplicar el presupuesto no
+    duplica el modelo, lo hace crecer un 41%.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
