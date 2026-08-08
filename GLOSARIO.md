@@ -194,6 +194,24 @@ salida. «Oculta» solo significa que nadie mira sus números directamente. *(m�
 dudando el modelo, en la práctica". Perplejidad 10 ≈ está dudando entre 10 tokens.
 *(módulo 15)*
 
+**Bits por byte** — La métrica de calidad que **sí** se puede comparar entre modelos con
+tokenizadores distintos, porque normaliza por bytes del texto original y no por tokens. Tiene
+interpretación exacta: es cuántos bits harían falta para transmitir el texto usando el modelo
+como compresor. gzip está en ~2,5 y los mejores LLM en 0,6-0,8. *(módulo 15)*
+
+**Contaminación de datos** — Que el conjunto de test esté dentro del corpus de entrenamiento.
+Como los benchmarks están en internet y los modelos se entrenan con internet, distinguir «ha
+aprendido» de «lo ha visto» es difícil, y es uno de los problemas metodológicos serios del campo.
+*(módulo 15)*
+
+**LLM-as-a-judge** — Usar otro modelo de lenguaje para puntuar las respuestas. Es lo que se hace
+hoy y tiene sesgos documentados: prefiere respuestas largas, prefiere su propio estilo y es
+sensible al orden en que se le presentan las opciones. *(módulo 15)*
+
+**Capacidades emergentes** — Saltos bruscos de capacidad al aumentar la escala. Hay un análisis de
+2023 que argumenta que muchos son artefactos de medir con métricas de todo-o-nada: con una métrica
+continua se vería una curva suave. En discusión. *(módulo 15)*
+
 **Entropía** — Lo mismo que la perplejidad pero sin exponenciar: mide cómo de repartida está
 una distribución. Máxima cuando todo es equiprobable (`ln(n)`), cerca de cero cuando toda la
 masa está en una opción. En el módulo 06 se usa para medir si la atención reparte o se fija
