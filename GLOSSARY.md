@@ -377,8 +377,35 @@ is a pattern to be detected and each column of the second is what gets written b
 residual stream if that pattern shows up. It is a hypothesis with partial evidence, not an
 established result. *(module 08)*
 
-**Positional embedding / RoPE** — How the model is told what position each token is in.
-Attention on its own does not distinguish the order. *(module 09)*
+**Positional embedding** — How the model is told what position each token is in. Attention on
+its own does not distinguish the order. There are three families: a learned table (GPT-2), a
+fixed table of sines and cosines (the 2017 paper) and RoPE. *(module 09)*
+
+**RoPE** (*Rotary Position Embedding*) — The positional encoding used by Llama, Mistral and our
+model. Instead of **adding** something to the vector, it **rotates** it by an angle proportional
+to the position, pair of dimensions by pair of dimensions. It adds not one parameter to the model
+and it does not change the vectors' length. *(module 09)*
+
+**Permutation equivariance** — The property of attention whereby shuffling the input tokens
+shuffles the output the same way and changes nothing else. In other contexts it is a virtue; in
+language it is a fatal flaw, and it is the problem positional encoding solves. *(module 09)*
+
+**Absolute / relative position** — "I am token 7" versus "I am two positions behind that one".
+The relative one generalizes better: what is learned at one point in the sequence works anywhere
+else. The property that makes RoPE relative is that the dot product of two rotated vectors depends
+only on the difference of angles. *(module 09)*
+
+**Extrapolate** — Using the model with sequences longer than the ones it saw during training.
+With a learned table it is impossible (there is no row to look up); with RoPE it is possible, but
+quality degrades quite a lot, hence the family of techniques for extending the context after the
+fact (position interpolation, NTK-aware scaling, YaRN). *(module 09)*
+
+**Buffer** — A tensor that travels with the model, moves to the GPU with it and is saved with it,
+but is **not a parameter**: it is not trained. RoPE's `cos` and `sin` tables are buffers.
+*(module 09)*
+
+**ALiBi** — An alternative to RoPE: instead of rotating, it subtracts from the attention scores a
+penalty proportional to the distance between the two tokens. *(module 09)*
 
 **Weight tying** — Reusing the embedding matrix as the output matrix. It saves 1.3 million
 parameters in our model. *(module 10)*

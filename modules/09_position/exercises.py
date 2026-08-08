@@ -17,7 +17,22 @@ The way of telling the model what position each token is in:
             v
     apply_rope             (ex. 3)  rotate Q and K. ONE LINE, but only after ex. 2
 
-Exercise 2 is the hard one. Exercise 3 is a single line.
+Exercise 2 is the hard one, and it is hard because of a single step: the one that duplicates
+the frequencies. Exercise 3 is a single line, but it only makes sense after understanding
+exercise 2.
+
+Watch out for one thing: exercise 1 is NOT used by our model. It is the 2017 option and it is
+here because it introduces the frequency ladder that RoPE reuses, because you will run into it
+in a lot of code, and because the demo trains it to compare it against the other two. The
+"Exercise 1" section of `THEORY.md` explains this.
+
+And a familiar face: the `apply_rope` of exercise 3 is one you already called in module 06,
+inside `MultiHeadAttention`, imported from the reference with a comment telling you to ignore it
+for now. Today you write it, and the `cos` and `sin` tables of that signature come out of
+exercise 2.
+
+`THEORY.md` is ordered just like this list and each docstring here tells you which section it
+maps to.
 
 THE PROBLEM IT SOLVES
 =====================
@@ -50,6 +65,10 @@ import torch
 
 def sinusoidal_embeddings(seq_len: int, d_model: int, base: float = 10000.0) -> torch.Tensor:
     """The 2017 paper's table of sines and cosines.
+
+    Context in `THEORY.md`: section "Exercise 1: sines and cosines", which starts by explaining
+    why you are writing something the final model does not use, and carries the whole 5x4 table
+    your function has to return, read by columns so the frequency ladder shows up.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -127,6 +146,11 @@ def rope_frequencies(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Precomputes the cosine and sine tables RoPE will use.
 
+    Context in `THEORY.md`: section "Exercise 2: the angle tables". If step 4 (the `cat` that
+    duplicates) looks like a bug to you, that section has the complete tables for head_dim=4 with
+    the repeated columns marked, and the reason: with the halves convention, both components of a
+    pair need THE SAME angle.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Five steps.
@@ -199,6 +223,11 @@ def rope_frequencies(
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """Applies the positional rotation to Q or to K.
+
+    Context in `THEORY.md`: section "Exercise 3: actually rotating", with the check that this line
+    IS the rotation matrix and an example with head_dim=4 you can follow by hand: the vector
+    [1, 0, 0, 1] rotated at positions 0, 1 and 2, with the two pairs taken separately and the norm
+    unchanged.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
