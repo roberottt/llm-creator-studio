@@ -18,6 +18,12 @@ Las dos piezas que hacen que una red profunda entrene en vez de devolver NaN:
 El tercero apenas tiene codigo. Lo que importa es entender POR QUE los parentesis van donde
 van.
 
+`TEORIA.md` esta ordenada igual que esta lista: cada ejercicio tiene alli su propia seccion
+con su ejemplo numerico, y cada docstring de aqui te dice cual es. Si te preguntas por que el
+ejercicio 1 es una funcion suelta y el 2 una clase, la respuesta esta en la seccion "Por que
+el 1 es una funcion y el 2 una clase": el 2 es la primera capa del curso que tiene pesos
+propios.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -51,6 +57,10 @@ def layer_norm(
     eps: float = 1e-5,
 ) -> torch.Tensor:
     """Normaliza cada token a media 0 y varianza 1, y luego aplica escala y desplazamiento.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: LayerNorm a mano", con el ejemplo hecho a
+    mano, sobre que dimension se calcula la media (y en que se diferencia eso de BatchNorm) y
+    las dos versiones de la varianza puestas una al lado de la otra.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -129,6 +139,11 @@ def layer_norm(
 class RMSNorm(nn.Module):
     """LayerNorm sin la media y sin el sesgo. Lo que usan Llama, Mistral y nuestro modelo.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: quitarle la mitad", con la tabla medida de
+    que hacen LayerNorm y RMSNorm con datos centrados y desplazados, por que esta capa es una
+    clase y no una funcion, y por que los tiempos de la demo NO dicen que RMSNorm sea mas
+    lenta.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     **En `__init__`** (dos lineas ademas del `super()`):
@@ -203,6 +218,10 @@ def prenorm_residual(
     norm: Callable[[torch.Tensor], torch.Tensor],
 ) -> torch.Tensor:
     """Pre-norm. Es UNA LINEA y es el ejercicio mas importante del modulo.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: donde van los parentesis", con la tabla de
+    gradientes de las cuatro configuraciones y la escala de la corriente residual medida bloque
+    a bloque en el modelo real, que es de donde sale la necesidad de `norm_f`.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------

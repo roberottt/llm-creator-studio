@@ -318,8 +318,30 @@ interpretabilidad mecanicista. *(módulo 06)*
 crezcan ni se encojan descontroladamente capa a capa. *(módulo 07)*
 
 **Conexión residual** — Sumar la entrada de un bloque a su salida (`x + f(x)`). Es lo que
-permite entrenar redes profundas: da al gradiente un camino directo hasta abajo.
+permite entrenar redes profundas: da al gradiente un camino directo hasta abajo. Al derivar,
+esa suma aporta un `1` que ninguna capa puede atenuar. *(módulo 07)*
+
+**Corriente residual** (*residual stream*) — El canal principal por el que viaja la
+representación de cada token de punta a punta del modelo. Cada bloque lee de él, calcula algo y
+**suma** su aportación de vuelta, en lugar de sustituirlo. *(módulo 07)*
+
+**Pre-norm / post-norm** — Si la normalización va dentro de la rama (`x + f(norm(x))`) o
+envolviendo la suma (`norm(x + f(x))`). Sólo cambian los paréntesis, y decide si el gradiente
+atraviesa una normalización por capa o llega intacto abajo. Todo lo moderno es pre-norm.
 *(módulo 07)*
+
+**BatchNorm** — La normalización que se calcula a lo largo del batch, no de las dimensiones de
+cada token. No se usa en Transformers: el resultado de un ejemplo dependería de con quién
+comparte lote, y en inferencia con un solo ejemplo hay que tirar de estadísticas guardadas.
+*(módulo 07)*
+
+**Gradiente que se desvanece / que explota** — Cuando el gradiente se multiplica capa tras capa
+por un factor menor o mayor que 1 y acaba en cero o en infinito. Con 64 capas lineales llega a
+ser cero **exacto**, por underflow de la coma flotante. *(módulo 07)*
+
+**Warmup** — Empezar el entrenamiento con un learning rate muy pequeño y subirlo poco a poco
+durante los primeros pasos. Post-norm lo necesita para no explotar; pre-norm no.
+*(módulos 07 y 11)*
 
 **FFN / MLP** — La parte de cada bloque que no es atención: dos o tres capas lineales con
 una no-linealidad en medio. Suele tener más parámetros que la atención. *(módulo 08)*
