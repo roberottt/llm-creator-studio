@@ -194,6 +194,23 @@ only means nobody looks at its numbers directly. *(modules 02 and 05)*
 hesitating between, in practice". Perplexity 10 ≈ it is hesitating between 10 tokens.
 *(module 15)*
 
+**Bits per byte** — The quality metric that **can** be compared across models with different
+tokenizers, because it normalizes by bytes of the original text rather than by tokens. It has an
+exact interpretation: how many bits it would take to transmit the text using the model as a
+compressor. gzip sits at ~2.5 and the best LLMs at 0.6-0.8. *(module 15)*
+
+**Data contamination** — The test set being inside the training corpus. Since benchmarks are on the
+internet and models are trained on the internet, telling "it learned" from "it has seen it" is
+hard, and it is one of the field's serious methodological problems. *(module 15)*
+
+**LLM-as-a-judge** — Using another language model to score the answers. It is what gets done today
+and it has documented biases: it prefers long answers, prefers its own style and is sensitive to
+the order the options are presented in. *(module 15)*
+
+**Emergent abilities** — Sudden jumps in capability with scale. A 2023 analysis argues many are
+artifacts of measuring with all-or-nothing metrics: a continuous metric would show a smooth curve.
+Under discussion. *(module 15)*
+
 **Entropy** — The same as perplexity but without exponentiating: it measures how spread out a
 distribution is. Maximal when everything is equally likely (`ln(n)`), near zero when all the
 mass is on one option. In module 06 it is used to measure whether attention spreads out or

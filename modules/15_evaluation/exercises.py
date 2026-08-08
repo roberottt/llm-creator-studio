@@ -18,6 +18,10 @@ Three ways of answering "is my model any good?":
     bits_per_byte         (ex. 2)  the one that CAN be compared across models
     run_prompt_battery    (ex. 3)  the one no automatic metric replaces
 
+`THEORY.md` follows this same order and each docstring here tells you which section it maps to.
+The value of this module is not in the code —two lines per function— but in knowing WHEN to use
+each one and what it really measures.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -46,6 +50,9 @@ from llmfs.reference import PROMPTS_TINYSTORIES
 
 def perplexity_from_loss(loss: float) -> float:
     """Perplexity from the mean loss in nats.
+
+    Context in `THEORY.md`: section "Exercise 1: perplexity", with the three cases to recognize
+    and the reading of the train/val gap measured on the course model.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -101,6 +108,10 @@ def perplexity_from_loss(loss: float) -> float:
 
 def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
     """Bits per byte: the metric that CAN be compared across different tokenizers.
+
+    Context in `THEORY.md`: section "Exercise 2: bits per byte", with the compressor table where you can
+    see that your toy model compresses BETTER than gzip, and why the input is the TOTAL loss and
+    not the mean.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -181,6 +192,9 @@ def run_prompt_battery(
     prompts: Sequence[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     """Generates a completion for each prompt of the qualitative battery.
+
+    Context in `THEORY.md`: section "Exercise 3: the qualitative battery", with what each of the six
+    prompts tests and why they are fixed.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
