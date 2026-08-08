@@ -468,8 +468,23 @@ del cómputo por token igual que las capas. En el nuestro, 7.622.720 de 8.933.44
 *(módulos 10 y 12)*
 
 **Checkpoint** — El fichero donde se guarda el modelo: los pesos y lo que haga falta para
-reanudar el entrenamiento. Los buffers marcados `persistent=False` no se guardan ahí, porque se
-recalculan solos al construir el modelo. *(módulos 10 y 11)*
+reanudar el entrenamiento, que son cuatro cosas — pesos, estado del optimizador, estado del
+GradScaler y número de paso. Con sólo los pesos, Adam arranca con los momentos a cero y el modelo
+pega un bandazo justo al reanudar. Los buffers marcados `persistent=False` no se guardan ahí,
+porque se recalculan solos al construir el modelo. *(módulos 10, 11 y 13)*
+
+**Paso** (*step*) — Una actualización de los pesos. No confundir con **época**, que es una pasada
+completa por los datos: nuestra tirada final son 10.172 pasos y menos de una época.
+*(módulo 13)*
+
+**Overfit a un batch** — La comprobación de sanidad más barata que existe: darle al modelo el
+mismo batch una y otra vez y verificar que la pérdida baja casi a cero. Un modelo con millones de
+parámetros memoriza cuatro secuencias sin despeinarse; si no lo hace, hay un bug en la maquinaria.
+Caza gradientes que no llegan, el `zero_grad` olvidado y el optimizador mal construido; no caza
+nada relacionado con generalizar. *(módulo 13)*
+
+**ETA** — Cuánto falta para terminar, estimado a partir del ritmo medido. Se muestra con precisión
+proporcional a su magnitud: a partir de una hora los segundos son ruido. *(módulo 13)*
 
 **state_dict** — El diccionario de PyTorch con todos los tensores de un modelo, parámetros y
 buffers, indexados por nombre. Es lo que se guarda y se carga. *(módulo 10)*

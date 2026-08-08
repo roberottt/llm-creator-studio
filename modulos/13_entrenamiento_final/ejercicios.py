@@ -13,7 +13,14 @@ QUÉ VAS A CONSTRUIR
     overfit_single_batch  (ej. 1)  la comprobacion de 30 segundos que caza casi todo
     format_eta            (ej. 2)  cuanto falta, en algo legible
 
-Y con eso lanzas el entrenamiento de verdad.
+Y con eso lanzas el entrenamiento de verdad. Ojo: el entrenamiento en si YA ESTA ESCRITO,
+montado sobre las piezas de los modulos 04 a 12. Tu trabajo aqui es lanzarlo, saber leerlo y
+decidir si va bien.
+
+`TEORIA.md` sigue este mismo orden y cada docstring de aqui te dice que seccion le toca. Y hay
+una seccion que no corresponde a ningun ejercicio y es la habilidad que de verdad te llevas:
+"Como se lee la linea del log", que desmonta campo a campo la linea que vas a estar mirando
+durante horas. Cada uno de sus seis campos viene de un modulo distinto del curso.
 
 EL EJERCICIO 1 ES EL QUE IMPORTA
 ================================
@@ -55,6 +62,10 @@ def overfit_single_batch(
     optimizer_factory: Callable[..., Any] | None = None,
 ) -> list[float]:
     """Entrena UN SOLO batch hasta memorizarlo. El test que caza casi cualquier bug.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: la comprobacion de los 30 segundos", con la
+    tabla medida de como baja la perdida (de 4,29 a 0,06 en 300 pasos y dos segundos de reloj) y
+    la lista de que caza y que no.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -153,6 +164,10 @@ def overfit_single_batch(
 
 def format_eta(seconds: float) -> str:
     """Formatea una duracion en algo legible de un vistazo.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: cuanto falta", con las dos razones por las que
+    esto no es cosmetico. La segunda es una regla que sirve mucho mas alla de este ejercicio: la
+    precision util de una estimacion siempre es proporcional a su magnitud.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
