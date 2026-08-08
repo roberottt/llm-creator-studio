@@ -152,31 +152,41 @@ ocupadas necesita matrices grandes. Las nuestras son de 320×320, que en términ
 diminuto: pasa más tiempo recibiendo instrucciones y esperando a la memoria que
 multiplicando.
 
-Esto no hay que creérselo, se mide. Esta es una curva real, medida con `llmfs demo 01` sobre
-una máquina de referencia —un portátil con GPU integrada, backend MPS—. La tuya dará otras
-cifras; lo que importa es la **forma** de la curva, que es la misma en cualquier GPU:
+Esto no hay que creérselo, se mide. Esta es una curva real, medida sobre una máquina de
+referencia —un portátil con GPU integrada, backend MPS—. La tuya dará otras cifras; lo que
+importa es la **forma**, que es la misma en cualquier GPU:
 
 | lado de la matriz | fp32 | fp16 |
 |---|---|---|
-| 320 (el de nuestro modelo) | 0,46 TFLOPS | 0,84 TFLOPS |
-| 640 | 0,74 | 2,24 |
-| 1024 | 3,51 | 2,99 |
-| 2048 | 3,77 | 15,37 |
-| 4096 | 3,61 | **15,90** |
+| 320 (el de nuestro modelo) | 0,87 TFLOPS | 4,01 TFLOPS |
+| 640 | 3,61 | 11,14 |
+| 1024 | 3,72 | 14,74 |
+| 2048 | **3,80** | 15,72 |
+| 4096 | 3,60 | **15,91** |
 
-Lee la primera fila y la última. **El mismo chip, la misma operación, el mismo tipo de dato,
-y una diferencia de 8 veces en fp32 y de 19 veces en fp16** solo por el tamaño de la
-matriz. Con matrices de 320 —las de nuestro modelo— esa máquina está dando el 12% de lo que
-sabe hacer en fp32, y el 5% de lo que sabe hacer en fp16.
-
-Ejecuta la demo y mira tu propia tabla: los valores absolutos cambiarán mucho entre una GPU
-discreta y una integrada, pero la fila de 320 seguirá siendo una fracción pequeña de la
-última.
+Compara la primera fila con la mejor. **El mismo chip, la misma operación, el mismo tipo de
+dato, y un factor de 4 de diferencia** solo por el tamaño de la matriz. Con matrices de 320
+—las de nuestro modelo— esa máquina está dando el 23% de lo que sabe hacer en fp32 y el 25%
+de lo que sabe hacer en fp16. De 1024 en adelante ya es la meseta.
 
 Esa tabla explica de golpe tres cosas que si no parecen arbitrarias: por qué los modelos
 grandes son *más* eficientes por FLOP que los pequeños, por qué merece la pena subir el
 batch size hasta donde quepa, y por qué tu modelo de 9M no va a acercarse ni de lejos a las
 cifras que se leen en los papers.
+
+### Mide más de una vez
+
+Esos números son medianas de cinco repeticiones con un calentamiento generoso. El detalle no
+es pedantería, y merece la pena que veas lo que pasa sin él.
+
+Con 4096 la medida es sólida como una roca: cinco tiradas dan entre 15,90 y 15,91 TFLOPS.
+Con 320, esas mismas cinco tiradas se reparten entre 0,60 y 1,12 en fp32 —casi el doble de
+diferencia— en la **misma** máquina midiendo la **misma** operación. Y si encima usas un
+calentamiento corto y pocas iteraciones, los tamaños pequeños salen todavía más bajos,
+porque hay un coste fijo repartiéndose entre demasiado poco trabajo.
+
+O sea: las matrices pequeñas son lentas *y* difíciles de medir, y las dos cosas se confunden
+con facilidad. Cuando un número te sorprenda, repítelo antes de construir una teoría encima.
 
 ## 4. Por eso el ejercicio 1 te hace medir
 
@@ -198,7 +208,7 @@ elijas:
 
 ```
 0,66 / 14,0  (el pico nominal del backend, que es lo que usa el logger)  =  4,7 %
-0,66 /  3,77 (el pico fp32 MEDIDO en esa máquina, y la tirada va en fp32) = 17,5 %
+0,66 /  3,80 (el pico fp32 MEDIDO en esa máquina, y la tirada va en fp32) = 17,5 %
 ```
 
 **Es la misma tirada.** La MFU no ha cambiado; ha cambiado el denominador. El 4,7% invita a
