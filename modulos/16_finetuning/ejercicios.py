@@ -25,6 +25,11 @@ Escribele a tu modelo entrenado "¿Cual es la capital de Francia?" y lo mas prob
 responda con MAS preguntas. No esta roto: esta haciendo exactamente lo que le ensenyaste,
 que es continuar texto plausible.
 
+`TEORIA.md` sigue este mismo orden y cada docstring de aqui te dice que seccion le toca. Los
+ejercicios van en DOS BLOQUES independientes: 1 y 2 son el SFT (uno da formato, el otro decide de
+que se aprende) y 3 y 4 son LoRA. Puedes hacer SFT sin LoRA y LoRA sin SFT; se combinan porque en
+la practica es lo que se hace.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -57,6 +62,10 @@ def build_chat_template(
     messages: Sequence[dict[str, str]], add_generation_prompt: bool = False
 ) -> str:
     """Serializa una conversacion a texto plano con marcadores.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: el chat template", con la diferencia entre
+    la version de entrenamiento y la de inferencia, que es de donde sale el flag
+    add_generation_prompt.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -149,6 +158,10 @@ def mask_prompt_tokens(
 ) -> list[int]:
     """Construye los targets ignorando el prompt: solo se aprende de la RESPUESTA.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: enmascarar el prompt", con la tabla posicion a
+    posicion donde se ve que hay DOS posiciones ignoradas y no tres, y por que la transicion
+    "se acabo la pregunta, me toca hablar" es lo que NO hay que enmascarar.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Cuatro lineas, y el rango del bucle es TODO el ejercicio.
@@ -229,6 +242,9 @@ def mask_prompt_tokens(
 
 class LoRALinear(nn.Module):
     """Una capa lineal con adaptadores de rango bajo.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: LoRA", con la aritmetica de por que r=8 entrena el
+    0,68% del modelo y por que lora_B se inicializa a CEROS y lora_A no.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -368,6 +384,10 @@ class LoRALinear(nn.Module):
 
 def merge_lora_weights(layer: LoRALinear) -> nn.Linear:
     """Funde los adaptadores en la matriz base y devuelve un `nn.Linear` normal.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 4: fundir los pesos", con el error medido de la
+    fusion (1,31e-06, redondeo de fp32) y por que esto es la ventaja de LoRA frente a otros
+    metodos de fine-tuning eficiente.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
