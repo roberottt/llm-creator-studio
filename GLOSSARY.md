@@ -92,6 +92,40 @@ to move that parameter in so the loss goes down. *(module 02)*
 the network backwards. It costs about 2 times what the forward costs, regardless of how many
 parameters there are. *(module 02)*
 
+**Chain rule** — If `y` depends on `u` and `u` depends on `x`, then `dy/dx = (dy/du)·(du/dx)`.
+All of backpropagation is this, applied operation by operation. If a variable has an influence
+through several paths, its contributions are **added**. *(module 02)*
+
+**Compute graph** — The record of which operations were done, on which operands and in what
+order. It builds itself during the forward pass and it is what makes walking backwards
+possible. In our engine it is the `_prev` and `_op` fields of each `Value`. *(module 02)*
+
+**Reverse-mode autodifferentiation** — The technique that computes exact derivatives by
+breaking the computation into elementary operations and walking the graph backwards. Neither
+numerical (approximate and expensive) nor symbolic (unmanageable). It is what is inside
+`torch.autograd`. *(module 02)*
+
+**Topological order** — The order the graph has to be walked in so that no node passes on its
+gradient before receiving it from all of its parents. A wrongly computed order gives incorrect
+gradients without raising any error. *(module 02)*
+
+**Gradient descent** — The learning rule: `p -= lr * p.grad`. Move each parameter a little
+against its gradient, because the gradient points the way the loss goes up. *(module 02)*
+
+**Neuron** — The smallest unit: a weighted sum of its inputs plus a bias,
+`w₁x₁ + w₂x₂ + … + b`, passed through a non-linear function. The `w`s and the `b` are its
+parameters. *(module 02)*
+
+**Bias** — The constant term `b` of a neuron: it lets the neuron shift its output without
+depending on the input. *(module 02)*
+
+**Activation function** — The non-linear part of a neuron (`tanh`, `relu`, `gelu`). Without it,
+stacking layers is pointless: the composition of linear functions is another linear function.
+*(modules 02 and 08)*
+
+**MSE** (*mean squared error*) — A loss for predicting numbers: `mean((prediction - target)²)`.
+It is used in module 02; for predicting tokens, cross-entropy is used instead. *(module 02)*
+
 **Forward** — Passing the data through the network and getting the output.
 
 **Epoch** — One complete pass over the whole dataset.
@@ -138,6 +172,8 @@ deep networks trainable: it gives the gradient a direct path to the bottom. *(mo
 
 **FFN / MLP** — The part of each block that is not attention: two or three linear layers with a
 non-linearity in between. It usually has more parameters than the attention. *(module 08)*
+Careful with the name: in module 02, "MLP" is the whole network (layers of neurons chained
+together); in a transformer it is only that sub-block of each layer.
 
 **GELU, SwiGLU** — Activation functions, the "non-linear" part without which the whole network
 would collapse into a single matrix multiplication. *(module 08)*

@@ -20,6 +20,20 @@ The engine that makes `loss.backward()` work. In about 100 lines and without usi
 
 By the end, `loss.backward()` will be code you understand line by line.
 
+WHERE EACH THING IS EXPLAINED
+=============================
+
+If anything in the code below sounds like it came out of nowhere, it is explained in
+`THEORY.md`:
+
+    where the Value class comes from    -> "From the chain rule to a Python class"
+    what .data / .grad / ._prev are     -> "The five fields, and why each one is there"
+    why there is a `def` inside a `def` -> "The closure: the part that is hardest to see"
+    the full trace with numbers         -> "A full trace, with the numbers from the example"
+    why exercise 2 is needed at all     -> "The order matters"
+    what a neuron and an MLP are        -> "What a neuron is, and what an MLP is"
+    where the 6-step loop comes from    -> "The training loop, step by step"
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -48,6 +62,10 @@ from llmfs.reference import MLP
 
 class Value:
     """A scalar that remembers where it came from. It is the longest exercise in the course.
+
+    If you cannot see where this class comes from, read the section "From the chain rule to a
+    Python class" in `THEORY.md` first: it builds these nine methods from the ground up, with
+    a field-by-field trace of `d = a * b + 10`.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -206,6 +224,9 @@ class Value:
 def topological_order(root: "Value") -> list["Value"]:
     """Orders the graph's nodes so it can be walked backwards.
 
+    The section "The order matters" in `THEORY.md` has the diamond graph where you can see a
+    wrongly computed order give 6 instead of 14, without warning you about anything.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     A depth-first traversal with an EXPLICIT STACK (not recursive). The trick is a flag
@@ -287,6 +308,11 @@ def train_scalar_mlp(
     value_cls: type = Value,
 ) -> list[float]:
     """Trains an MLP with YOUR autodiff engine.
+
+    If you do not know what an MLP is, or what `model(x)`, `parameters()` or `zero_grad()`
+    do, read the sections "What a neuron is, and what an MLP is" and "The training loop, step
+    by step" in `THEORY.md` first: they count the 113 parameters one by one and walk through a
+    full descent step with numbers.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
