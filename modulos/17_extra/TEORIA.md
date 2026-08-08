@@ -22,63 +22,115 @@ mirando sólo los parámetros.
 - Qué separa tu modelo de GPT-4, con las cinco piezas desglosadas
 - Qué te llevas del curso que no sale en los tutoriales
 
+### Qué vas a escribir
+
+Tres funciones, las últimas del curso, y esta teoría las sigue en orden:
+
+| Ejercicio | Qué hace |
+|---|---|
+| 1. `quantize_int8_symmetric` | Guardar los pesos en 1 byte en vez de 4 |
+| 2. `dequantize_int8` | Recuperarlos, aproximadamente |
+| 3. `quantization_error` | Medir cuánto se ha perdido |
+
+Van encadenadas y son la misma idea vista tres veces: comprimir, descomprimir y comprobar cuánto
+te ha costado. Ninguna pasa de cinco líneas.
+
+El ejercicio 3 es el que le da sentido a los otros dos: sin medir el error, cuantizar es un acto
+de fe.
+
 ### Cuánto cuesta
 
 2 horas. Es el último.
 
 ---
 
-## Cuantización: el modelo en la cuarta parte
+## Ejercicio 1: cuantizar (`quantize_int8_symmetric`)
 
-Tu modelo ocupa 35,7 MB en fp32. Guardando los pesos en enteros de 8 bits ocuparía 8,9 MB.
+Tu modelo ocupa 35,7 MB en fp32. Guardando los pesos en enteros de 8 bits ocuparía 9,0 MB.
 
-La idea es sencilla: en vez de guardar cada peso como un float de 4 bytes, se guarda un
-entero de 1 byte más una **escala** que permite recuperar el valor aproximado.
+La idea es sencilla: en vez de guardar cada peso como un float de 4 bytes, se guarda un entero de
+1 byte más una **escala** que permite recuperar el valor aproximado.
 
 ### Con números
 
 Toma una fila de pesos:
 
 ```
-W = [0.12, -0.45, 0.03, 0.28]
+   W = [0.12, -0.45, 0.03, 0.28]
 ```
 
 El mayor en valor absoluto es 0,45. Se mapea ese rango a `[-127, +127]`:
 
 ```
-escala = 0.45 / 127 = 0.003543
-
-W_int8 = round(W / escala) = [34, -127, 8, 79]
+   escala = 0.45 / 127 = 0.003543
+   W_int8 = round(W / escala) = [34, -127, 8, 79]
 ```
-
-Y para recuperar:
-
-```
-W' = W_int8 × escala = [0.1204, -0.4500, 0.0283, 0.2799]
-```
-
-No es exacto. El error es del orden de media unidad de escala, y eso es lo que se paga.
 
 ### Por qué 127 y no 128
 
 `int8` va de −128 a 127. Usando 127 el rango queda **simétrico** y el cero se representa
-exactamente. Eso importa más de lo que parece: en una matriz con muchos valores pequeños,
-que el cero sea exacto evita un sesgo sistemático que se acumularía capa tras capa.
+exactamente. Eso importa más de lo que parece: en una matriz con muchos valores pequeños, que el
+cero sea exacto evita un sesgo sistemático que se acumularía capa tras capa.
+
+Es también de donde viene el "symmetric" del nombre de la función: hay esquemas asimétricos, con
+un punto cero desplazado, que aprovechan mejor el rango cuando los pesos no están centrados. Los
+pesos de una red sí lo están, así que aquí no compensa.
 
 ### Por canal frente a por tensor
 
-Se puede calcular **una escala para toda la matriz** o **una por fila**. Por fila cuesta un
-vector de escalas más —despreciable— y reduce bastante el error, porque una sola fila con
-valores grandes no arrastra a las demás.
+Se puede calcular **una escala para toda la matriz** o **una por fila**. Es el argumento
+`per_channel` de la función, y no es cosmético: por fila cuesta un vector de escalas más
+—despreciable— y reduce el error un tercio, porque una sola fila con valores grandes no arrastra
+a las demás.
 
-Medido sobre una matriz real del modelo:
+Medido sobre matrices reales del modelo:
 
-| método | error relativo |
-|---|---|
-| por tensor | 1,07% |
-| **por canal** | **0,71%** |
+| matriz | forma | por canal | por tensor |
+|---|---|---|---|
+| token_embedding | (4096, 320) | 0,711% | 1,108% |
+| q_proj (capa 0) | (320, 320) | 0,714% | 1,067% |
+| gate_proj (capa 0) | (896, 320) | 0,712% | 1,034% |
+| down_proj (capa 5) | (320, 896) | 0,779% | 1,116% |
 
-Es lo que hacen todas las implementaciones serias.
+Por canal gana siempre, en las cuatro. Es lo que hacen todas las implementaciones serias.
+
+---
+
+## Ejercicio 2: recuperar (`dequantize_int8`)
+
+Deshacer la operación: multiplicar los enteros por la escala.
+
+```
+   W' = W_int8 × escala = [0.1205, -0.4500, 0.0283, 0.2799]
+```
+
+Compáralo con el original `[0.12, -0.45, 0.03, 0.28]` y mira los errores uno a uno:
+
+| original | int8 | recuperado | error |
+|---|---|---|---|
+| +0,1200 | 34 | +0,1205 | 0,0005 |
+| **−0,4500** | **−127** | **−0,4500** | **0,0000** |
+| +0,0300 | 8 | +0,0283 | 0,0017 |
+| +0,2800 | 79 | +0,2799 | 0,0001 |
+
+**El −0,45 se recupera exacto** porque es el máximo y se mapea justo a −127. Los demás pierden
+hasta media unidad de escala, y el peor es el 0,03: los valores pequeños son los que peor lo
+pasan, porque la escala se fija por el mayor de la fila. Ésa es exactamente la razón de que la
+cuantización por canal gane a la de por tensor.
+
+Lo único que hay que cuidar del ejercicio es el `dtype`: los enteros hay que pasarlos a float
+**antes** de multiplicar, o la multiplicación se hace en enteros y el resultado es basura
+redondeada a cero.
+
+---
+
+## Ejercicio 3: medir lo que has perdido (`quantization_error`)
+
+Cuantizar, descuantizar y comparar. Sin esto los otros dos ejercicios son un acto de fe.
+
+Se mide como error **relativo** —dividido por la magnitud de los pesos originales— y no absoluto,
+porque el absoluto no se puede comparar entre matrices con escalas distintas: un error de 0,001
+es enorme en una matriz de valores en torno a 0,01 y despreciable en una de valores en torno a 1.
 
 ### Qué se gana y qué se pierde
 
@@ -125,12 +177,15 @@ sector. Ningún laboratorio publica su receta.
 
 ### 2. El cómputo
 
-```
-tu modelo    : ~2,3·10¹⁶ FLOPs      unas horas en una RTX 2060
-GPT-4        : ~2·10²⁵ FLOPs        miles de GPUs durante meses
-```
+| | el tuyo | GPT-4 (estimado) | factor |
+|---|---|---|---|
+| parámetros | 8,93e+06 | 1,8e+12 | 2e+05× |
+| tokens de entrenamiento | 5e+08 | 1,3e+13 | 3e+04× |
+| FLOPs de entrenamiento | 2,3e+16 | 2e+25 | **9e+08×** |
+| coste aproximado | 0,5 € | 1e+08 € | 2e+08× |
 
-Son **nueve órdenes de magnitud**. Y el coste no es solo de las GPUs: es el centro de datos,
+Son **nueve órdenes de magnitud** en cómputo. Y fíjate en la última fila, que es la que de verdad
+sitúa las cosas: lo tuyo cuesta medio euro de electricidad. Y el coste no es solo de las GPUs: es el centro de datos,
 la red que las conecta, y los ingenieros que mantienen todo eso funcionando durante meses sin
 que una tirada se caiga.
 

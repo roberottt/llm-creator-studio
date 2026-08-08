@@ -591,8 +591,23 @@ Ninguna de las dos cosas es un error automático: Chinchilla optimiza el cómput
 porque la inferencia se paga cada vez. Llama-3 está 90 veces por encima a propósito.
 *(módulo 12)*
 
-**Cuantización** — Guardar los pesos con menos bits (int8 en vez de fp16) para que el
-modelo ocupe menos. *(módulo 17)*
+**Cuantización** — Guardar los pesos con menos bits (int8 en vez de fp32) para que el modelo
+ocupe menos: 4× más pequeño, con un error del 0,7% en los pesos. Que eso apenas afecte a la
+calidad es un **hecho empírico**, no un teorema. Y cuantizar los pesos **no acelera nada por sí
+solo** si luego conviertes a float para multiplicar. *(módulo 17)*
+
+**Por canal / por tensor** — Si la escala de cuantización se calcula por fila de la matriz o una
+sola para toda ella. Por canal cuesta un vector de escalas más y reduce el error alrededor de un
+tercio, porque una fila con valores grandes no arrastra a las demás. *(módulo 17)*
+
+**Mixture of Experts** (MoE) — Arquitectura en la que una red enrutadora activa solo una fracción
+de los parámetros en cada token. Permite tener un billón de parámetros con el coste de cómputo de
+cien mil millones. Nuestro modelo es **denso**: todos los parámetros participan siempre.
+*(módulo 17)*
+
+**Streaming** — Enviar cada token según se genera en vez de esperar a la respuesta completa. A 30
+tokens/s una respuesta de 200 tokens tarda 7 segundos, y esperar 7 segundos ante una pantalla en
+blanco se percibe como algo roto. *(módulo 17)*
 
 ---
 
