@@ -385,8 +385,35 @@ matriz es un patrón que se detecta y cada columna de la segunda es lo que se es
 en la corriente residual si ese patrón aparece. Es una hipótesis con evidencia parcial, no un
 resultado establecido. *(módulo 08)*
 
-**Embedding posicional / RoPE** — Cómo se le dice al modelo en qué posición está cada
-token. La atención por sí sola no distingue el orden. *(módulo 09)*
+**Embedding posicional** — Cómo se le dice al modelo en qué posición está cada token. La
+atención por sí sola no distingue el orden. Hay tres familias: una tabla aprendida (GPT-2), una
+tabla fija de senos y cosenos (el paper de 2017) y RoPE. *(módulo 09)*
+
+**RoPE** (*Rotary Position Embedding*) — La codificación posicional de Llama, Mistral y nuestro
+modelo. En vez de **sumar** algo al vector, lo **rota** un ángulo proporcional a la posición,
+por pares de dimensiones. No añade ni un parámetro al modelo y no cambia la longitud de los
+vectores. *(módulo 09)*
+
+**Equivariancia a permutaciones** — La propiedad de la atención por la que barajar los tokens de
+entrada baraja la salida igual y no cambia nada más. En otros contextos es una virtud; en
+lenguaje es un defecto fatal, y es el problema que resuelve la codificación posicional.
+*(módulo 09)*
+
+**Posición absoluta / relativa** — «soy el token 7» frente a «estoy dos posiciones detrás de
+aquél». La relativa generaliza mejor: lo aprendido en un punto de la secuencia sirve en
+cualquier otro. La propiedad que hace relativa a RoPE es que el producto escalar de dos vectores
+rotados depende sólo de la diferencia de ángulos. *(módulo 09)*
+
+**Extrapolar** — Usar el modelo con secuencias más largas que las que vio al entrenar. Con una
+tabla aprendida es imposible (no hay fila que consultar); con RoPE se puede, pero la calidad se
+degrada bastante, y de ahí la familia de técnicas para extender el contexto a posteriori
+(interpolación de posiciones, NTK-aware scaling, YaRN). *(módulo 09)*
+
+**Buffer** — Un tensor que acompaña al modelo, se mueve con él a la GPU y se guarda con él, pero
+**no es un parámetro**: no se entrena. Las tablas `cos` y `sin` de RoPE lo son. *(módulo 09)*
+
+**ALiBi** — Una alternativa a RoPE: en vez de rotar, resta a las puntuaciones de atención una
+penalización proporcional a la distancia entre los dos tokens. *(módulo 09)*
 
 **Weight tying** — Reutilizar la matriz de embeddings como matriz de salida. Ahorra 1,3
 millones de parámetros en nuestro modelo. *(módulo 10)*

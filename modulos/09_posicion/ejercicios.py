@@ -17,7 +17,20 @@ La forma de decirle al modelo en que posicion esta cada token:
             v
     apply_rope             (ej. 3)  rotar Q y K. UNA LINEA, pero solo despues del ej. 2
 
-El ejercicio 2 es el que cuesta. El 3 es una linea.
+El ejercicio 2 es el que cuesta, y cuesta por un solo paso: el que duplica las frecuencias. El
+3 es una linea, pero solo tiene sentido despues de entender el 2.
+
+Ojo con una cosa: el ejercicio 1 NO lo usa nuestro modelo. Es la opcion de 2017 y esta aqui
+porque introduce la escalera de frecuencias que RoPE reutiliza, porque te la vas a encontrar en
+mucho codigo, y porque la demo la entrena para compararla con las otras dos. La seccion
+"Ejercicio 1" de `TEORIA.md` lo explica.
+
+Y una cara conocida: el `apply_rope` del ejercicio 3 ya lo llamaste en el modulo 06, dentro de
+`MultiHeadAttention`, importado de la referencia con un comentario que decia que lo ignoraras de
+momento. Hoy lo escribes tu, y las tablas `cos` y `sin` de aquella firma salen del ejercicio 2.
+
+`TEORIA.md` esta ordenada igual que esta lista y cada docstring de aqui te dice que seccion le
+toca.
 
 EL PROBLEMA QUE RESUELVE
 ========================
@@ -50,6 +63,10 @@ import torch
 
 def sinusoidal_embeddings(seq_len: int, d_model: int, base: float = 10000.0) -> torch.Tensor:
     """La tabla de senos y cosenos del paper de 2017.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: senos y cosenos", que empieza explicando por
+    que escribes algo que el modelo final no usa, y trae la tabla entera de 5x4 que tiene que
+    devolver tu funcion, leida por columnas para que se vea la escalera de frecuencias.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -125,6 +142,11 @@ def rope_frequencies(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Precalcula las tablas de cosenos y senos que usara RoPE.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: las tablas de angulos". Si el paso 4 (el
+    `cat` que duplica) te parece un error, alli estan las tablas completas para head_dim=4 con
+    las columnas repetidas senyaladas, y el porque: con el convenio de mitades, las dos
+    componentes de un par necesitan EL MISMO angulo.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Cinco pasos.
@@ -197,6 +219,11 @@ def rope_frequencies(
 
 def apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
     """Aplica la rotacion posicional a Q o a K.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: rotar de verdad", con la comprobacion de que
+    esa linea ES la matriz de rotacion y un ejemplo con head_dim=4 que puedes seguir a mano: el
+    vector [1, 0, 0, 1] rotado en las posiciones 0, 1 y 2, con las dos parejas por separado y la
+    norma sin cambiar.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
