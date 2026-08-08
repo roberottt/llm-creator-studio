@@ -23,7 +23,13 @@ The heart of the Transformer. Three exercises that fit together like this:
     MultiHeadAttention      (ex. 3)  eight in parallel, which is what the model uses
 
 Exercise 2 is four lines, and each one has a trap. Exercise 3 is the same computation with
-one more dimension.
+one more dimension, plus the plumbing of splitting the heads and putting them back together.
+
+`THEORY.md` is ordered just like this list: each exercise has its own section there with its
+numeric example, and each docstring here tells you which one. Before the exercises there are
+two sections not to skip: "Q, K, V", where the same example worked WITHOUT projections gives
+the wrong answer and with them gets it right, and "The shapes: what B, T, S and d_k are", which
+is where the shapes in the signatures below come from.
 
 THE IDEA, IN ONE SENTENCE
 =========================
@@ -66,6 +72,9 @@ from llmfs.reference import apply_rope
 
 def causal_mask(seq_len: int, device: torch.device | str | None = None) -> torch.Tensor:
     """The triangular mask that stops you looking into the future.
+
+    Context in `THEORY.md`: section "Exercise 1: the causal mask", with the matrix drawn out,
+    why the -inf goes BEFORE the softmax, and the numbers that prove it.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -124,6 +133,11 @@ def single_head_attention(
     mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Single-head attention. The heart of the Transformer, in four lines.
+
+    Context in `THEORY.md`: section "Exercise 2: single-head attention", with the four lines
+    mapped one by one against the formula and a 3-token, 2-dimension example whose exact output
+    you can compare with your function's. The next section, "The scaling by sqrt(d_k)", has the
+    table of measured entropies.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -202,6 +216,12 @@ def single_head_attention(
 
 class MultiHeadAttention(nn.Module):
     """Several attentions in parallel, each with its own projections.
+
+    Context in `THEORY.md`: section "Exercise 3: eight heads in parallel". If you get lost in
+    the shapes —which is normal— that section has the whole route from (2, 5, 320) to
+    (2, 5, 320) step by step, `_split_heads` done right and wrong with example numbers, and what
+    `out_proj` does, which does not appear in the paper's formula and without which the eight
+    heads are eight sealed channels.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

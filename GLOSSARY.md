@@ -194,6 +194,16 @@ only means nobody looks at its numbers directly. *(modules 02 and 05)*
 hesitating between, in practice". Perplexity 10 ≈ it is hesitating between 10 tokens.
 *(module 15)*
 
+**Entropy** — The same as perplexity but without exponentiating: it measures how spread out a
+distribution is. Maximal when everything is equally likely (`ln(n)`), near zero when all the
+mass is on one option. In module 06 it is used to measure whether attention spreads out or
+fixates on a single token. *(modules 05 and 06)*
+
+**Dropout** — Switching off a random fraction of the numbers during training, so the model does
+not depend too much on any one of them. It is disabled during evaluation, and you have to
+remember to do that by hand when the operation does not check the mode on its own.
+*(modules 06 and 11)*
+
 **Gradient** — The derivative of the loss with respect to a parameter. It says which direction
 to move that parameter in so the loss goes down. *(module 02)*
 
@@ -271,7 +281,33 @@ and the *value* is the content it contributes if it gets chosen. *(module 06)*
 "head" can specialize. Ours has 8. *(module 06)*
 
 **Causal mask** — It stops a token looking at the ones that come after. Without it the model
-would cheat: it would see the answer. *(module 06)*
+would cheat: it would see the answer. It is applied by putting `-inf` in the forbidden scores
+**before** the softmax, not by erasing weights afterwards: that way each row still sums to 1.
+*(module 06)*
+
+**Scores** — The `T × T` matrix of dot products between queries and keys, before the softmax.
+Cell `(i, j)` says how interested token `i` is in token `j`. *(module 06)*
+
+**Dot product** — Multiplying two vectors component by component and adding. It measures how
+similar they are: the more aligned, the larger the number. It is the operation attention uses
+to decide who to pay attention to. *(module 06)*
+
+**Scaling by √d_k** — Dividing the scores by the square root of the query size. The dot product
+of two vectors of dimension `d_k` has variance `d_k`, and without correcting for it the softmax
+saturates: the weights go to 0 and 1, their derivative `p(1-p)` vanishes and the layer stops
+learning. *(module 06)*
+
+**Output projection** (`out_proj`) — The fourth matrix of an attention layer, which does not
+appear in the paper's formula. It mixes the heads' results together; without it they would be
+sealed channels. *(module 06)*
+
+**SDPA** (`scaled_dot_product_attention`) — PyTorch's fused implementation of attention: it does
+the four steps in a single kernel without materializing the whole `T × T` matrix. It is the one
+real training uses. *(module 06)*
+
+**Induction head** — An attention head that learns on its own to detect the pattern "…A B … A"
+and predict B. It is the best-understood component of a Transformer and the success story of
+mechanistic interpretability. *(module 06)*
 
 **Normalization** (LayerNorm, RMSNorm) — Rescales the values inside the network so they do not
 grow or shrink uncontrollably layer after layer. *(module 07)*
