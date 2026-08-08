@@ -257,6 +257,41 @@ ruins the most training runs. *(module 11)*
 **Optimizer** — The algorithm that decides how to apply the gradients. We will use AdamW.
 *(module 11)*
 
+**Adam** — The standard optimizer in deep learning. Two ideas: a moving average of the gradients
+(the **momentum**, which cancels each batch's noise) and a moving average of the squared gradient
+to divide by, so that **each parameter ends up with its own effective learning rate**. That is why
+a single global `lr` works for the whole model. *(module 11)*
+
+**AdamW** — Adam with the *weight decay* **decoupled**: applied directly to the parameter instead
+of added to the gradient. In the coupled version the decay goes through the division by `√v` and
+its effect ends up depending on each weight's gradient magnitude; decoupled, it is uniform. That is
+the W. *(module 11)*
+
+**Momentum** — The moving average of the recent gradients. Every batch is a different sample and
+its gradients are noisy; averaging cancels the noise and leaves the consistent direction.
+*(module 11)*
+
+**Bias correction** — The adjustment that compensates for Adam's moving averages starting at zero
+and therefore underestimating magnitudes in the first steps. You divide by `1 - β^t`, and it fades
+out on its own as `t` advances. Without it training can diverge before it starts. *(module 11)*
+
+**Weight decay** — Pushing the weights towards zero so they do not grow without control. It is
+applied **only to matrices** (parameters with 2 dimensions or more): not to normalization scales or
+biases, because pushing an RMSNorm scale towards zero is pushing the layer's output towards zero.
+Applying it to everything gives no visible error and degrades the result. *(module 11)*
+
+**Schedule** (*lr scheduler*) — How the learning rate changes over the run. Ours has two segments:
+linear warmup up to the maximum and then cosine decay down to a 10% floor, which is not crossed
+because below it the model stops learning and the compute is wasted. *(module 11)*
+
+**Gradient clipping** — If the **global** norm of all the gradients exceeds a threshold, they all
+get multiplied by the same factor. Global and not per tensor: that way you limit how far you move
+without changing the direction. It caps the damage a single odd batch can do. *(module 11)*
+
+**Parameter groups** — Subsets of the model with different hyperparameters. PyTorch takes them as a
+list of dictionaries with the `"params"` key; any other key overrides the default value for that
+group only. *(module 11)*
+
 **Overfitting** — When the model memorizes the training data instead of learning patterns. You
 detect it because the training loss goes down and the validation one does not.
 

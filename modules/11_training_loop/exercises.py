@@ -20,6 +20,14 @@ The four pieces that make a training run work at scale:
 
 When all four are green, the final model will train with YOUR optimizer.
 
+`THEORY.md` follows them in this same order and each docstring here tells you which section it
+maps to. Start with the section "The loop, and what it is missing": it is module 02's loop with
+the four pieces placed at the exact spot each one goes.
+
+There is a small circular dependency between 1 and 4 — the `step` you write in 1 walks over the
+groups that 4 builds — but neither needs the other to work or to pass its tests. If exercise 1
+bogs you down, do 2, 3 and 4 first and come back.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -48,6 +56,14 @@ import torch.nn as nn
 
 class AdamWScratch(torch.optim.Optimizer):
     """AdamW from scratch. It inherits from `torch.optim.Optimizer` and you only write `step`.
+
+    Context in `THEORY.md`: section "Exercise 1: the optimizer", with the problem it solves (one
+    lr does not fit a frequent embedding and a rare one), Adam's two ideas measured against SGD,
+    and the subsection "How an optimizer is written in PyTorch" for param_groups, self.state and
+    the @torch.no_grad.
+
+    And read "How to know it is right" before running the demo: it saves you hunting for a bug
+    that does not exist when you see your optimizer and PyTorch's drift apart at 200 steps.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -235,6 +251,10 @@ def lr_at_step(
 ) -> float:
     """The learning rate for a given step: linear warmup + cosine decay.
 
+    Context in `THEORY.md`: section "Exercise 2: the learning-rate scheduler", with the table of
+    which lr applies at each step of the final run and the check of the cosine formula at its two
+    extremes, which is how you know it is right without running anything.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Three segments, in this order (the order matters: warmup gets checked first).
@@ -326,6 +346,10 @@ def lr_at_step(
 def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float:
     """Clips the gradients so their GLOBAL norm does not exceed `max_norm`.
 
+    Context in `THEORY.md`: section "Exercise 3: gradient clipping", with the 0.99999994 cosine
+    that proves the direction does not change, and the measured effect of a poisoned batch:
+    without clipping the loss goes UP 3x, with clipping it does not even notice.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
         1. Gather the gradients that exist:
@@ -398,6 +422,10 @@ def clip_grad_norm(parameters: Iterable[nn.Parameter], max_norm: float) -> float
 
 def build_param_groups(model: nn.Module, weight_decay: float = 0.1) -> list[dict[str, Any]]:
     """Splits the parameters into two groups: with weight decay and without it.
+
+    Context in `THEORY.md`: section "Exercise 4: which parameters decay", with the model's real
+    split (43 tensors and 8,929,280 parameters with decay, 13 and 4,160 without) and why those 13
+    are exactly the normalization layers you counted in module 10.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

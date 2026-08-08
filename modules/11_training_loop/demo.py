@@ -74,16 +74,39 @@ def vs_torch_experiment():
         lambda p, lr: torch.optim.AdamW(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1)
     )
 
-    err = max(float((a - b).abs().max()) for a, b in zip(p_mine, p_torch))
+    # The comparison is done at 50 steps, not 200, and the reason is worth knowing.
+    # With this task the loss is practically converged by step 100, and then m and v are both
+    # nearly zero: the quotient m/(sqrt(v)+eps) has a tiny numerator and a tiny denominator, so
+    # any last-bit difference between two implementations gets amplified without limit. Measured
+    # against the reference: 8e-07 at 50 steps, 1.5e-04 at 200 and 4e-02 at 400. Comparing in
+    # there would tell a perfectly correct implementation that it diverges. It is the same
+    # criterion the test uses.
+    _, p_mine_50 = train(
+        lambda p, lr: AdamWScratch(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1), steps=50
+    )
+    _, p_torch_50 = train(
+        lambda p, lr: torch.optim.AdamW(p, lr=lr, betas=(0.9, 0.95), weight_decay=0.1),
+        steps=50,
+    )
+    err = max(float((a - b).abs().max()) for a, b in zip(p_mine_50, p_torch_50))
+    err_200 = max(float((a - b).abs().max()) for a, b in zip(p_mine, p_torch))
+
     console.print(
         f"  final loss:  yours {h_mine[-1]:.8f}   torch {h_torch[-1]:.8f}\n"
-        f"  maximum weight error after 200 steps: [bold]{err:.2e}[/bold]\n"
+        f"  maximum weight error after 50 steps: [bold]{err:.2e}[/bold]\n"
     )
     console.print(
         "[green]Identical apart from fp32 rounding.[/green] You are doing exactly the same\n"
         "operations in the same order."
-        if err < 1e-4
+        if err < 1e-5
         else "[red]They diverge. Check the bias correction or the weight decay.[/red]"
+    )
+    console.print(
+        f"\n[dim]At 200 steps that same error is {err_200:.2e}, and it does NOT mean anything is\n"
+        "wrong: with this task the loss is already converged and then m and v are both nearly\n"
+        "zero. The quotient m/(sqrt(v)+eps) becomes numerically unstable and the two\n"
+        "implementations drift apart even though they do the same thing. That is why the\n"
+        "comparison, here and in the test, is done at 50 steps.[/dim]"
     )
     return h_mine, h_torch
 
