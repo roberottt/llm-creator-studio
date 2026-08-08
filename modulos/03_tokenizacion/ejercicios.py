@@ -9,6 +9,22 @@ Lee `TEORIA.md` -> implementa en orden -> `llmfs check 03` -> `llmfs hint 03 -e 
 El ejemplo de "aaabdaaabac" del TEORIA.md, hecho paso a paso a mano, es EXACTAMENTE lo que
 vas a programar. Tenlo delante.
 
+DONDE SE EXPLICA CADA COSA
+==========================
+
+Cada ejercicio tiene su seccion en TEORIA.md, con el ejemplo numerico correspondiente. Si
+un docstring te dice QUE teclear pero no acabas de ver POR QUE, ese es el sitio:
+
+    get_stats    -> "Ejercicio 1: contar los pares"
+    merge        -> "Ejercicio 2: fusionar el par ganador"
+    train_bpe    -> "Ejercicio 3: el bucle de entrenamiento"
+    bpe_encode   -> "Ejercicio 4: codificar"
+    bpe_decode   -> "Ejercicio 5: decodificar"
+
+Y antes de empezar a teclear, la seccion "Del algoritmo a las cinco funciones" explica las
+tres estructuras de datos que aparecen en todas las firmas (los ids, `merges` y `vocab`).
+Sin eso claro, el modulo se hace cuesta arriba.
+
 QUÉ VAS A CONSTRUIR
 ===================
 
@@ -60,6 +76,10 @@ Vocab = dict[int, bytes]
 
 def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict[Pair, int]:
     """Cuenta cuantas veces aparece cada par de numeros CONSECUTIVOS.
+
+    Es la parte "medir" de BPE. La seccion "Ejercicio 1: contar los pares" de `TEORIA.md`
+    tiene el dibujo de la ventana de dos elementos avanzando de uno en uno, que es lo que
+    explica por que los pares se solapan.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -118,6 +138,10 @@ def get_stats(ids: Sequence[int], counts: dict[Pair, int] | None = None) -> dict
 def merge(ids: Sequence[int], pair: Pair, new_id: int) -> list[int]:
     """Sustituye cada aparicion de un par por un unico numero nuevo.
 
+    Es la parte "actuar" de BPE, y la contraria del ejercicio 1: al contar los pares se
+    solapan, al fusionar no. La seccion "Ejercicio 2: fusionar el par ganador" de
+    `TEORIA.md` lo tiene dibujado.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Un `while` con un indice que controlas tu.
@@ -173,6 +197,12 @@ def train_bpe(
     verbose: bool = False,
 ) -> tuple[Merges, Vocab]:
     """Entrena el tokenizador: aprende que pares fusionar y en que orden.
+
+    Si no tienes claro que son exactamente `merges` y `vocab`, ni por que se devuelven los
+    dos, lee antes "Del algoritmo a las cinco funciones" en `TEORIA.md`. Y si lo que no ves
+    es por que hay que trocear el texto antes de contar, la seccion "Ejercicio 3" compara
+    los veinte primeros merges con y sin pre-tokenizador sobre el mismo texto: sin el,
+    aprende '. el gato duer'.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -270,6 +300,10 @@ def train_bpe(
 def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[int]:
     """Convierte texto en ids, aplicando los merges aprendidos.
 
+    Codificar NO es "parte el texto en los trozos mas largos que haya en el vocabulario":
+    es reproducir el entrenamiento. La seccion "Ejercicio 4: codificar" de `TEORIA.md`
+    explica por que, y tiene una frase real tokenizada pieza a pieza.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Una funcion auxiliar que codifica UN trozo, y un bucle que la aplica a todos.
@@ -331,6 +365,10 @@ def bpe_encode(text: str, merges: Merges, pattern: str | None = None) -> list[in
 
 def bpe_decode(ids: Iterable[int], vocab: Vocab) -> str:
     """Convierte una lista de ids de vuelta en texto.
+
+    La seccion "Ejercicio 5: decodificar" de `TEORIA.md` tiene los bytes de "nyandu cafe"
+    desglosados, que es donde se ve de un vistazo por que hay que juntar antes de
+    decodificar.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
