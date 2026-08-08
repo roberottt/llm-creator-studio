@@ -19,6 +19,16 @@ WHAT YOU ARE GOING TO BUILD
 Exercise 3 reproduces a result that in 2022 showed the entire industry was training its
 models wrong. And you are going to check it against real historical models.
 
+`THEORY.md` follows them in this same order and each docstring here tells you which section it
+maps to. Exercises 1 and 2 chain: the `total` the first one returns is the `flops_per_token` the
+second one eats. The third is independent.
+
+And there is one section worth reading no matter what, "The three parameter counts": the course
+drags along THREE similar numbers (total 8,933,440, non-embedding 7,622,720 and params_matmul
+8,929,280) and each formula wants a different one. Module 01's `6N` uses params_matmul;
+Chinchilla's N uses the non-embedding one. Mixing them raises no error, just gives wrong
+numbers.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -42,6 +52,10 @@ from llmfs.config import ModelConfig
 
 def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> dict[str, int]:
     """FLOPs per token, split into matmuls and attention.
+
+    Context in `THEORY.md`: section "Exercise 1: where the FLOPs go", with the matmul/attention
+    split tabulated for six context lengths (5% attention at T=128, 78% at T=8192) and the
+    subsection on the three parameter counts, which is where everybody gets lost.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -117,6 +131,11 @@ def model_flops_per_token(cfg: ModelConfig, include_backward: bool = True) -> di
 def compute_mfu(tokens_per_second: float, flops_per_token: int, peak_tflops: float) -> float:
     """Model FLOPs Utilization: what fraction of the hardware peak you are using.
 
+    Context in `THEORY.md`: section "Exercise 2: how much of your GPU you are using", with the
+    MFU actually measured for five batch sizes. What to look at there is not the number but the
+    shape of the curve: it rises and then flattens, and that point is where you stop being
+    limited by kernel launches.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Two lines.
@@ -182,6 +201,11 @@ def chinchilla_optimal_allocation(
     compute_budget: float, tokens_per_param: float = 20.0
 ) -> dict[str, float]:
     """Splits a compute budget between parameters and tokens.
+
+    Context in `THEORY.md`: section "Exercise 3: how to split the budget", with the table of six
+    real models (GPT-3, Gopher, Chinchilla, two Llamas and ours) and their verdicts, and the
+    consequence of the square root worth internalizing: doubling the budget does not double the
+    model, it grows it by 41%.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

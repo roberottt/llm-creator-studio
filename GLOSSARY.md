@@ -478,8 +478,10 @@ really using. A small model rarely goes above 20%. *(modules 01 and 12)*
 
 **Compute-bound / memory-bound** — Whether an operation is limited by arithmetic throughput
 (a large matmul) or by memory bandwidth (an activation, a normalization). The FLOP formula
-only sees the former, and much of the gap between estimated and real time comes from that.
-*(module 01)*
+only sees the former, and much of the gap between estimated and real time comes from that. It
+shows up very clearly in module 12's MFU curve: it rises with the batch and then flattens, and
+that point is where you stop being limited by kernel launch cost and start being limited by
+computation. *(modules 01 and 12)*
 
 **Tensor cores** — The units in an NVIDIA GPU specialized in multiplying small matrices in
 16 bits. They are what produces the big numbers on the spec sheet, and they only pay off
@@ -506,7 +508,21 @@ automatically.
 generated token. It makes generation several times faster. *(module 14)*
 
 **Chinchilla** — The 2022 result that says how many tokens it is worth using to train a model
-of a given size (about 20 per parameter). *(module 12)*
+of a given size (about 20 per parameter). It was derived by training over 400 models, and it
+showed GPT-3 was twelve times under-trained. *(module 12)*
+
+**Scaling laws** — The empirical relationships between model size, amount of data, compute and
+loss. They predict **loss**, not capabilities, and their coefficients were fitted to a specific
+range of scales: extrapolating outside it is not justified. *(module 12)*
+
+**Compute budget** — How many total FLOPs you can afford to spend on training. It is the
+constraint Chinchilla starts from: given a budget, how to split it between size and data.
+Doubling it does not double the optimal model, it grows it by 41%. *(module 12)*
+
+**Over-trained / under-trained** — Above or below those ~20 tokens per parameter. Neither is
+automatically a mistake: Chinchilla optimizes **training** compute, and if the model is going to
+run a lot it pays to over-train a small one, because inference is paid every time. Llama-3 is 90
+times above on purpose. *(module 12)*
 
 **Quantization** — Storing the weights with fewer bits (int8 instead of fp16) so the model
 takes less space. *(module 17)*
