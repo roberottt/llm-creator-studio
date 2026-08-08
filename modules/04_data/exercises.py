@@ -15,8 +15,42 @@ The bridge between tokenized text and the GPU. Three functions:
     train_val_split      (ex. 2)  set a chunk aside for validation
     get_batch            (ex. 3)  draw a batch of random windows
 
-Your training run will execute the third one tens of thousands of times, and it is where the
-module's important idea lives: how text is turned into a learning task.
+They fit together like this, and each one runs at a very different moment:
+
+    module 03           HERE                              module 11
+    ---------           ----                              ---------
+    text      -->  list of ids   -->   .bin file   -->   (x, y)  -->  model
+                       (ex. 1)          (ex. 2)          (ex. 3)
+                   \________________________/           \_________/
+                     ONCE, when preparing                on EVERY step,
+                     the corpus. It may be               tens of thousands
+                     slow, but it must not               of times.
+                     fail silently: the
+                     mistake gets burned
+                     into the file.
+
+The third one is where the module's important idea lives: how unlabelled text turns into a
+learning task with the correct answer already included.
+
+WHERE EACH THING IS EXPLAINED
+=============================
+
+Each exercise has its section in THEORY.md, with the matching numeric example. If a docstring
+tells you WHAT to type but you cannot quite see WHY, that is the place:
+
+    pack_tokens_uint16  ->  "Exercise 1: packing the corpus"
+    train_val_split     ->  "Exercise 2: setting validation aside"
+    get_batch           ->  "Exercise 3: drawing a batch"
+
+And before typing anything, two sections that give the context:
+
+    "Which part of the LLM this is"      which phase of building an LLM you are in, what
+                                         self-supervised learning is and why the text carries
+                                         the answer already. It is THE idea of the module.
+    "The three things you work with"     the list of ids, the uint16 array (or the memmap,
+                                         which is used the same way) and the (x, y) pair of
+                                         tensors: the three structures that turn up in every
+                                         signature.
 
 VOCABULARY YOU ARE GOING TO NEED
 ================================
@@ -45,6 +79,12 @@ MAX_UINT16 = 2**16
 
 def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
     """Turns a list of ids into a `uint16` array, validating that they fit.
+
+    It runs ONCE, when preparing the corpus, and that is why it is almost all validation:
+    whatever it writes stays burned into the file you will train on afterwards. The section
+    "Exercise 1: packing the corpus" in `THEORY.md` has the five conversions actually run,
+    including the one that turns an out-of-range id into another that looks perfectly valid
+    (66536 -> 1000).
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -115,6 +155,11 @@ def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
 def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
     """Sets a chunk of the end aside for validation.
 
+    It does not shuffle, does not reorder, does not copy: it cuts and returns two views. All
+    the substance is in WHY the cut is from the end, and the section "Exercise 2: setting
+    validation aside" in `THEORY.md` measures it: splitting windows at random, 100% of the
+    validation tokens turn out to be in training too.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Four lines.
@@ -177,6 +222,11 @@ def get_batch(
     rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Draws a batch of random windows. It is the most-executed function in the course.
+
+    Before typing, look at the worked example in "Exercise 3: drawing a batch" in `THEORY.md`:
+    corpus [0, 1, ..., 999], seed 0, the four starting positions that come out (842, 631, 506,
+    267) and the two complete matrices. If your implementation reproduces those matrices, it
+    is right.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

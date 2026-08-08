@@ -88,6 +88,59 @@ that separates learning from memorizing. *(module 00)*
 
 ---
 
+## The data
+
+**Self-supervised learning** — Training without human-made labels, because the correct answer
+is drawn from the data itself: the answer to "which token comes next?" is, literally, the
+token that came next. It is what allows training on raw text from the internet and the reason
+LLMs took off. *(module 04)*
+
+**Data pipeline** — Everything that happens between raw text and the batch that enters the
+model: tokenizing, packing, storing, splitting into train/validation and sampling. In a real
+lab it also includes filtering, deduplicating and deciding the mix of sources. *(module 04)*
+
+**Corpus** — All the text you train on, already tokenized: a strip of several hundred million
+integers. Ours is 500M tokens of TinyStories. *(module 04)*
+
+**Deduplicate** — Removing repeated documents from the corpus. Without it the model sees the
+same text many times and memorizes it instead of learning from it. TinyStories comes clean
+and here it is not needed. *(module 04)*
+
+**TinyStories** — The course's dataset: short stories generated with the vocabulary of a
+four-year-old. The point of it is that a tiny model can learn to write them coherently, which
+does not happen with a chunk of internet the same size. *(module 04)*
+
+**`uint16`** — Unsigned 2-byte integer, from 0 to 65,535. The type each token is stored in:
+with `int64` the same corpus would take four times as much. *(module 04)*
+
+**Wrap around** (*silent overflow*) — What NumPy does when you convert to a type the number
+does not fit in: it wraps the counter around without warning (65,536 becomes 0). It corrupts
+the data without raising any error. *(module 04)*
+
+**`memmap`** (*memory-mapped*) — An array whose data lives in a file and not in RAM, but which
+is used exactly like a normal one. The operating system loads only the pages you touch.
+*(module 04)*
+
+**Sliding window** — How samples are drawn from the corpus: a position is picked at random and
+`context_length` consecutive tokens are taken. Two adjacent windows share almost all their
+tokens, and that is where the rule about not shuffling the train/validation split comes from.
+*(module 04)*
+
+**Validation set** — The chunk of corpus that is NOT trained on, reserved for measuring
+whether the model generalizes or is memorizing. It is cut contiguously and from the end, never
+at random. *(module 04)*
+
+**Sampling with replacement** — Picking each window at random without keeping track of the
+ones already drawn. Some will come up repeated and others never, so it is not an epoch in the
+strict sense; in exchange the function has no state. *(module 04)*
+
+**Pinned memory** (*page-locked*) — Memory the operating system commits to not moving, which
+lets the GPU read it by DMA without the CPU acting as a middleman. With `non_blocking=True`,
+the next batch's copy overlaps with the current computation. It only makes sense on CUDA.
+*(module 04)*
+
+---
+
 ## Training
 
 **Parameter** (*weight*) — Every number the network adjusts during training. Our model has
