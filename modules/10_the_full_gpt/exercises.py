@@ -17,7 +17,17 @@ The model you are going to train. Four exercises:
     GPT                   (ex. 4)  the whole model
 
 The first two are counting exercises and they have to give the SAME number: 8,933,440. If
-they do not match, either your formula or your model is lying.
+they do not match, either your formula or your model is lying. It is a cross-audit, not an
+arithmetic exercise.
+
+You can do them in this order: the tests for exercises 1 and 2 use the REFERENCE model, so you do
+not need to have written exercise 4 in order to count. `THEORY.md` follows the same order and each
+docstring here tells you which section it maps to.
+
+The one thing worth doing differently is exercise 1: DO IT ON PAPER before typing.
+
+The section "The whole model, at a glance" is the one to keep in front of you while writing
+exercise 4: it is the complete model with the shape of the tensors at every point.
 
 THE STRUCTURE
 =============
@@ -70,6 +80,9 @@ causal_mask = resolve("06_attention", "causal_mask")
 
 def expected_param_count(cfg: ModelConfig) -> int:
     """The parameter count, computed from the formula instead of by counting.
+
+    Context in `THEORY.md`: section "Exercises 1 and 2: the exact count", with the term-by-term
+    breakdown table and the two typical mistakes identified by the number they give.
 
     DO IT ON PAPER FIRST
     --------------------
@@ -153,6 +166,10 @@ def expected_param_count(cfg: ModelConfig) -> int:
 def count_parameters(model: nn.Module) -> dict[str, int]:
     """Counts the parameters for real, broken down by component.
 
+    Context in `THEORY.md`: section "Exercises 1 and 2: the exact count", with the breakdown you
+    have to get (embeddings 14.7%, attention 27.5%, FFN 57.8%) and why weight tying forces the
+    `set` of ids.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     A walk over `named_parameters()` classifying by name.
@@ -235,6 +252,9 @@ def count_parameters(model: nn.Module) -> dict[str, int]:
 class TransformerBlock(nn.Module):
     """One block: attention and FFN, each with its normalization and its residual.
 
+    Context in `THEORY.md`: section "Exercise 3: the block", with what those two lines are really
+    saying and the four places where people fail, all four of them silent.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     **In `__init__`** (four lines besides the `super()`). The names matter: the test copies
@@ -316,6 +336,13 @@ class TransformerBlock(nn.Module):
 
 class GPT(nn.Module):
     """The complete model. 8,933,440 parameters when you finish.
+
+    Context in `THEORY.md`: section "Exercise 4: the whole model", which goes through the four
+    parts of __init__ in the same order they are written, explaining each design decision where it
+    has to be written: weight tying in part 2, what a buffer is and why RoPE lives in one in part
+    3, and the depth-scaled initialization in part 4. And before that section, "The whole model, at
+    a glance": the route from (B, T) to (B, T, 4096) with the shapes, which is what to keep in
+    front of you while writing this.
 
     THE STRUCTURE
     -------------

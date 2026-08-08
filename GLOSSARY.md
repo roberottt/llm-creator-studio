@@ -408,7 +408,24 @@ but is **not a parameter**: it is not trained. RoPE's `cos` and `sin` tables are
 penalty proportional to the distance between the two tokens. *(module 09)*
 
 **Weight tying** — Reusing the embedding matrix as the output matrix. It saves 1.3 million
-parameters in our model. *(module 10)*
+parameters in our model, 15%. It is not a copy: both modules point at the same tensor, and each
+weight receives gradient by two routes. *(module 10)*
+
+**Initialization** — The values the weights start at before training. Not a detail: it decides
+whether the model trains well or does not train. In ours, everything at `std=0.02` except the
+projections that write into the residual stream, which use `0.02/√(2·n_layers)`. *(module 10)*
+
+**Non-embedding parameters** — The total minus the embeddings. It is the number the scaling laws
+use, because embeddings grow with the vocabulary rather than with the depth, and they do not take
+part in the per-token compute the way the layers do. In ours, 7,622,720 out of 8,933,440.
+*(modules 10 and 12)*
+
+**Checkpoint** — The file the model is saved to: the weights plus whatever is needed to resume
+training. Buffers marked `persistent=False` are not saved there, because they recompute themselves
+when the model is built. *(modules 10 and 11)*
+
+**state_dict** — PyTorch's dictionary with all of a model's tensors, parameters and buffers,
+indexed by name. It is what gets saved and loaded. *(module 10)*
 
 ---
 
