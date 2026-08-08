@@ -16,6 +16,35 @@ palabra o (lo habitual) un trozo de palabra. `"tokenización"` podría ser tres 
 **Vocabulario** (`vocab_size`) — Cuántos tokens distintos conoce el modelo. Es un número
 que eliges tú al diseñarlo, no algo que se descubra.
 
+**Tokenizar** — Convertir texto en la lista de enteros que el modelo entiende, y al revés.
+Se hace **antes** de que el modelo vea nada: no forma parte de la red. *(módulo 03)*
+
+**BPE** (*Byte Pair Encoding*) — El algoritmo que decide cuáles son los tokens: parte de los
+256 bytes y va fusionando el par de vecinos más frecuente hasta llenar el vocabulario. Nadie
+escribe la lista de tokens; se descubre contando. *(módulo 03)*
+
+**Merge** — Una de esas fusiones: la regla «cuando veas este par, cámbialo por este id
+nuevo». Un tokenizador entrenado es una lista ordenada de merges, y el orden importa: al
+codificar se aplican en el mismo orden en que se aprendieron. *(módulo 03)*
+
+**Pre-tokenizador** — La expresión regular que trocea el texto en palabras, números y signos
+**antes** de contar pares, para que ningún merge cruce de una palabra a la siguiente. Sin él
+BPE aprende tokens como `". el gato duer"`. *(módulo 03)*
+
+**Bytes fallback** — Trabajar sobre bytes (0-255) en vez de sobre caracteres Unicode. Como
+todo texto es una secuencia de bytes y los 256 están en el vocabulario, no existe el
+carácter imposible de codificar. Al decodificar, `errors="replace"` cubre el caso contrario:
+bytes que no forman UTF-8 válido salen como `�` en vez de tumbar la generación.
+*(módulo 03)*
+
+**`<UNK>`** — El token «palabra desconocida» de los tokenizadores clásicos por palabras.
+Destruye información sin remedio, y con bytes fallback deja de hacer falta. *(módulo 03)*
+
+**Compresión** (*bytes por token*) — Cuánto texto cabe de media en un token. Un vocabulario
+más grande comprime mejor (secuencias más cortas, menos pasos de entrenamiento) pero se come
+el presupuesto de parámetros en la tabla de embeddings. Ese intercambio es lo que decide el
+`vocab_size`. *(módulo 03)*
+
 **Modelo de lenguaje** — Una función que, dado un texto, devuelve la probabilidad de cada
 token posible como continuación. Eso es todo lo que es. *(módulo 00)*
 
