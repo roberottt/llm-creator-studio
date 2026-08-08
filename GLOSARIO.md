@@ -608,5 +608,24 @@ texto. *(módulo 16)*
 **LoRA** — Entrenar solo unas matrices pequeñas añadidas al modelo en lugar de todos sus
 pesos. Mucho más barato. *(módulo 16)*
 
+**Chat template** — Los marcadores (`<|user|>`, `<|assistant|>`, `<|end|>`) con los que se
+serializa una conversación en texto plano. No son mágicos: son texto que el modelo aprende a
+reconocer durante el SFT. El `<|end|>` es lo que le enseña **cuándo parar**. Cada familia de
+modelos usa los suyos y son incompatibles entre sí. *(módulo 16)*
+
+**Enmascarar el prompt** — Poner `-100` en los targets de las posiciones del prompt para que
+`cross_entropy` las salte: se aprende a **responder**, no a generar las preguntas. Ojo con el
+off-by-one: el último token del prompt ya tiene como objetivo el primero de la respuesta, y ésa es
+la transición más informativa de todo el SFT. *(módulo 16)*
+
+**Rango bajo** (*low rank*) — La observación que justifica LoRA: los cambios que hace el
+fine-tuning se pueden expresar con matrices muy flacas, así que basta con adaptar en unas pocas
+direcciones en vez de en todas. Es una hipótesis con evidencia, no un resultado demostrado.
+*(módulo 16)*
+
+**DPO** (*Direct Preference Optimization*) — Una alternativa a RLHF que ajusta el modelo hacia las
+respuestas preferidas sin entrenar un modelo de recompensa aparte. Es el escalón posterior al SFT
+que este curso no llega a hacer. *(módulo 16)*
+
 **RLHF** — Ajustar el modelo con preferencias humanas. No lo haremos, pero es una de las
 cosas que separa esto de un modelo comercial. *(módulo 17)*
