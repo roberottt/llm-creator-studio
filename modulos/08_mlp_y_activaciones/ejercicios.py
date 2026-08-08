@@ -17,6 +17,18 @@ La parte del Transformer donde estan DOS TERCIOS de los parametros:
 
 El ejercicio 2 es el mas corto del curso y produce un numero que ya has visto en el YAML.
 
+`TEORIA.md` esta ordenada igual que esta lista: cada ejercicio tiene alli su propia seccion
+con su ejemplo numerico, y cada docstring de aqui te dice cual es.
+
+Si no tienes claro que es un FFN, empieza por la seccion "Que es un FFN, y por que el modulo se
+llama MLP y activaciones", que esta antes que todo lo demas: expande las siglas, explica por que
+la misma caja tiene tres nombres y ensenya que esto es literalmente el MLP que ya montaste a
+mano en el modulo 02, con otros tamanyos y otra funcion no lineal.
+
+Y la seccion "Que hacen esas 1280 neuronas del medio" es la que hace que el FFN deje de parecer
+una capa mas: explica que cada fila de la primera matriz es un detector de patrones y cada
+columna de la segunda es lo que se escribe de vuelta.
+
 POR QUÉ HACE FALTA ESTO
 =======================
 
@@ -31,9 +43,16 @@ se derrumbe es la no-linealidad de este modulo.
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
-- **FFN / MLP** (feed-forward network): la parte de cada bloque que NO es atencion. Procesa
-  cada token por separado, sin mirar a los demas.
-- **activacion**: la funcion no lineal que va entre capas. ReLU, GELU, Swish.
+- **FFN** (*feed-forward network*, red hacia delante): la parte de cada bloque que NO es
+  atencion. "Hacia delante" quiere decir que la informacion entra por un lado y sale por el
+  otro, sin bucles y SIN MIRAR A LOS LADOS: cada token se procesa solo, sin enterarse de que
+  existen los demas. Mirar a los lados es trabajo de la atencion.
+- **MLP** (*multi-layer perceptron*): otro nombre para lo mismo, el que se usa en el codigo y
+  en el nombre de este modulo. Un FFN clasico ES un MLP de dos capas, el mismo objeto que
+  montaste a mano en el modulo 02 con `MLP(3, [8, 8, 1])`; aqui es `MLP(320, [1280, 320])`.
+  Ojo: en el modulo 02 "MLP" era la red ENTERA, y aqui es un sub-bloque de cada capa.
+- **activacion**: la funcion no lineal que va entre las dos capas del MLP. En el modulo 02 era
+  `tanh`; aqui es GELU (ej. 1) o Swish (ej. 3). Es la otra mitad del nombre del modulo.
 - **no-linealidad**: cualquier funcion que no sea `f(ax+b) = a·f(x)+b`. Es lo que hace que
   apilar capas sirva de algo.
 - **puerta** (gate): en SwiGLU, una de las dos ramas multiplica a la otra y decide cuanta
@@ -55,6 +74,10 @@ import torch.nn.functional as F
 
 def gelu(x: torch.Tensor) -> torch.Tensor:
     """GELU con la aproximacion por tanh.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: un corte suave", con la tabla de derivadas
+    de ReLU y GELU lado a lado (de donde sale lo de las neuronas muertas) y un aviso sobre por
+    que la tabla de la demo no coincide del todo con estos valores.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -118,6 +141,10 @@ def swiglu_hidden_dim(
 ) -> int:
     """Calcula `d_ff` para SwiGLU. Este ejercicio produce el 896 del config final.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: de donde sale el 896", con los dos ajustes
+    encadenados por separado y la tabla de cuatro tamanyos que ensenya que el 2/3 iguala los
+    presupuestos de forma asintotica y no exacta (en el nuestro nos pasamos un 5%).
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Tres lineas.
@@ -179,6 +206,11 @@ def swiglu_hidden_dim(
 
 class SwiGLU(nn.Module):
     """El FFN con puerta que usa el modelo final. Dos tercios de sus parametros estan aqui.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: anyadir una puerta", con el recorrido de las
+    formas y un ejemplo de tres numeros donde se ve la puerta cerrando una dimension entera,
+    atenuando otra y amplificando la tercera. Es la diferencia entre una puerta y una
+    activacion normal, y es lo unico conceptual del ejercicio.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
