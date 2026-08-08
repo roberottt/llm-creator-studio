@@ -31,6 +31,32 @@ de un modelo de lenguaje siempre es una de estas, sobre el vocabulario entero.
 **Muestrear** (*sample*) — Elegir un token al azar respetando sus probabilidades, en lugar
 de coger siempre el más probable. *(módulos 00 y 14)*
 
+**Greedy** (*argmax*) — Lo contrario de muestrear: coger siempre el token más probable. Es
+determinista y tiende a meterse en bucles repetitivos. *(módulos 00 y 14)*
+
+**n-grama** — Un modelo de lenguaje que predice contando cuántas veces siguió cada token a
+cada secuencia de `n` tokens anteriores. Es lo que construyes en el módulo 00. Funciona,
+pero la tabla crece exponencialmente con `n`. *(módulo 00)*
+
+**Maldición de la dimensionalidad** — El motivo por el que contar no escala: al ampliar el
+contexto, las combinaciones posibles crecen exponencialmente y el corpus cubre una fracción
+cada vez más ridícula de ellas. Todo lo no visto se queda con probabilidad cero. Es el
+problema que las redes neuronales resuelven generalizando. *(módulo 00)*
+
+**Suavizado** (*smoothing*) — Los parches clásicos para las probabilidades cero de un
+modelo de n-gramas: repartir algo de masa entre lo nunca visto, o mezclar modelos de varios
+tamaños de contexto. Alivia el síntoma, no la causa. *(módulo 00)*
+
+**Máxima verosimilitud** — El criterio de elegir los parámetros que hacen más probable el
+texto observado. Minimizar la cross-entropy es exactamente eso. *(módulos 00 y 05)*
+
+**Alucinación** — Que el modelo genere algo falso con total aplomo. No es un fallo añadido:
+es la consecuencia directa de muestrear de una distribución sin ningún paso de
+verificación. *(módulo 00)*
+
+**Generalizar** — Acertar sobre datos que no se han visto durante el entrenamiento. Es lo
+único que distingue aprender de memorizar. *(módulo 00)*
+
 ---
 
 ## Entrenamiento
