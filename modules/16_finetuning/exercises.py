@@ -25,6 +25,11 @@ Write "What is the capital of France?" to your trained model and the most likely
 that it answers with MORE questions. It is not broken: it is doing exactly what you taught
 it, which is continuing plausible text.
 
+`THEORY.md` follows this same order and each docstring here tells you which section it maps to.
+The exercises come in TWO independent blocks: 1 and 2 are the SFT (one gives format, the other
+decides what gets learned from) and 3 and 4 are LoRA. You can do SFT without LoRA and LoRA without
+SFT; they get combined because that is what is done in practice.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -57,6 +62,10 @@ def build_chat_template(
     messages: Sequence[dict[str, str]], add_generation_prompt: bool = False
 ) -> str:
     """Serializes a conversation into plain text with markers.
+
+    Context in `THEORY.md`: section "Exercise 1: the chat template", with the difference between
+    the training version and the inference one, which is where the add_generation_prompt flag
+    comes from.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -151,6 +160,10 @@ def mask_prompt_tokens(
 ) -> list[int]:
     """Builds the targets ignoring the prompt: you only learn from the ANSWER.
 
+    Context in `THEORY.md`: section "Exercise 2: masking the prompt", with the position-by-position
+    table showing there are TWO ignored positions and not three, and why the transition "the
+    question is over, my turn to speak" is what must NOT be masked.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Four lines, and the range of the loop is the WHOLE exercise.
@@ -231,6 +244,9 @@ def mask_prompt_tokens(
 
 class LoRALinear(nn.Module):
     """A linear layer with low-rank adapters.
+
+    Context in `THEORY.md`: section "Exercise 3: LoRA", with the arithmetic of why r=8 trains 0.68% of
+    the model and why lora_B is initialized to ZEROS and lora_A is not.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -370,6 +386,10 @@ class LoRALinear(nn.Module):
 
 def merge_lora_weights(layer: LoRALinear) -> nn.Linear:
     """Merges the adapters into the base matrix and returns a normal `nn.Linear`.
+
+    Context in `THEORY.md`: section "Exercise 4: merging the weights", with the measured merge error
+    (1.31e-06, fp32 rounding) and why this is LoRA's advantage over other parameter-efficient
+    fine-tuning methods.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

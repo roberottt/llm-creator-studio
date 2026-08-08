@@ -591,5 +591,23 @@ instruction-and-answer examples, so it obeys instead of merely continuing text. 
 **LoRA** — Training only a few small matrices added to the model instead of all its weights.
 Much cheaper. *(module 16)*
 
+**Chat template** — The markers (`<|user|>`, `<|assistant|>`, `<|end|>`) used to serialize a
+conversation into plain text. They are not magical: they are text the model learns to recognize
+during SFT. The `<|end|>` is what teaches it **when to stop**. Each model family uses its own and
+they are mutually incompatible. *(module 16)*
+
+**Masking the prompt** — Putting `-100` in the targets of the prompt positions so `cross_entropy`
+skips them: the model learns to **answer**, not to generate the questions. Watch the off-by-one:
+the last prompt token already has the first answer token as its target, and that is the most
+informative transition in the whole SFT. *(module 16)*
+
+**Low rank** — The observation that justifies LoRA: the changes fine-tuning makes can be expressed
+with very skinny matrices, so it is enough to adapt along a few directions rather than all of them.
+It is a hypothesis with evidence, not a proven result. *(module 16)*
+
+**DPO** (*Direct Preference Optimization*) — An alternative to RLHF that adjusts the model towards
+preferred answers without training a separate reward model. It is the step after SFT that this
+course does not reach. *(module 16)*
+
 **RLHF** — Adjusting the model with human preferences. We will not do it, but it is one of the
 things that separates this from a commercial model. *(module 17)*
