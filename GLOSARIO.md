@@ -416,7 +416,25 @@ degrada bastante, y de ahí la familia de técnicas para extender el contexto a 
 penalización proporcional a la distancia entre los dos tokens. *(módulo 09)*
 
 **Weight tying** — Reutilizar la matriz de embeddings como matriz de salida. Ahorra 1,3
-millones de parámetros en nuestro modelo. *(módulo 10)*
+millones de parámetros en nuestro modelo, el 15%. No es una copia: los dos módulos apuntan al
+mismo tensor, y cada peso recibe gradiente por dos caminos. *(módulo 10)*
+
+**Inicialización** — Los valores con los que arrancan los pesos antes de entrenar. No es un
+detalle: decide si el modelo entrena bien o no entrena. En el nuestro, todo con `std=0.02`
+excepto las proyecciones que escriben en la corriente residual, que van con
+`0.02/√(2·n_layers)`. *(módulo 10)*
+
+**Parámetros no-embedding** — El total menos los embeddings. Es el número que usan las leyes de
+escala, porque los embeddings crecen con el vocabulario y no con la profundidad, y no participan
+del cómputo por token igual que las capas. En el nuestro, 7.622.720 de 8.933.440.
+*(módulos 10 y 12)*
+
+**Checkpoint** — El fichero donde se guarda el modelo: los pesos y lo que haga falta para
+reanudar el entrenamiento. Los buffers marcados `persistent=False` no se guardan ahí, porque se
+recalculan solos al construir el modelo. *(módulos 10 y 11)*
+
+**state_dict** — El diccionario de PyTorch con todos los tensores de un modelo, parámetros y
+buffers, indexados por nombre. Es lo que se guarda y se carga. *(módulo 10)*
 
 ---
 
