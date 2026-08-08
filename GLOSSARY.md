@@ -337,12 +337,45 @@ reaches **exactly** zero, by floating-point underflow. *(module 07)*
 first steps. Post-norm needs it in order not to explode; pre-norm does not. *(modules 07 and 11)*
 
 **FFN / MLP** — The part of each block that is not attention: two or three linear layers with a
-non-linearity in between. It usually has more parameters than the attention. *(module 08)*
-Careful with the name: in module 02, "MLP" is the whole network (layers of neurons chained
-together); in a transformer it is only that sub-block of each layer.
+non-linearity in between. It usually has more parameters than the attention: in ours, 68% of
+every block. The acronym stands for *feed-forward network*, and it describes how the information
+flows: in one side and out the other, with no loops and **without looking sideways** — each token
+is processed separately, with no idea the others exist. Looking sideways is the attention's job.
+*(module 08)*
+**MLP** (*multi-layer perceptron*) is another name for the same box, the one used in the code; a
+classic FFN **is** a two-layer MLP. Careful with the name: in module 02, "MLP" is the whole
+network (layers of neurons chained together); in a transformer it is only that sub-block of each
+layer.
 
 **GELU, SwiGLU** — Activation functions, the "non-linear" part without which the whole network
 would collapse into a single matrix multiplication. *(module 08)*
+
+**Non-linearity** — Any function that does not satisfy `f(ax+b) = a·f(x)+b`. It is the only thing
+that makes stacking layers worth anything: without it, a hundred linear layers in a row are
+exactly equivalent to a single matrix. *(module 08)*
+
+**ReLU** — The simplest activation, `max(0, x)`. Its derivative is **exactly zero** across the
+whole negative range, so a neuron that ends up always negative stops receiving gradient forever:
+that is the *dead neuron* (*dying ReLU*). GELU and Swish avoid it because their derivative there
+is small but not null. *(module 08)*
+
+**Swish / SiLU** — `z · σ(z)`. Practically the same curve as GELU despite coming from a
+completely different origin (an automated search over activations, not a probabilistic argument).
+It is the one on SwiGLU's gate branch, and in PyTorch it is called `F.silu`. *(module 08)*
+
+**Gate** — One of the two branches of a GLU: it multiplies the other element by element and
+decides how much signal passes through each dimension. What sets it apart from a normal
+activation is that the filtering **depends on the input**, and is decided for each dimension and
+each token. *(module 08)*
+
+**d_ff** — The FFN's inner dimension, the one it expands to before compressing again. In our
+model, 896: two thirds of the classic `4 × d_model`, rounded up to the next multiple of 64.
+*(module 08)*
+
+**Key-value memory** (of the FFN) — The reading of the FFN in which each row of the first matrix
+is a pattern to be detected and each column of the second is what gets written back into the
+residual stream if that pattern shows up. It is a hypothesis with partial evidence, not an
+established result. *(module 08)*
 
 **Positional embedding / RoPE** — How the model is told what position each token is in.
 Attention on its own does not distinguish the order. *(module 09)*

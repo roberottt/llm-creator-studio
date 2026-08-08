@@ -18,6 +18,18 @@ The part of the Transformer where TWO THIRDS of the parameters live:
 Exercise 2 is the shortest in the course and produces a number you have already seen in the
 YAML.
 
+`THEORY.md` is ordered just like this list: each exercise has its own section there with its
+numeric example, and each docstring here tells you which one.
+
+If you are not clear on what an FFN is, start with the section "What an FFN is, and why the
+module is called MLP and activations", which comes before everything else: it spells out the
+acronym, explains why the same box has three names, and shows that this is literally the MLP you
+already assembled by hand in module 02, with different sizes and a different nonlinear function.
+
+And the section "What those 1280 middle neurons do" is the one that stops the FFN looking like
+just another layer: it explains that each row of the first matrix is a pattern detector and each
+column of the second is what gets written back.
+
 WHY THIS IS NEEDED
 ==================
 
@@ -32,9 +44,17 @@ Transformer from collapsing is this module's nonlinearity.
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
-- **FFN / MLP** (feed-forward network): the part of each block that is NOT attention. It
-  processes each token separately, without looking at the others.
-- **activation**: the nonlinear function that goes between layers. ReLU, GELU, Swish.
+- **FFN** (*feed-forward network*): the part of each block that is NOT attention.
+  "Feed-forward" means the information goes in one side and out the other, with no loops and
+  WITHOUT LOOKING SIDEWAYS: each token is processed on its own, with no idea the others exist.
+  Looking sideways is the attention's job.
+- **MLP** (*multi-layer perceptron*): another name for the same thing, the one used in the code
+  and in this module's name. A classic FFN IS a two-layer MLP, the same object you assembled by
+  hand in module 02 as `MLP(3, [8, 8, 1])`; here it is `MLP(320, [1280, 320])`. Careful: in
+  module 02 "MLP" meant the WHOLE network, and here it is a sub-block of each layer.
+- **activation**: the nonlinear function that goes between the MLP's two layers. In module 02 it
+  was `tanh`; here it is GELU (ex. 1) or Swish (ex. 3). It is the other half of the module's
+  name.
 - **nonlinearity**: any function that is not `f(ax+b) = a·f(x)+b`. It is what makes stacking
   layers worth anything.
 - **gate**: in SwiGLU, one of the two branches multiplies the other and decides how much
@@ -56,6 +76,10 @@ import torch.nn.functional as F
 
 def gelu(x: torch.Tensor) -> torch.Tensor:
     """GELU with the tanh approximation.
+
+    Context in `THEORY.md`: section "Exercise 1: a soft cut", with the ReLU and GELU derivative
+    tables side by side (where the dead-neuron business comes from) and a warning about why the
+    demo's table does not quite match these values.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -120,6 +144,10 @@ def swiglu_hidden_dim(
 ) -> int:
     """Computes `d_ff` for SwiGLU. This exercise produces the 896 in the final config.
 
+    Context in `THEORY.md`: section "Exercise 2: where the 896 comes from", with the two chained
+    adjustments taken separately and the four-size table showing that the 2/3 equalizes the
+    budgets asymptotically rather than exactly (in ours we overshoot by 5%).
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     Three lines.
@@ -181,6 +209,11 @@ def swiglu_hidden_dim(
 
 class SwiGLU(nn.Module):
     """The gated FFN the final model uses. Two thirds of its parameters are here.
+
+    Context in `THEORY.md`: section "Exercise 3: adding a gate", with the route through the
+    shapes and a three-number example where you can see the gate shutting one dimension
+    entirely, attenuating another and amplifying the third. That is the difference between a
+    gate and a normal activation, and it is the only conceptual thing in the exercise.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
