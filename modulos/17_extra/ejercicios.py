@@ -17,6 +17,11 @@ QUÉ VAS A CONSTRUIR
 
 Con eso el modelo pasa de 35,7 MB a 9,0 MB.
 
+`TEORIA.md` sigue este mismo orden y cada docstring de aqui te dice que seccion le toca. Las tres
+funciones encadenan y son la misma idea vista tres veces: comprimir, descomprimir y comprobar
+cuanto te ha costado. El ejercicio 3 es el que le da sentido a los otros dos: sin medir el error,
+cuantizar es un acto de fe.
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -41,6 +46,10 @@ def quantize_int8_symmetric(
     weight: torch.Tensor, per_channel: bool = True
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Convierte una matriz de pesos a int8 con escala.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: cuantizar", con el porque del 127 (y de
+    donde sale el "symmetric" del nombre) y la tabla de cuatro matrices reales del modelo donde
+    se ve que por canal gana a por tensor en todas.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -132,6 +141,10 @@ def quantize_int8_symmetric(
 def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """Vuelve a float multiplicando por la escala.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: recuperar", con los cuatro errores uno a uno y por
+    que el maximo de la fila se recupera EXACTO mientras que los valores pequenyos son los que
+    peor lo pasan.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Una linea:
@@ -173,6 +186,9 @@ def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tenso
 
 def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict[str, float]:
     """Mide cuanto danya la cuantizacion.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: medir lo que has perdido", con por que el error
+    se mide RELATIVO y no absoluto.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
