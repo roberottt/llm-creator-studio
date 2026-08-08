@@ -17,7 +17,16 @@ El modelo que vas a entrenar. Cuatro ejercicios:
     GPT                   (ej. 4)  el modelo entero
 
 Los dos primeros son de contar y tienen que dar el MISMO numero: 8.933.440. Si no cuadran,
-tu formula o tu modelo mienten.
+tu formula o tu modelo mienten. Es una auditoria cruzada, no un ejercicio de aritmetica.
+
+Puedes hacerlos en este orden: los tests de los ejercicios 1 y 2 usan el modelo de REFERENCIA,
+asi que no hace falta haber escrito el 4 para contar. `TEORIA.md` los sigue en el mismo orden y
+cada docstring de aqui te dice que seccion le toca.
+
+Lo unico que conviene hacer de otra manera es el ejercicio 1: HAZLO CON PAPEL antes de teclear.
+
+La seccion "El modelo entero, de un vistazo" es la que conviene tener delante mientras escribes
+el ejercicio 4: es el modelo completo con la forma de los tensores en cada punto.
 
 LA ESTRUCTURA
 =============
@@ -70,6 +79,9 @@ causal_mask = resolve("06_atencion", "causal_mask")
 
 def expected_param_count(cfg: ModelConfig) -> int:
     """El numero de parametros, calculado con la formula en vez de contando.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicios 1 y 2: el conteo exacto", con la tabla del
+    desglose termino a termino y los dos errores tipicos identificados por el numero que dan.
 
     HAZLO CON PAPEL PRIMERO
     -----------------------
@@ -150,6 +162,10 @@ def expected_param_count(cfg: ModelConfig) -> int:
 
 def count_parameters(model: nn.Module) -> dict[str, int]:
     """Cuenta los parametros de verdad, desglosados por componente.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicios 1 y 2: el conteo exacto", con el desglose que
+    tiene que salir (embeddings 14,7%, atencion 27,5%, FFN 57,8%) y por que el weight tying
+    obliga al `set` de ids.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -233,6 +249,9 @@ def count_parameters(model: nn.Module) -> dict[str, int]:
 class TransformerBlock(nn.Module):
     """Un bloque: atencion y FFN, cada uno con su normalizacion y su residual.
 
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: el bloque", con lo que dicen de verdad esas
+    dos lineas y los cuatro sitios donde se falla, que son los cuatro silenciosos.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     **En `__init__`** (cuatro lineas ademas del `super()`). Los nombres importan: el test copia
@@ -311,6 +330,13 @@ class TransformerBlock(nn.Module):
 
 class GPT(nn.Module):
     """El modelo completo. 8.933.440 parametros cuando termines.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 4: el modelo entero", que va por las cuatro
+    partes del __init__ en el mismo orden en que se escriben, explicando cada decision de disenyo
+    donde toca escribirla: el weight tying en la parte 2, que es un buffer y por que RoPE vive en
+    uno en la parte 3, y la inicializacion escalada en la parte 4. Y antes de esa seccion, "El
+    modelo entero, de un vistazo": el recorrido de (B, T) a (B, T, 4096) con las formas, que es lo
+    que conviene tener delante mientras escribes esto.
 
     LA ESTRUCTURA
     -------------
