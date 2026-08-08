@@ -13,7 +13,14 @@ WHAT YOU ARE GOING TO BUILD
     overfit_single_batch  (ex. 1)  the 30-second check that catches almost everything
     format_eta            (ex. 2)  how long is left, in something readable
 
-And with that you launch the real training.
+And with that you launch the real training. Careful though: the training itself IS ALREADY
+WRITTEN, assembled on top of the pieces from modules 04 to 12. Your job here is to launch it,
+know how to read it and decide whether it is going well.
+
+`THEORY.md` follows this same order and each docstring here tells you which section it maps to.
+And there is one section that matches no exercise and is the skill you actually take away: "How
+to read the log line", which takes apart field by field the line you will be staring at for
+hours. Each of its six fields comes from a different module of the course.
 
 EXERCISE 1 IS THE ONE THAT MATTERS
 ==================================
@@ -55,6 +62,10 @@ def overfit_single_batch(
     optimizer_factory: Callable[..., Any] | None = None,
 ) -> list[float]:
     """Trains ONE SINGLE batch until it memorizes it. The test that catches almost any bug.
+
+    Context in `THEORY.md`: section "Exercise 1: the 30-second check", with the measured table of
+    how the loss drops (from 4.29 to 0.09 in 300 steps and two seconds on the clock) and the list
+    of what it catches and what it does not.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -153,6 +164,10 @@ def overfit_single_batch(
 
 def format_eta(seconds: float) -> str:
     """Formats a duration into something readable at a glance.
+
+    Context in `THEORY.md`: section "Exercise 2: how much is left", with the two reasons this is
+    not cosmetic. The second is a rule that serves you well beyond this exercise: the useful
+    precision of an estimate is always proportional to its magnitude.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

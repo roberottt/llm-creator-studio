@@ -456,8 +456,22 @@ part in the per-token compute the way the layers do. In ours, 7,622,720 out of 8
 *(modules 10 and 12)*
 
 **Checkpoint** — The file the model is saved to: the weights plus whatever is needed to resume
-training. Buffers marked `persistent=False` are not saved there, because they recompute themselves
-when the model is built. *(modules 10 and 11)*
+training, which is four things — weights, optimizer state, GradScaler state and step number. With
+only the weights, Adam starts with its moments at zero and the model lurches right at the resume
+point. Buffers marked `persistent=False` are not saved there, because they recompute themselves
+when the model is built. *(modules 10, 11 and 13)*
+
+**Step** — One update of the weights. Not to be confused with **epoch**, which is a full pass over
+the data: our final run is 10,172 steps and less than one epoch. *(module 13)*
+
+**Overfitting a single batch** — The cheapest sanity check there is: give the model the same batch
+over and over and verify the loss drops almost to zero. A model with millions of parameters
+memorizes four sequences without breaking a sweat; if it does not, there is a bug in the
+machinery. It catches gradients that do not arrive, the forgotten `zero_grad` and a badly built
+optimizer; it catches nothing to do with generalizing. *(module 13)*
+
+**ETA** — How long is left, estimated from the measured rate. It is shown with precision
+proportional to its magnitude: past one hour, seconds are noise. *(module 13)*
 
 **state_dict** — PyTorch's dictionary with all of a model's tensors, parameters and buffers,
 indexed by name. It is what gets saved and loaded. *(module 10)*
