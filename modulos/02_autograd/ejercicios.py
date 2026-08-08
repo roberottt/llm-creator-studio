@@ -20,6 +20,19 @@ El motor que hace que `loss.backward()` funcione. En unas 100 lineas y sin usar 
 
 Al terminar, `loss.backward()` sera codigo que entiendes linea por linea.
 
+DONDE SE EXPLICA CADA COSA
+==========================
+
+Si algo del codigo de abajo te suena a que sale de la nada, esta explicado en `TEORIA.md`:
+
+    de donde sale la clase Value        -> "De la regla de la cadena a una clase de Python"
+    que son .data / .grad / ._prev      -> "Los cinco campos, y por que esta cada uno"
+    por que hay `def` dentro de `def`   -> "La closure: lo que mas cuesta ver"
+    la traza completa con numeros       -> "Traza completa, con los numeros del ejemplo"
+    por que hace falta el ejercicio 2   -> "El orden importa"
+    que es una neurona y que es un MLP  -> "Que es una neurona y que es un MLP"
+    de donde sale el bucle de 6 pasos   -> "El bucle de entrenamiento, paso a paso"
+
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
 
@@ -48,6 +61,10 @@ from llmfs.reference import MLP
 
 class Value:
     """Un escalar que recuerda de donde salio. Es el ejercicio mas largo del curso.
+
+    Si no ves de donde sale esta clase, lee antes en `TEORIA.md` la seccion "De la regla de
+    la cadena a una clase de Python": construye estos nueve metodos desde el principio, con
+    la traza de `d = a * b + 10` campo a campo.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -206,6 +223,9 @@ class Value:
 def topological_order(root: "Value") -> list["Value"]:
     """Ordena los nodos del grafo para poder recorrerlo hacia atras.
 
+    La seccion "El orden importa" de `TEORIA.md` tiene el grafo en diamante donde se ve que
+    un orden mal calculado da 6 en vez de 14, sin avisar de nada.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Un recorrido en profundidad con una PILA EXPLICITA (no recursivo). El truco es una
@@ -287,6 +307,11 @@ def train_scalar_mlp(
     value_cls: type = Value,
 ) -> list[float]:
     """Entrena un MLP con TU motor de autodiff.
+
+    Si no sabes que es un MLP, ni que hacen `model(x)`, `parameters()` o `zero_grad()`, lee
+    antes en `TEORIA.md` las secciones "Que es una neurona y que es un MLP" y "El bucle de
+    entrenamiento, paso a paso": estan los 113 parametros contados uno a uno y un paso de
+    descenso completo con numeros.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------

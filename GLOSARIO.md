@@ -91,6 +91,42 @@ mover ese parámetro para que la pérdida baje. *(módulo 02)*
 recorriendo la red hacia atrás. Cuesta unas 2 veces lo que cuesta el forward,
 independientemente de cuántos parámetros haya. *(módulo 02)*
 
+**Regla de la cadena** — Si `y` depende de `u` y `u` depende de `x`, entonces
+`dy/dx = (dy/du)·(du/dx)`. Toda la backpropagation es esto aplicado operación a operación.
+Si una variable influye por varios caminos, sus aportaciones se **suman**. *(módulo 02)*
+
+**Grafo de cómputo** — El registro de qué operaciones se hicieron, sobre qué operandos y en
+qué orden. Se construye solo durante el forward y es lo que permite recorrerlo hacia atrás.
+En nuestro motor son los campos `_prev` y `_op` de cada `Value`. *(módulo 02)*
+
+**Autodiferenciación en modo inverso** — La técnica que calcula derivadas exactas
+descomponiendo el cálculo en operaciones elementales y recorriendo el grafo hacia atrás. Ni
+numérica (aproximada y cara) ni simbólica (inmanejable). Es lo que hay dentro de
+`torch.autograd`. *(módulo 02)*
+
+**Orden topológico** — El orden en que hay que recorrer el grafo para que ningún nodo
+reparta su gradiente antes de haber recibido el de todos sus padres. Un orden mal calculado
+da gradientes incorrectos sin dar ningún error. *(módulo 02)*
+
+**Descenso de gradiente** — La regla de aprendizaje: `p -= lr * p.grad`. Mover cada
+parámetro un poco en contra de su gradiente, porque el gradiente apunta hacia donde la
+pérdida sube. *(módulo 02)*
+
+**Neurona** — La unidad mínima: una suma ponderada de sus entradas más un sesgo,
+`w₁x₁ + w₂x₂ + … + b`, pasada por una función no lineal. Los `w` y el `b` son sus
+parámetros. *(módulo 02)*
+
+**Sesgo** (*bias*) — El término independiente `b` de una neurona: le permite desplazar su
+salida sin depender de la entrada. *(módulo 02)*
+
+**Función de activación** — La parte no lineal de una neurona (`tanh`, `relu`, `gelu`). Sin
+ella, apilar capas no sirve de nada: la composición de funciones lineales es otra función
+lineal. *(módulos 02 y 08)*
+
+**MSE** (*error cuadrático medio*) — Una pérdida para predecir números:
+`media((predicción - objetivo)²)`. Se usa en el módulo 02; para predecir tokens se usa
+cross-entropy. *(módulo 02)*
+
 **Forward** — Pasar los datos por la red y obtener la salida.
 
 **Epoch** (*época*) — Una pasada completa por todo el conjunto de datos.
@@ -140,6 +176,8 @@ permite entrenar redes profundas: da al gradiente un camino directo hasta abajo.
 
 **FFN / MLP** — La parte de cada bloque que no es atención: dos o tres capas lineales con
 una no-linealidad en medio. Suele tener más parámetros que la atención. *(módulo 08)*
+Cuidado con el nombre: en el módulo 02, "MLP" es la red entera (capas de neuronas
+encadenadas); en un transformer es solo ese sub-bloque de cada capa.
 
 **GELU, SwiGLU** — Funciones de activación, la parte "no lineal" sin la cual toda la red
 colapsaría a una única multiplicación de matrices. *(módulo 08)*
