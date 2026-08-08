@@ -22,6 +22,13 @@ Exercises 4 and 5 are your first two models in PyTorch.
 Exercise 1 is one line and it is the most important: `ln(V)` will tell you, at step 0 of any
 training run in the course, whether there is a bug.
 
+`THEORY.md` is ordered just like this list: each exercise has its own section there with its
+numeric example, and each docstring here tells you which one. Before exercise 4 there is a
+separate section, "A stop along the way: what a model is in PyTorch", that translates what you
+already did by hand in module 02 into the vocabulary of `torch.nn`: `nn.Module`, `forward`, the
+`(B, T, V)` shapes and what `F.cross_entropy` does inside. If `nn.Embedding` sounds like a name
+you have to copy without knowing what it does, that section is the missing piece.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -50,6 +57,8 @@ import torch.nn.functional as F
 
 def uniform_baseline_loss(vocab_size: int) -> float:
     """The loss of a model that knows absolutely nothing.
+
+    Context in `THEORY.md`: section "The floor: what a model that knows nothing scores".
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -99,6 +108,9 @@ def uniform_baseline_loss(vocab_size: int) -> float:
 
 def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
     """Counts how many times each token follows each token.
+
+    Context in `THEORY.md`: section "Exercise 2: counting the pairs", with the matrix for this
+    very example drawn cell by cell and why the table is V x V.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -165,6 +177,9 @@ def bigram_counts(ids: Sequence[int], vocab_size: int) -> torch.Tensor:
 
 def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> float:
     """Measures how well a bigram table predicts.
+
+    Context in `THEORY.md`: section "Exercise 3: measuring the table", with the example table
+    smoothed row by row, the loss worked out by hand and the table of what each alpha does.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -236,6 +251,11 @@ def bigram_nll(counts: torch.Tensor, ids: Sequence[int], alpha: float = 1.0) -> 
 class NeuralBigram(nn.Module):
     """The bigram from exercise 2, but learned by gradient.
 
+    If this is your first model in PyTorch, read the section "A stop along the way: what a
+    model is in PyTorch" in `THEORY.md` first: what `nn.Module` registers, why it is called as
+    `model(x)` and not `model.forward(x)`, what the `(B, T, V)` shapes are and why
+    `F.cross_entropy` wants flattened logits. Then the "Exercise 4" section.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     **In `__init__`** (two lines besides the `super()`):
@@ -304,6 +324,10 @@ class NeuralBigram(nn.Module):
 
 class BengioMLP(nn.Module):
     """The model from Bengio et al. 2003: the grandparent of modern LLMs.
+
+    Context in `THEORY.md`: section "Exercise 5: looking further back", with the route through
+    the shapes drawn step by step and the measured numbers for where this model breaks, which
+    is the problem attention solves in module 06.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

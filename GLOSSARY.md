@@ -67,6 +67,10 @@ deterministic and tends to get stuck in repetitive loops. *(modules 00 and 14)*
 each sequence of `n` preceding tokens. It is what you build in module 00. It works, but the
 table grows exponentially with `n`. *(module 00)*
 
+**Bigram** — The smallest n-gram that is good for anything: the model that predicts by
+looking **one single token back**. Its count table is `V × V`. Terrible, and it is surprising
+how far it gets. *(module 05)*
+
 **Curse of dimensionality** — The reason counting does not scale: as the context grows, the
 possible combinations grow exponentially and the corpus covers an ever more ridiculous
 fraction of them. Everything unseen is left with probability zero. It is the problem neural
@@ -75,6 +79,18 @@ networks solve by generalizing. *(module 00)*
 **Smoothing** — The classic patches for the zero probabilities of an n-gram model: handing
 out some mass to what was never seen, or blending models with several context sizes. It
 eases the symptom, not the cause. *(module 00)*
+
+**Laplace smoothing** (*add-α*) — The simplest smoothing there is: add a constant `α` to every
+count before normalizing, so that no probability is zero. Without it, a single unseen pair
+sends the loss to infinity, because `-ln(0)` is infinity and the loss is an average. It is
+admitting that "I have not seen it" is not the same as "it is impossible". It is not the best
+smoothing —**Kneser-Ney** distributes the leftover mass according to how many distinct
+contexts each token appears in, rather than equally, and clearly wins— but it is the simplest,
+and the n-gram is a baseline you abandon in the next module. *(module 05)*
+
+**Baseline** — A deliberately simple model that the real model gets compared against. Without
+a baseline, a loss of 2.49 means nothing. The most important one is the **uniform** baseline,
+which spreads probability equally and scores exactly `ln(V)`. *(module 05)*
 
 **Maximum likelihood** — The criterion of choosing the parameters that make the observed
 text most probable. Minimizing cross-entropy is exactly that. *(modules 00 and 05)*
@@ -161,6 +177,18 @@ token)`. If it gets it right with probability 1, the loss is 0. Training is mini
 number. *(module 05)*
 
 **Cross-entropy** — The technical name of that loss. *(module 05)*
+
+**Nat** — The unit the loss is measured in when the natural logarithm is used, which is what
+`torch.log` does and therefore what this whole course uses. One nat is 1.44 bits.
+*(module 05)*
+
+**One-hot** — A vector of zeros with a single 1, at the token's position. Multiplying a matrix
+by a one-hot vector gives exactly the corresponding row of the matrix, and that is why
+`nn.Embedding` and `nn.Linear` are the same operation: the embedding **reads** the row instead
+of multiplying by a matrix full of zeros. *(module 05)*
+
+**Hidden layer** — Any layer of a network that is neither the input nor the output. "Hidden"
+only means nobody looks at its numbers directly. *(modules 02 and 05)*
 
 **Perplexity** — `e` raised to the loss. It is read as "how many options the model is
 hesitating between, in practice". Perplexity 10 ≈ it is hesitating between 10 tokens.
