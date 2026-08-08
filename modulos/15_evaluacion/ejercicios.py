@@ -9,6 +9,10 @@ Lee `TEORIA.md` -> implementa -> `llmfs check 15` -> `llmfs hint 15 -e N`
 Los tres ejercicios son cortos. El tercero ni siquiera calcula nada: organiza el trabajo
 para que la parte que de verdad importa (leer lo que escribe el modelo) sea comoda.
 
+`TEORIA.md` los sigue en este mismo orden y cada docstring de aqui te dice que seccion le toca.
+El valor del modulo no esta en el codigo —son dos lineas por funcion— sino en saber CUANDO usar
+cada una y que mide de verdad.
+
 QUÉ VAS A CONSTRUIR
 ===================
 
@@ -46,6 +50,9 @@ from llmfs.reference import PROMPTS_TINYSTORIES
 
 def perplexity_from_loss(loss: float) -> float:
     """Perplejidad a partir de la perdida media en nats.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: perplejidad", con los tres casos que hay que
+    reconocer y la lectura de la brecha train/val medida sobre el modelo del curso.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -101,6 +108,10 @@ def perplexity_from_loss(loss: float) -> float:
 
 def bits_per_byte(total_loss_nats: float, n_tokens: int, n_bytes: int) -> float:
     """Bits por byte: la metrica que SI se puede comparar entre tokenizadores distintos.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: bits por byte", con la tabla de compresores donde
+    se ve que tu modelo de juguete comprime MEJOR que gzip, y por que la entrada es la perdida
+    TOTAL y no la media.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -182,6 +193,9 @@ def run_prompt_battery(
     prompts: Sequence[tuple[str, str]] | None = None,
 ) -> list[dict[str, str]]:
     """Genera una completion para cada prompt de la bateria cualitativa.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: la bateria cualitativa", con que prueba cada
+    uno de los seis prompts y por que son fijos.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
