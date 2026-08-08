@@ -17,6 +17,11 @@ WHAT YOU ARE GOING TO BUILD
 
 With that the model goes from 35.7 MB to 9.0 MB.
 
+`THEORY.md` follows this same order and each docstring here tells you which section it maps to.
+The three functions chain and are the same idea seen three times: compress, decompress and check
+what it cost you. Exercise 3 is what gives the other two meaning: without measuring the error,
+quantizing is an act of faith.
+
 VOCABULARY YOU ARE GOING TO NEED
 ================================
 
@@ -41,6 +46,10 @@ def quantize_int8_symmetric(
     weight: torch.Tensor, per_channel: bool = True
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Converts a weight matrix into int8 with a scale.
+
+    Context in `THEORY.md`: section "Exercise 1: quantizing", with the reason for the 127 (and
+    where the "symmetric" in the name comes from) and the table of four real model matrices where
+    per channel beats per tensor in all of them.
 
     WHAT YOU HAVE TO WRITE
     ----------------------
@@ -132,6 +141,9 @@ def quantize_int8_symmetric(
 def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tensor:
     """Goes back to float by multiplying by the scale.
 
+    Context in `THEORY.md`: section "Exercise 2: recovering", with the four errors one by one and why
+    the row maximum comes back EXACTLY while the small values have the roughest time.
+
     WHAT YOU HAVE TO WRITE
     ----------------------
     One line:
@@ -174,6 +186,9 @@ def dequantize_int8(quantized: torch.Tensor, scale: torch.Tensor) -> torch.Tenso
 
 def quantization_error(original: torch.Tensor, per_channel: bool = True) -> dict[str, float]:
     """Measures how much the quantization damages.
+
+    Context in `THEORY.md`: section "Exercise 3: measuring what you lost", with why the error is
+    measured RELATIVE and not absolute.
 
     WHAT YOU HAVE TO WRITE
     ----------------------

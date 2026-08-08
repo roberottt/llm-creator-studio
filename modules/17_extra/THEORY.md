@@ -22,63 +22,116 @@ if you only look at the parameters.
 - What separates your model from GPT-4, with the five pieces broken down
 - What you take away from the course that does not appear in the tutorials
 
+### What you are going to write
+
+Three functions, the last of the course, and this theory follows them in order:
+
+| Exercise | What it does |
+|---|---|
+| 1. `quantize_int8_symmetric` | Storing the weights in 1 byte instead of 4 |
+| 2. `dequantize_int8` | Recovering them, approximately |
+| 3. `quantization_error` | Measuring how much was lost |
+
+They chain, and they are the same idea seen three times: compress, decompress and check what it
+cost you. None is more than five lines.
+
+Exercise 3 is what gives the other two meaning: without measuring the error, quantizing is an act
+of faith.
+
 ### What it costs
 
 2 hours. It is the last one.
 
 ---
 
-## Quantization: the model in a quarter of the space
+## Exercise 1: quantizing (`quantize_int8_symmetric`)
 
-Your model takes 35.7 MB in fp32. Storing the weights as 8-bit integers it would take 8.9 MB.
+Your model takes 35.7 MB in fp32. Storing the weights as 8-bit integers it would take 9.0 MB.
 
-The idea is simple: instead of storing each weight as a 4-byte float, you store a 1-byte
-integer plus a **scale** that lets you recover the approximate value.
+The idea is simple: instead of storing each weight as a 4-byte float, you store a 1-byte integer
+plus a **scale** that lets you recover the approximate value.
 
 ### With numbers
 
 Take a row of weights:
 
 ```
-W = [0.12, -0.45, 0.03, 0.28]
+   W = [0.12, -0.45, 0.03, 0.28]
 ```
 
-The largest in absolute value is 0.45. That range is mapped to `[-127, +127]`:
+The largest in absolute value is 0.45. That range gets mapped to `[-127, +127]`:
 
 ```
-scale = 0.45 / 127 = 0.003543
-
-W_int8 = round(W / scale) = [34, -127, 8, 79]
+   scale  = 0.45 / 127 = 0.003543
+   W_int8 = round(W / scale) = [34, -127, 8, 79]
 ```
-
-And to recover it:
-
-```
-W' = W_int8 × scale = [0.1204, -0.4500, 0.0283, 0.2799]
-```
-
-It is not exact. The error is on the order of half a unit of scale, and that is what you pay.
 
 ### Why 127 and not 128
 
-`int8` goes from −128 to 127. Using 127 the range is **symmetric** and zero is represented
-exactly. That matters more than it seems: in a matrix with many small values, zero being exact
-avoids a systematic bias that would accumulate layer after layer.
+`int8` runs from −128 to 127. Using 127 keeps the range **symmetric** and zero is represented
+exactly. That matters more than it seems: in a matrix with many small values, an exact zero avoids
+a systematic bias that would accumulate layer after layer.
+
+It is also where the "symmetric" in the function's name comes from: there are asymmetric schemes,
+with a shifted zero point, that use the range better when the weights are not centred. A network's
+weights are centred, so it does not pay off here.
 
 ### Per channel against per tensor
 
-You can compute **one scale for the whole matrix** or **one per row**. Per row costs one extra
-vector of scales —negligible— and reduces the error quite a lot, because a single row with
-large values does not drag the rest along.
+You can compute **one scale for the whole matrix** or **one per row**. That is the function's
+`per_channel` argument, and it is not cosmetic: per row costs one extra vector of scales
+—negligible— and cuts the error by a third, because a single row with large values does not drag
+the rest along.
 
-Measured on a real matrix from the model:
+Measured on real matrices from the model:
 
-| method | relative error |
-|---|---|
-| per tensor | 1.07% |
-| **per channel** | **0.71%** |
+| matrix | shape | per channel | per tensor |
+|---|---|---|---|
+| token_embedding | (4096, 320) | 0.711% | 1.108% |
+| q_proj (layer 0) | (320, 320) | 0.714% | 1.067% |
+| gate_proj (layer 0) | (896, 320) | 0.712% | 1.034% |
+| down_proj (layer 5) | (320, 896) | 0.779% | 1.116% |
 
-It is what every serious implementation does.
+Per channel wins in all four. It is what every serious implementation does.
+
+---
+
+## Exercise 2: recovering (`dequantize_int8`)
+
+Undoing the operation: multiplying the integers by the scale.
+
+```
+   W' = W_int8 × scale = [0.1205, -0.4500, 0.0283, 0.2799]
+```
+
+Compare it with the original `[0.12, -0.45, 0.03, 0.28]` and look at the errors one by one:
+
+| original | int8 | recovered | error |
+|---|---|---|---|
+| +0.1200 | 34 | +0.1205 | 0.0005 |
+| **−0.4500** | **−127** | **−0.4500** | **0.0000** |
+| +0.0300 | 8 | +0.0283 | 0.0017 |
+| +0.2800 | 79 | +0.2799 | 0.0001 |
+
+**The −0.45 comes back exactly** because it is the maximum and maps right onto −127. The others
+lose up to half a scale unit, and the worst is the 0.03: small values have the roughest time,
+because the scale is set by the largest in the row. That is exactly why per-channel quantization
+beats per-tensor.
+
+The only thing to watch in the exercise is the `dtype`: the integers have to be cast to float
+**before** multiplying, or the multiplication happens in integers and the result is garbage
+rounded to zero.
+
+---
+
+## Exercise 3: measuring what you lost (`quantization_error`)
+
+Quantize, dequantize and compare. Without this the other two exercises are an act of faith.
+
+It is measured as a **relative** error — divided by the magnitude of the original weights — and not
+absolute, because the absolute one cannot be compared across matrices with different scales: an
+error of 0.001 is enormous in a matrix of values around 0.01 and negligible in one of values around
+1.
 
 ### What you gain and what you lose
 
@@ -123,12 +176,15 @@ industry. No lab publishes its recipe.
 
 ### 2. The compute
 
-```
-your model   : ~2.3·10¹⁶ FLOPs      a few hours on an RTX 2060
-GPT-4        : ~2·10²⁵ FLOPs        thousands of GPUs for months
-```
+| | yours | GPT-4 (estimated) | factor |
+|---|---|---|---|
+| parameters | 8.93e+06 | 1.8e+12 | 2e+05× |
+| training tokens | 5e+08 | 1.3e+13 | 3e+04× |
+| training FLOPs | 2.3e+16 | 2e+25 | **9e+08×** |
+| approximate cost | €0.5 | €1e+08 | 2e+08× |
 
-That is **nine orders of magnitude**. And the cost is not only the GPUs: it is the data centre,
+That is **nine orders of magnitude** in compute. And look at the last row, which is what really
+puts things in place: yours costs half a euro of electricity. And the cost is not only the GPUs: it is the data centre,
 the network connecting them, and the engineers keeping all of that running for months without
 a run falling over.
 

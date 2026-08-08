@@ -575,8 +575,22 @@ automatically a mistake: Chinchilla optimizes **training** compute, and if the m
 run a lot it pays to over-train a small one, because inference is paid every time. Llama-3 is 90
 times above on purpose. *(module 12)*
 
-**Quantization** — Storing the weights with fewer bits (int8 instead of fp16) so the model
-takes less space. *(module 17)*
+**Quantization** — Storing the weights with fewer bits (int8 instead of fp32) so the model takes
+less space: 4× smaller, with a 0.7% error in the weights. That this barely affects quality is an
+**empirical fact**, not a theorem. And quantizing the weights **does not speed anything up on its
+own** if you then convert to float to multiply. *(module 17)*
+
+**Per channel / per tensor** — Whether the quantization scale is computed per matrix row or once
+for the whole thing. Per channel costs one extra vector of scales and cuts the error by about a
+third, because a row with large values does not drag the rest along. *(module 17)*
+
+**Mixture of Experts** (MoE) — An architecture where a router network activates only a fraction of
+the parameters for each token. It allows a trillion parameters at the compute cost of a hundred
+billion. Our model is **dense**: every parameter always participates. *(module 17)*
+
+**Streaming** — Sending each token as it is generated instead of waiting for the complete answer.
+At 30 tokens/s a 200-token answer takes 7 seconds, and waiting 7 seconds in front of a blank screen
+reads as something broken. *(module 17)*
 
 ---
 
