@@ -15,8 +15,45 @@ El puente entre el texto tokenizado y la GPU. Tres funciones:
     train_val_split      (ej. 2)  separar un trozo para validacion
     get_batch            (ej. 3)  sacar un lote de ventanas al azar
 
-La tercera la va a ejecutar tu entrenamiento decenas de miles de veces, y es donde esta la
-idea importante del modulo: como se convierte texto en una tarea de aprendizaje.
+Encajan asi, y cada una se ejecuta en un momento muy distinto:
+
+    modulo 03           AQUI                              modulo 11
+    ---------           ----                              ---------
+    texto     -->  lista de ids  -->  fichero .bin  -->  (x, y)  -->  modelo
+                        (ej. 1)          (ej. 2)          (ej. 3)
+                   \_________________________/          \_________/
+                     UNA vez, al preparar                en CADA paso,
+                     el corpus. Puede tardar,            decenas de miles
+                     pero no puede fallar en             de veces.
+                     silencio: el error se
+                     queda grabado en disco.
+
+La tercera es donde esta la idea importante del modulo: como un texto sin etiquetar se
+convierte en una tarea de aprendizaje con su respuesta correcta incluida.
+
+DONDE SE EXPLICA CADA COSA
+==========================
+
+Cada ejercicio tiene su seccion en TEORIA.md, con el ejemplo numerico correspondiente. Si
+un docstring te dice QUE teclear pero no acabas de ver POR QUE, ese es el sitio:
+
+    pack_tokens_uint16  ->  "Ejercicio 1: empaquetar el corpus"
+    train_val_split     ->  "Ejercicio 2: apartar la validacion"
+    get_batch           ->  "Ejercicio 3: sacar un batch"
+
+Y antes de teclear nada, dos secciones que dan el contexto:
+
+    "Que parte del LLM es esta"          en que fase de construir un LLM estas, que es el
+                                         aprendizaje autosupervisado y por que el texto trae
+                                         la respuesta puesta. Es LA idea del modulo.
+    "Las tres cosas con las que se       la lista de ids, el array uint16 (o el memmap, que
+     trabaja"                            se usa igual) y el par (x, y) de tensores: las tres
+                                         estructuras que salen en todas las firmas.
+
+El ejercicio 3 tiene ademas un ejemplo trabajado con numeros de verdad —corpus [0..999],
+semilla 0, las cuatro posiciones de inicio que salen y las dos matrices completas— en la
+seccion "Que hace la funcion, con numeros de verdad". Si tu implementacion reproduce esas
+matrices, has terminado.
 
 VOCABULARIO QUE VAS A NECESITAR
 ===============================
@@ -46,6 +83,12 @@ MAX_UINT16 = 2**16
 
 def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
     """Convierte una lista de ids en un array `uint16`, validando que quepan.
+
+    Se ejecuta UNA vez, al preparar el corpus, y por eso es casi toda validacion: lo que
+    escriba se queda grabado en el fichero con el que entrenaras despues. La seccion
+    "Ejercicio 1: empaquetar el corpus" de `TEORIA.md` tiene las cinco conversiones
+    ejecutadas de verdad, incluida la que convierte un id fuera de rango en otro que parece
+    perfectamente valido (66536 -> 1000).
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -114,6 +157,11 @@ def pack_tokens_uint16(ids: Sequence[int], vocab_size: int) -> np.ndarray:
 def train_val_split(tokens: np.ndarray, val_fraction: float = 0.005) -> tuple[np.ndarray, np.ndarray]:
     """Separa un trozo del final para validacion.
 
+    No baraja, no reordena, no copia: corta y devuelve dos vistas. Toda la sustancia esta en
+    POR QUE el corte es por el final, y la seccion "Ejercicio 2: apartar la validacion" de
+    `TEORIA.md` lo mide: repartiendo ventanas al azar, el 100% de los tokens de validacion
+    resultan estar tambien en entrenamiento.
+
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
     Cuatro lineas.
@@ -176,6 +224,11 @@ def get_batch(
     rng: np.random.Generator | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Saca un lote de ventanas al azar. Es la funcion que mas veces se ejecuta del curso.
+
+    Antes de teclear, mira el ejemplo trabajado de "Ejercicio 3: sacar un batch" en
+    `TEORIA.md`: corpus [0, 1, ..., 999], semilla 0, las cuatro posiciones de inicio que
+    salen (842, 631, 506, 267) y las dos matrices completas. Si tu implementacion reproduce
+    esas matrices, esta bien.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
