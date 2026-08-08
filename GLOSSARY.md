@@ -32,6 +32,32 @@ a language model is always one of these, over the whole vocabulary.
 **Sample** — Picking a token at random respecting its probabilities, instead of always taking
 the most likely one. *(modules 00 and 14)*
 
+**Greedy** (*argmax*) — The opposite of sampling: always taking the most likely token. It is
+deterministic and tends to get stuck in repetitive loops. *(modules 00 and 14)*
+
+**n-gram** — A language model that predicts by counting how many times each token followed
+each sequence of `n` preceding tokens. It is what you build in module 00. It works, but the
+table grows exponentially with `n`. *(module 00)*
+
+**Curse of dimensionality** — The reason counting does not scale: as the context grows, the
+possible combinations grow exponentially and the corpus covers an ever more ridiculous
+fraction of them. Everything unseen is left with probability zero. It is the problem neural
+networks solve by generalizing. *(module 00)*
+
+**Smoothing** — The classic patches for the zero probabilities of an n-gram model: handing
+out some mass to what was never seen, or blending models with several context sizes. It
+eases the symptom, not the cause. *(module 00)*
+
+**Maximum likelihood** — The criterion of choosing the parameters that make the observed
+text most probable. Minimizing cross-entropy is exactly that. *(modules 00 and 05)*
+
+**Hallucination** — The model generating something false with complete confidence. It is not
+an added defect: it is the direct consequence of sampling from a distribution with no
+verification step. *(module 00)*
+
+**Generalize** — Getting things right on data not seen during training. It is the only thing
+that separates learning from memorizing. *(module 00)*
+
 ---
 
 ## Training

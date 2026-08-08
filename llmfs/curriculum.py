@@ -111,6 +111,7 @@ CURRICULUM: tuple[Module, ...] = (
         ),
         references=(
             ("Shannon 1948, A Mathematical Theory of Communication", "https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf"),
+            ("Bengio et al. 2003, A Neural Probabilistic Language Model", "https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf"),
         ),
     ),
     # ------------------------------------------------------------------ Part I
