@@ -23,7 +23,13 @@ El corazon del Transformer. Tres ejercicios que encajan asi:
     MultiHeadAttention      (ej. 3)  ocho en paralelo, que es lo que usa el modelo
 
 El ejercicio 2 son cuatro lineas, y cada una tiene una trampa. El 3 es el mismo calculo con
-una dimension mas.
+una dimension mas, mas la fontaneria de partir y volver a juntar las cabezas.
+
+`TEORIA.md` esta ordenada igual que esta lista: cada ejercicio tiene alli su propia seccion
+con su ejemplo numerico, y cada docstring de aqui te dice cual es. Antes de los ejercicios hay
+dos secciones que conviene no saltarse: "Q, K, V", donde el mismo ejemplo hecho SIN
+proyecciones da la respuesta equivocada y con ellas la acierta, y "Las formas: que son B, T, S
+y d_k", que es de donde salen las formas de las firmas de aqui abajo.
 
 LA IDEA, EN UNA FRASE
 =====================
@@ -66,6 +72,9 @@ from llmfs.reference import apply_rope
 
 def causal_mask(seq_len: int, device: torch.device | str | None = None) -> torch.Tensor:
     """La mascara triangular que impide mirar hacia el futuro.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 1: la mascara causal", con la matriz dibujada,
+    por que el -inf va ANTES del softmax y los numeros que lo demuestran.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -123,6 +132,11 @@ def single_head_attention(
     mask: torch.Tensor | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Atencion de una cabeza. El corazon del Transformer, en cuatro lineas.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 2: la atencion de una cabeza", con las cuatro
+    lineas mapeadas una a una contra la formula y un ejemplo de 3 tokens y 2 dimensiones cuya
+    salida exacta puedes comparar con la de tu funcion. La seccion siguiente, "El escalado por
+    sqrt(d_k)", trae la tabla de entropias medidas.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------
@@ -200,6 +214,12 @@ def single_head_attention(
 
 class MultiHeadAttention(nn.Module):
     """Varias atenciones en paralelo, cada una con sus propias proyecciones.
+
+    Contexto en `TEORIA.md`: seccion "Ejercicio 3: ocho cabezas en paralelo". Si te pierdes con
+    las formas —que es lo normal—, alli esta el recorrido entero de (2, 5, 320) a (2, 5, 320)
+    paso a paso, `_split_heads` bien y mal hecho con numeros de ejemplo, y que hace `out_proj`,
+    que no aparece en la formula del paper y sin la cual las ocho cabezas son ocho canales
+    estancos.
 
     QUÉ TIENES QUE ESCRIBIR
     -----------------------

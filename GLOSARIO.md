@@ -194,6 +194,16 @@ salida. «Oculta» solo significa que nadie mira sus números directamente. *(m�
 dudando el modelo, en la práctica". Perplejidad 10 ≈ está dudando entre 10 tokens.
 *(módulo 15)*
 
+**Entropía** — Lo mismo que la perplejidad pero sin exponenciar: mide cómo de repartida está
+una distribución. Máxima cuando todo es equiprobable (`ln(n)`), cerca de cero cuando toda la
+masa está en una opción. En el módulo 06 se usa para medir si la atención reparte o se fija
+en un solo token. *(módulos 05 y 06)*
+
+**Dropout** — Apagar al azar una fracción de los números durante el entrenamiento, para que el
+modelo no dependa demasiado de ninguno en concreto. Se desactiva en evaluación, y hay que
+acordarse de hacerlo a mano cuando la operación no consulta el modo por su cuenta.
+*(módulos 06 y 11)*
+
 **Gradiente** — La derivada de la pérdida respecto a un parámetro. Dice en qué dirección
 mover ese parámetro para que la pérdida baje. *(módulo 02)*
 
@@ -275,7 +285,34 @@ anuncia, y el *value* es el contenido que aporta si resulta elegido. *(módulo 0
 distintas, para que cada "cabeza" pueda especializarse. El nuestro tiene 8. *(módulo 06)*
 
 **Máscara causal** — Impide que un token mire a los que vienen después. Sin ella el modelo
-haría trampa: vería la respuesta. *(módulo 06)*
+haría trampa: vería la respuesta. Se aplica poniendo `-inf` en las puntuaciones prohibidas
+**antes** del softmax, no borrando pesos después: así cada fila sigue sumando 1.
+*(módulo 06)*
+
+**Puntuaciones** (*scores*) — La matriz `T × T` de productos escalares entre queries y keys,
+antes del softmax. La casilla `(i, j)` dice cuánto le interesa al token `i` el token `j`.
+*(módulo 06)*
+
+**Producto escalar** — Multiplicar dos vectores componente a componente y sumar. Mide cuánto
+se parecen: cuanto más alineados, mayor el número. Es la operación con la que la atención
+decide a quién hacer caso. *(módulo 06)*
+
+**Escalado por √d_k** — Dividir las puntuaciones por la raíz del tamaño de las queries. El
+producto escalar de dos vectores de dimensión `d_k` tiene varianza `d_k`, y sin corregirlo el
+softmax se satura: los pesos se van a 0 y 1, su derivada `p(1-p)` se anula y la capa deja de
+aprender. *(módulo 06)*
+
+**Proyección de salida** (`out_proj`) — La cuarta matriz de una capa de atención, que no
+aparece en la fórmula del paper. Mezcla los resultados de las cabezas entre sí; sin ella
+serían canales estancos. *(módulo 06)*
+
+**SDPA** (`scaled_dot_product_attention`) — La implementación fusionada de la atención que
+trae PyTorch: hace los cuatro pasos en un solo kernel sin materializar la matriz `T × T`
+entera. Es la que usa el entrenamiento de verdad. *(módulo 06)*
+
+**Induction head** — Una cabeza de atención que aprende sola a detectar el patrón «…A B … A»
+y a predecir B. Es el componente mejor entendido de un Transformer y el caso de éxito de la
+interpretabilidad mecanicista. *(módulo 06)*
 
 **Normalización** (LayerNorm, RMSNorm) — Reescala los valores dentro de la red para que no
 crezcan ni se encojan descontroladamente capa a capa. *(módulo 07)*
